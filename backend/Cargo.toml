@@ -1,0 +1,34 @@
+[package]
+name = "tek-api"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+argon2 = "0.6.0"
+axum = { version = "0.8", features = ["macros", "http2"] }
+axum-extra = { version = "0.12.6", features = ["typed-header", "cookie"] }
+bytes = "1.12.1"
+chrono = { version = "0.4.45", features = ["serde"] }
+dotenvy = "0.15.7"
+hex = "0.4.3"
+http = "1.5.0"
+jsonwebtoken = { version = "11.0.0", features = ["rust_crypto"] }
+mimalloc = "0.1.52"
+moka = { version = "0.12.16", features = ["future"] }
+rand = "0.10.2"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json"] }
+rust_decimal = { version = "1.43.0", features = ["serde-float", "db-postgres"] }
+rust_decimal_macros = "1.40.0"
+rust_xlsxwriter = "0.99.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.0"
+sqlx = { version = "0.9.0", features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "rust_decimal", "migrate", "json"] }
+thiserror = "2.0.20"
+tokio = { version = "1.53.1", features = ["full"] }
+tower = "0.5.3"
+tower-http = { version = "0.7.1", features = ["cors", "compression-full", "trace", "timeout", "set-header", "limit", "catch-panic", "request-id", "util"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
+uuid = { version = "1.26.1", features = ["v4", "v7", "serde"] }

@@ -1,0 +1,34 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: deploy/backend.Dockerfile
+    container_name: tek-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://tek:tek@postgres:5432/tek
+      BIND: 0.0.0.0:8181
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-prod}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3010}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3010}
+      CRM_WEBHOOK_URL: ${CRM_WEBHOOK_URL:-}
+      ONEC_WEBHOOK_URL: ${ONEC_WEBHOOK_URL:-}
+      RUST_LOG: info
+    ports:
+      - "8181:8181"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: deploy/frontend.Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8181/api/v1}
+    container_name: tek-frontend
+    restart: unless-stopped
+    ports:
+      - "3010:3010"
+    depends_on:
+      - backend

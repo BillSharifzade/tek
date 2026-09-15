@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: tek-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tek
+      POSTGRES_PASSWORD: tek
+      POSTGRES_DB: tek
+    command: ["postgres", "-c", "shared_buffers=256MB", "-c", "max_connections=200", "-c", "synchronous_commit=off"]
+    ports:
+      - "5433:5432"
+    volumes:
+      - tek-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tek -d tek"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  tek-pgdata:

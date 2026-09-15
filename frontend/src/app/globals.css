@@ -1,0 +1,227 @@
+@import "tailwindcss";
+
+@theme {
+  --color-brand: #f4c241;
+  --color-brand-hover: #e9b62b;
+  --color-brand-light: #fff5d6;
+  --color-ink: #3f3f3f;
+  --color-ink-hover: #2c2c2c;
+  --color-sub: #898989;
+  --color-muted: #afafaf;
+  --color-line: #e8e8e8;
+  --color-surface: #f6f6f6;
+  --color-surface-2: #fbfbfb;
+  --color-sale: #dc130d;
+  --color-success: #00b290;
+  --color-info: #1976d2;
+
+  --font-sans: var(--font-inter), "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  --radius-card: 8px;
+  --radius-control: 6px;
+
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 18px;
+  --text-base: 14px;
+  --text-base--line-height: 20px;
+  --text-md: 15px;
+  --text-md--line-height: 22px;
+  --text-lg: 16px;
+  --text-lg--line-height: 24px;
+  --text-xl: 18px;
+  --text-xl--line-height: 26px;
+  --text-2xl: 22px;
+  --text-2xl--line-height: 28px;
+  --text-3xl: 28px;
+  --text-3xl--line-height: 34px;
+  --text-4xl: 36px;
+  --text-4xl--line-height: 42px;
+
+  --shadow-card: 0 2px 12px rgba(63, 63, 63, 0.08);
+  --shadow-pop: 0 8px 32px rgba(63, 63, 63, 0.16);
+}
+
+:root {
+  color-scheme: light;
+}
+
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: #ffffff;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 20px;
+  font-feature-settings: "cv11", "ss01", "tnum";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+  button,
+  [role="button"] {
+    cursor: pointer;
+  }
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-muted);
+  }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  h1 {
+    font-size: 28px;
+    line-height: 34px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  h2 {
+    font-size: 22px;
+    line-height: 28px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  h3 {
+    font-size: 16px;
+    line-height: 24px;
+    font-weight: 600;
+  }
+}
+
+@utility container-page {
+  width: 100%;
+  max-width: 1240px;
+  margin-inline: auto;
+  padding-inline: 20px;
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@utility line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@utility tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* prose for CMS bodies */
+.prose-tek {
+  font-size: 15px;
+  line-height: 24px;
+  color: var(--color-ink);
+}
+.prose-tek h2 {
+  margin: 28px 0 12px;
+}
+.prose-tek h3 {
+  margin: 20px 0 8px;
+}
+.prose-tek p {
+  margin: 0 0 14px;
+}
+.prose-tek ul {
+  margin: 0 0 14px 20px;
+  list-style: disc;
+}
+.prose-tek li {
+  margin: 4px 0;
+}
+.prose-tek a {
+  color: var(--color-info);
+  text-decoration: underline;
+}
+.prose-tek strong {
+  font-weight: 600;
+}
+.prose-tek table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 16px;
+}
+.prose-tek td,
+.prose-tek th {
+  border: 1px solid var(--color-line);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+@keyframes tek-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-toast-in {
+  animation: tek-toast-in 180ms ease-out;
+}
+
+@keyframes tek-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.animate-fade-in {
+  animation: tek-fade-in 150ms ease-out;
+}
+
+@keyframes tek-shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(90deg, #f1f1f1 0%, #e6e6e6 40%, #f1f1f1 80%);
+  background-size: 800px 100%;
+  animation: tek-shimmer 1.4s linear infinite;
+  border-radius: 6px;
+}
