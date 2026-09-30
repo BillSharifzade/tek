@@ -160,6 +160,8 @@ pub struct ProductCard {
     pub reviews_count: i32,
     pub price_unit_label: &'static str,
     pub category: BrandRef,
+    /// кратность упаковки (шаг количества), None — продаётся поштучно / любым метражом
+    pub pack_qty: Option<Decimal>,
 }
 
 #[derive(Debug, Clone, Serialize)]

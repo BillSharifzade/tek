@@ -27,7 +27,7 @@ export function NewsCard({ item, priority }: { item: NewsEntry; priority?: boole
           src={cover.src}
           alt=""
           fill
-          unoptimized
+         
           priority={priority}
           sizes="(max-width: 768px) 100vw, 397px"
           className={cn("transition-transform duration-300 group-hover:scale-[1.03]", cover.contain ? "object-contain p-6 mix-blend-multiply" : "object-cover")}

@@ -234,6 +234,9 @@ async fn post_lead(State(state): State<AppState>, OptionalUser(user): OptionalUs
         _ => "feedback".to_string(),
     };
     let email = b.email.as_deref().map(|e| clip(e, 160)).filter(|e| !e.is_empty());
+    if email.as_deref().is_some_and(|e| !e.contains('@') || e.len() < 5) {
+        return Err(AppError::unprocessable("email_invalid", "Укажите корректный e-mail"));
+    }
     let note = clip(b.note.as_deref().unwrap_or(""), 4000);
     let service = b.service.as_deref().map(|s| clip(s, 200)).filter(|s| !s.is_empty());
     let page = b.page.as_deref().map(|s| clip(s, 300)).filter(|s| !s.is_empty());

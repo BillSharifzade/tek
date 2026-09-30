@@ -4,6 +4,8 @@ use rust_decimal_macros::dec;
 use serde::Serialize;
 
 pub const COURIER_PRICE: Decimal = dec!(30.00);
+/// Доставка бесплатна от этой суммы заказа (как на странице «Помощь»)
+pub const FREE_DELIVERY_FROM: Decimal = dec!(1000.00);
 
 #[derive(Debug, Clone, Serialize)]
 pub struct DeliveryDate {

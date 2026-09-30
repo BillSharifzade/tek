@@ -27,6 +27,7 @@ pub struct AppState {
     /// Short-lived user cache (auth extractor hot path).
     pub user_cache: Cache<Uuid, Arc<UserRow>>,
     pub http: reqwest::Client,
+    pub limiter: crate::services::ratelimit::Limiter,
     pub version: &'static str,
 }
 
@@ -47,6 +48,7 @@ impl AppState {
                 .timeout(Duration::from_secs(10))
                 .build()
                 .expect("http client"),
+            limiter: Default::default(),
             version: env!("CARGO_PKG_VERSION"),
         }
     }
@@ -56,9 +58,8 @@ impl AppState {
         self.cache.invalidate_all();
     }
 
-    pub fn invalidate_user(&self, id: Uuid) {
-        let cache = self.user_cache.clone();
-        tokio::spawn(async move { cache.invalidate(&id).await });
+    pub async fn invalidate_user(&self, id: Uuid) {
+        self.user_cache.invalidate(&id).await;
     }
 
     /// Serve a public JSON payload from the in-memory cache (with ETag / Cache-Control),
@@ -69,17 +70,18 @@ impl AppState {
         F: FnOnce(AppState) -> Fut,
         Fut: std::future::Future<Output = AppResult<T>>,
     {
-        let entry = match self.cache.get(&key).await {
-            Some(e) => e,
-            None => {
-                let value = f(self.clone()).await?;
+        // одновременные промахи по одному ключу считаются один раз (moka try_get_with)
+        let state = self.clone();
+        let entry = self
+            .cache
+            .try_get_with(key, async move {
+                let value = f(state).await?;
                 let body = Bytes::from(serde_json::to_vec(&value).map_err(|e| crate::error::AppError::internal(e.to_string()))?);
                 let etag = format!("\"{}\"", hex::encode(&<sha2::Sha256 as sha2::Digest>::digest(&body)[..8]));
-                let entry = CachedBody { body, etag };
-                self.cache.insert(key, entry.clone()).await;
-                entry
-            }
-        };
+                Ok::<_, crate::error::AppError>(CachedBody { body, etag })
+            })
+            .await
+            .map_err(|e| crate::error::AppError::new(e.status, e.code.clone(), e.message.clone()).with_details(e.details.clone().unwrap_or_default()))?;
         if let Some(inm) = req_headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()) {
             if inm == entry.etag {
                 return Ok(StatusCode::NOT_MODIFIED.into_response());

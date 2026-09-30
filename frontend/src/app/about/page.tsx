@@ -15,6 +15,7 @@ import { IconArrowSmall } from "@/components/content/icons";
 import { brandLogo, CERTIFICATES, CLIENTS } from "@/components/content/brands";
 import type { CmsPage } from "@/components/content/types";
 import { ADVANTAGES, FACTS, HIGHLIGHTS, RANGE, VACANCIES, type Vacancy } from "./data";
+import { asset } from "@/lib/asset";
 
 export const metadata: Metadata = {
   title: "О компании",
@@ -133,7 +134,7 @@ export default async function AboutPage() {
               </div>
             </div>
             <div className="relative h-[220px] sm:h-[300px] lg:h-auto">
-              <Image src="/figma/hero-nurek.webp" alt="Нурекская ГЭС" fill priority unoptimized sizes="(max-width: 1024px) 100vw, 572px" className="object-cover" />
+              <Image src="/figma/hero-nurek.webp" alt="Нурекская ГЭС" fill priority sizes="(max-width: 1024px) 100vw, 572px" className="object-cover" />
             </div>
           </div>
           <ul className="relative mx-auto mt-[12px] grid max-w-[938px] grid-cols-2 gap-y-[18px] rounded-[11px] bg-brand px-[20px] py-[20px] shadow-[0_2px_8px_2px_rgba(0,0,0,0.13)] md:grid-cols-4 md:px-[48px] md:py-[24px] lg:-mt-[55px]">
@@ -158,7 +159,7 @@ export default async function AboutPage() {
           <ul className="grid grid-cols-1 gap-[13px] sm:grid-cols-2">
             {ADVANTAGES.map((a) => (
               <li key={a.title} className="rounded-[8px] bg-surface px-[24px] pb-[24px] pt-[22px]">
-                <Image src={`/corporate/adv/${a.icon}.webp`} alt="" width={48} height={48} unoptimized className="size-[48px] object-contain" />
+                <Image src={`/corporate/adv/${a.icon}.webp`} alt="" width={48} height={48} className="size-[48px] object-contain" />
                 <h3 className="mt-[14px] text-[16px] font-bold leading-[20px]">{a.title}</h3>
                 <p className="mt-[6px] text-[14px] leading-[17px] text-sub">{a.text}</p>
               </li>
@@ -180,7 +181,7 @@ export default async function AboutPage() {
                   <Link href={`/catalog/${r.slug}`} className="group relative flex h-[122px] overflow-hidden rounded-[8px] bg-surface transition-shadow hover:shadow-soft">
                     <span className="relative z-10 px-[16px] pt-[14px] text-[15px] font-bold leading-[20px] text-black">{r.name}</span>
                     {n != null ? <span className="absolute bottom-[14px] left-[16px] z-10 text-[13px] leading-[18px] text-sub">{countLabel(n, ["товар", "товара", "товаров"])}</span> : null}
-                    <Image src={`/corporate/range/${r.img}.webp`} alt="" width={84} height={85} unoptimized className="absolute bottom-[2px] right-[4px] h-[85px] w-[84px] object-contain transition-transform duration-300 group-hover:scale-105" />
+                    <Image src={`/corporate/range/${r.img}.webp`} alt="" width={84} height={85} className="absolute bottom-[2px] right-[4px] h-[85px] w-[84px] object-contain transition-transform duration-300 group-hover:scale-105" />
                   </Link>
                 </li>
               );
@@ -199,7 +200,7 @@ export default async function AboutPage() {
           </Lead>
           <div className="relative mt-[36px]">
             <span className="absolute left-1/2 top-0 z-10 inline-flex h-[25px] -translate-x-1/2 -translate-y-1/2 items-center whitespace-nowrap rounded-[7px] bg-brand px-[7px] text-[14px] font-semibold leading-[13px] text-g333">
-              {partners.length}+ вендоров
+              20+ вендоров
             </span>
             <ul className="grid grid-cols-2 rounded-[11px] bg-white px-[8px] py-[14px] shadow-[0_1px_7px_3px_rgba(0,0,0,0.07)] sm:grid-cols-4 lg:grid-cols-7 lg:px-[20px]">
               {partners.map((b) => {
@@ -208,7 +209,7 @@ export default async function AboutPage() {
                   <li key={b.slug}>
                     <Link href={`/brands/${b.slug}`} title={b.name} className="group flex h-[84px] items-center justify-center px-[14px]">
                       {logo ? (
-                        <Image src={logo} alt={b.name} width={130} height={44} unoptimized className="h-auto max-h-[40px] w-auto max-w-[128px] object-contain transition-transform duration-200 group-hover:scale-105" />
+                        <Image src={logo} alt={b.name} width={130} height={44} className="h-auto max-h-[40px] w-auto max-w-[128px] object-contain transition-transform duration-200 group-hover:scale-105" />
                       ) : (
                         <span className="text-[16px] font-bold">{b.name}</span>
                       )}
@@ -227,9 +228,9 @@ export default async function AboutPage() {
           <ul className="mt-[24px] grid grid-cols-2 gap-[13px] md:mt-[28px] lg:grid-cols-4 lg:gap-[20px]">
             {CERTIFICATES.map((c) => (
               <li key={c.n}>
-                <a href={`/corporate/certs/${c.n}.webp`} target="_blank" rel="noopener" className="group flex h-full flex-col overflow-hidden rounded-[11px] bg-surface-2 transition-shadow hover:shadow-pop">
+                <a href={asset(`/corporate/certs/${c.n}.webp`)} target="_blank" rel="noopener" className="group flex h-full flex-col overflow-hidden rounded-[11px] bg-surface-2 transition-shadow hover:shadow-pop">
                   <span className="relative flex h-[190px] items-center justify-center p-[18px] md:h-[280px] md:p-[28px]">
-                    <Image src={`/corporate/certs/${c.n}-preview.webp`} alt={`Сертификат дистрибьютора ${c.brand}`} width={368} height={520} unoptimized className="h-auto max-h-full w-auto max-w-full shadow-card transition-transform duration-300 group-hover:scale-[1.03]" />
+                    <Image src={`/corporate/certs/${c.n}-preview.webp`} alt={`Сертификат дистрибьютора ${c.brand}`} width={368} height={520} className="h-auto max-h-full w-auto max-w-full shadow-card transition-transform duration-300 group-hover:scale-[1.03]" />
                   </span>
                   <span className="mt-auto flex flex-col border-t border-line-3 px-[16px] py-[14px] md:px-[20px] md:py-[16px]">
                     <span className="text-[15px] font-bold leading-[20px] text-black md:text-[16px]">{c.brand}</span>
@@ -250,7 +251,7 @@ export default async function AboutPage() {
           <ul className="mt-[24px] grid grid-cols-2 gap-[13px] sm:grid-cols-3 md:mt-[32px] lg:grid-cols-6">
             {CLIENTS.map((c) => (
               <li key={c.file} className="group flex h-[96px] items-center justify-center rounded-[10px] bg-white px-[20px]" title={c.name}>
-                <Image src={`/corporate/clients/${c.file}.webp`} alt={c.name} width={160} height={70} unoptimized className="h-auto max-h-[56px] w-auto max-w-[140px] object-contain opacity-80 grayscale transition duration-200 group-hover:opacity-100 group-hover:grayscale-0" />
+                <Image src={`/corporate/clients/${c.file}.webp`} alt={c.name} width={160} height={70} className="h-auto max-h-[56px] w-auto max-w-[140px] object-contain opacity-80 grayscale transition duration-200 group-hover:opacity-100 group-hover:grayscale-0" />
               </li>
             ))}
           </ul>

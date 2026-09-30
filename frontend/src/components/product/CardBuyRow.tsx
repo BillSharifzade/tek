@@ -6,6 +6,7 @@ import type { ProductCard } from "@/lib/types";
 import { useCart } from "@/store/cart";
 import { useHydrated } from "@/lib/hooks";
 import { cn } from "@/lib/cn";
+import { packStep, snapQty } from "@/lib/qty";
 
 /**
  * Нижняя строка карточки (Figma «Group 166», 225×32):
@@ -15,7 +16,8 @@ export function CardBuyRow({ product, className }: { product: ProductCard; class
   const hydrated = useHydrated();
   const inCart = useCart((s) => s.cart?.items.some((i) => i.product.id === product.id) ?? false);
   const add = useCart((s) => s.add);
-  const [qty, setQty] = useState(1);
+  const step = packStep(product);
+  const [qty, setQty] = useState(step);
   const [busy, setBusy] = useState(false);
   const disabled = !product.in_stock;
 
@@ -25,8 +27,8 @@ export function CardBuyRow({ product, className }: { product: ProductCard; class
         <button
           type="button"
           aria-label="Уменьшить количество"
-          disabled={disabled || qty <= 1}
-          onClick={() => setQty((q) => Math.max(1, q - 1))}
+          disabled={disabled || qty <= step}
+          onClick={() => setQty((q) => Math.max(step, q - step))}
           className="absolute left-0 top-0 size-[32px] rounded-[6px] bg-field text-[16px] font-light leading-[12px] text-sub transition-colors hover:bg-btn-hover hover:text-black disabled:hover:bg-field disabled:hover:text-sub"
         >
           –
@@ -38,15 +40,16 @@ export function CardBuyRow({ product, className }: { product: ProductCard; class
           disabled={disabled}
           onChange={(e) => {
             const n = Number(e.target.value.replace(/\D/g, ""));
-            setQty(Number.isFinite(n) && n > 0 ? Math.min(n, 99999) : 1);
+            setQty(Number.isFinite(n) && n > 0 ? Math.min(n, 99999) : step);
           }}
+          onBlur={() => setQty((q) => snapQty(q, step))}
           className="absolute left-[39px] top-[10px] h-[12px] w-[32px] bg-transparent text-center text-[14px] font-medium leading-[12px] text-sub outline-none tnum"
         />
         <button
           type="button"
           aria-label="Увеличить количество"
           disabled={disabled}
-          onClick={() => setQty((q) => q + 1)}
+          onClick={() => setQty((q) => q + step)}
           className="absolute left-[84px] top-0 h-[32px] w-[20px] text-center text-[16px] font-light leading-[12px] text-sub transition-colors hover:text-black"
         >
           +
@@ -68,7 +71,7 @@ export function CardBuyRow({ product, className }: { product: ProductCard; class
           onClick={async () => {
             setBusy(true);
             try {
-              await add(product.id, qty);
+              await add(product.id, snapQty(qty, step));
             } catch {
               /* toast from the store */
             } finally {

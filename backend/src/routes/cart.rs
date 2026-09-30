@@ -32,9 +32,25 @@ async fn respond(state: &AppState, id: &CartIdentity, cart: &CartRow) -> AppResu
     Ok(Json(cart::view(state, cart, &ctx).await?))
 }
 
+/// Просмотр корзины её не создаёт: гостевая корзина появляется при первом добавлении товара.
 async fn get_cart(State(state): State<AppState>, id: CartIdentity) -> AppResult<Json<CartJson>> {
-    let cart = cart::resolve_cart(&state, &id, true).await?.expect("created");
-    respond(&state, &id, &cart).await
+    match cart::resolve_cart(&state, &id, id.user.is_some()).await? {
+        Some(cart) => respond(&state, &id, &cart).await,
+        None => Ok(Json(CartJson {
+            id: Uuid::nil(),
+            cart_token: None,
+            items: vec![],
+            items_count: 0,
+            selected_count: 0,
+            subtotal_list: Decimal::ZERO,
+            discount_total: Decimal::ZERO,
+            coupon: None,
+            subtotal: Decimal::ZERO,
+            cashback_total: Decimal::ZERO,
+            total: Decimal::ZERO,
+            has_errors: false,
+        })),
+    }
 }
 
 #[derive(Deserialize)]
@@ -57,18 +73,16 @@ struct PatchItem {
 
 async fn patch_item(State(state): State<AppState>, id: CartIdentity, Path(item_id): Path<Uuid>, Json(body): Json<PatchItem>) -> AppResult<Json<CartJson>> {
     let cart = cart::resolve_cart(&state, &id, true).await?.expect("created");
-    let row: Option<(Uuid, Decimal)> = sqlx::query_as(
-        "SELECT ci.product_id, (SELECT COALESCE(SUM(qty),0) FROM stock s WHERE s.product_id = ci.product_id) FROM cart_items ci WHERE ci.id = $1 AND ci.cart_id = $2",
+    let row: Option<(Uuid, Decimal, String, String, Option<Decimal>)> = sqlx::query_as(
+        "SELECT ci.product_id, (SELECT COALESCE(SUM(qty),0) FROM stock s WHERE s.product_id = ci.product_id), p.unit, p.name, p.pack_qty FROM cart_items ci JOIN products p ON p.id = ci.product_id WHERE ci.id = $1 AND ci.cart_id = $2",
     )
     .bind(item_id)
     .bind(cart.id)
     .fetch_optional(&state.pool)
     .await?;
-    let Some((_, stock)) = row else { return Err(AppError::not_found("Позиция не найдена")) };
+    let Some((_, stock, unit, name, pack)) = row else { return Err(AppError::not_found("Позиция не найдена")) };
     if let Some(q) = body.qty {
-        if q <= Decimal::ZERO {
-            return Err(AppError::unprocessable("invalid_qty", "Количество должно быть больше нуля"));
-        }
+        crate::services::orders::validate_qty(q, &unit, &name, pack)?;
         if q > stock {
             return Err(AppError::unprocessable("insufficient_stock", "Количество превышает остаток на складе")
                 .with_details(json!({ "available": stock, "requested": q })));

@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { OrderSummaryCard } from "@/components/account/OrderSummaryCard";
+import { getAccessToken } from "@/lib/server";
 
 export const metadata: Metadata = { title: "Заказ оформлен" };
 
 /** Экрана в макете нет — собран в языке чекаута 10461:576: фон #F6F7F8, белая карточка r10 с рамкой #D9DDE4. */
 export default async function CheckoutSuccessPage({ params }: { params: Promise<{ number: string }> }) {
   const { number } = await params;
+  // гостю кабинет недоступен — кнопка «Перейти к заказу» только для вошедших
+  const loggedIn = Boolean(await getAccessToken());
   return (
     <div className="bg-surface">
       <div className="mx-auto w-full max-w-[1314px] px-4 pb-[100px] pt-[48px]">
@@ -20,15 +23,17 @@ export default async function CheckoutSuccessPage({ params }: { params: Promise<
               <h1 className="text-[26px] font-bold leading-[30px] text-black">Заказ №{number} оформлен</h1>
             </div>
             <p className="mt-[16px] max-w-[560px] text-[14px] leading-[20px] text-sub">
-              Спасибо! Заказ передан менеджеру и зарезервирован на складе. Подтверждение отправлено на ваш e-mail, менеджер свяжется с вами в ближайшее время.
+              Спасибо! Заказ передан менеджеру и зарезервирован на складе. Менеджер свяжется с вами в ближайшее время, чтобы подтвердить детали.
             </p>
             <div className="mt-[24px] flex flex-wrap gap-[9px]">
+              {loggedIn ? (
               <Link
                 href={`/account/orders/${number}`}
                 className="flex h-[44px] items-center rounded-[4px] bg-brand px-[32px] text-[15px] font-medium leading-[24px] text-black transition-colors hover:bg-brand-hover"
               >
                 Перейти к заказу
               </Link>
+              ) : null}
               <Link href="/catalog" className="flex h-[44px] items-center rounded-[4px] bg-btn px-[32px] text-[15px] font-medium leading-[24px] text-black transition-colors hover:bg-btn-hover">
                 Продолжить покупки
               </Link>

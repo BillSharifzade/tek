@@ -1,0 +1,20 @@
+# ТЭК под подпутём домена (пример — dchr.koinotinav.com/tek). Вставить в сайт Caddy ПЕРЕД общим reverse_proxy.
+# Контейнеры tek-api / tek-web должны быть в одной docker-сети с Caddy (см. deploy/edge-network.override.yml),
+# либо замените адреса на 127.0.0.1:18181 / 127.0.0.1:13010 для Caddy на хосте.
+
+	# API: /tek/api/v1/... → tek-api:8181/api/v1/...
+	handle /tek/api/* {
+		uri strip_prefix /tek
+		reverse_proxy tek-api:8181 {
+			# реальный IP клиента для лимитов на вход/заявки (правый адрес списка, добавленный внешним прокси)
+			header_up X-Tek-Client-Ip {http.request.header.X-Forwarded-For}
+			header_up X-Forwarded-Proto https
+		}
+	}
+	# сайт (Next.js собран с basePath=/tek)
+	@tek path /tek /tek/*
+	handle @tek {
+		reverse_proxy tek-web:3010 {
+			header_up X-Forwarded-Proto https
+		}
+	}

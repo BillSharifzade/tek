@@ -48,7 +48,7 @@ export function BrandCard({ product }: { product: Product }) {
       </Link>
       {logo ? (
         <Link href={`/brands/${b.slug}`} className="absolute right-[23px] top-[17px] block h-[40px] w-[119px]" aria-label={`Бренд ${b.name}`}>
-          <Image src={logo} alt={b.name} fill sizes="119px" unoptimized className="object-contain" />
+          <Image src={logo} alt={b.name} fill sizes="119px" className="object-contain" />
         </Link>
       ) : null}
       <ul className="mt-[18px] flex flex-col gap-[9px] text-[14px] leading-[15px] text-sub">

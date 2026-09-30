@@ -52,7 +52,7 @@ export default async function NewsArticlePage({ params }: { params: Params }) {
           {showLead ? <p className="mt-[16px] text-[16px] leading-[26px] text-g333 md:text-[18px] md:leading-[28px]">{item.excerpt}</p> : null}
 
           <div className={cn("relative mt-[28px] h-[240px] overflow-hidden rounded-[11px] md:h-[440px]", "bg-surface")}>
-            <Image src={cover.src} alt={item.title} fill unoptimized priority sizes="(max-width: 1024px) 100vw, 851px" className={cover.contain ? "object-contain p-10 mix-blend-multiply" : "object-cover"} />
+            <Image src={cover.src} alt={item.title} fill priority sizes="(max-width: 1024px) 100vw, 851px" className={cover.contain ? "object-contain p-10 mix-blend-multiply" : "object-cover"} />
           </div>
 
           {item.body ? <Prose html={item.body} className="mt-[32px]" /> : null}

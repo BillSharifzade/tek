@@ -25,7 +25,7 @@ export function Features({ product }: { product: Product }) {
           </div>
           {img ? (
             <div className="relative ml-auto hidden w-[145px] shrink-0 overflow-hidden rounded-[7px] sm:block">
-              <Image src={img} alt="" fill sizes="145px" unoptimized className="object-contain object-top" />
+              <Image src={img} alt="" fill sizes="145px" className="object-contain object-top" />
             </div>
           ) : null}
         </li>

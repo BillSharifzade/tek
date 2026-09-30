@@ -50,9 +50,11 @@ export const useFavorites = create<FavState>((set, get) => ({
         const items = await client.get<ProductCard[]>("/account/favorites");
         const serverIds = new Set(items.map((p) => p.id));
         const missing = Object.keys(local).filter((id) => !serverIds.has(id));
-        await Promise.all(missing.map((id) => client.post(`/account/favorites/${id}`).catch(() => undefined)));
-        writeLocal({});
-        set({ ids: [...serverIds, ...missing] });
+        // гостевое избранное переносим в аккаунт; локальное стираем только если всё перенеслось
+        const moved = await Promise.all(missing.map((id) => client.post("/account/favorites", { product_id: id }).then(() => true, () => false)));
+        const failed = missing.filter((_, i) => !moved[i]);
+        writeLocal(Object.fromEntries(failed.map((id) => [id, local[id]])));
+        set({ ids: [...serverIds, ...missing.filter((_, i) => moved[i])] });
       } catch {
         /* keep local */
       }
@@ -66,7 +68,7 @@ export const useFavorites = create<FavState>((set, get) => ({
     if (readAuth()) {
       try {
         if (exists) await client.delete(`/account/favorites/${id}`);
-        else await client.post(`/account/favorites/${id}`);
+        else await client.post("/account/favorites", { product_id: id });
       } catch {
         set({ ids: prev });
         toast.error("Не удалось обновить избранное");
@@ -78,7 +80,7 @@ export const useFavorites = create<FavState>((set, get) => ({
       else local[id] = product;
       writeLocal(local);
     }
-    if (!exists) toast.success("Добавлено в избранное", { actionLabel: "Избранное", actionHref: "/account/favorites" });
+    if (!exists) toast.success("Добавлено в избранное", { actionLabel: "Избранное", actionHref: readAuth() ? "/account/favorites" : "/favorites" });
   },
   remove: async (id) => {
     const prev = get().ids;

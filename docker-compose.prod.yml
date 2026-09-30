@@ -1,34 +1,94 @@
+# Production: `cp .env.production.example .env` → заполнить → `docker compose -f docker-compose.prod.yml up -d`.
+# Наружу ничего не публикуется, кроме 127.0.0.1-портов для reverse proxy (Caddy/nginx с TLS) — см. deploy/Caddyfile.tek.
+name: tek
+
 services:
-  backend:
+  tek-db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tek
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD}
+      POSTGRES_DB: tek
+    command: ["postgres", "-c", "shared_buffers=128MB", "-c", "max_connections=100"]
+    volumes:
+      - tek-pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tek -d tek"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ежедневный pg_dump в том tek-backups, хранятся 14 последних
+  tek-backup:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD}
+    volumes:
+      - tek-backups:/backups
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          pg_dump -h tek-db -U tek -d tek -Fc -f /backups/tek-$$(date +%Y%m%d-%H%M).dump && ls -1t /backups/*.dump | tail -n +15 | xargs -r rm -f
+          sleep 86400
+        done
+    depends_on:
+      tek-db:
+        condition: service_healthy
+
+  tek-api:
+    image: ${TEK_BACKEND_IMAGE:-tek-backend:latest}
     build:
       context: .
       dockerfile: deploy/backend.Dockerfile
-    container_name: tek-backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgres://tek:tek@postgres:5432/tek
+      APP_ENV: production
+      DATABASE_URL: postgres://tek:${POSTGRES_PASSWORD}@tek-db:5432/tek
       BIND: 0.0.0.0:8181
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-prod}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3010}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3010}
+      JWT_SECRET: ${JWT_SECRET:?задайте JWT_SECRET (openssl rand -hex 32)}
+      CORS_ORIGINS: ${PUBLIC_ORIGIN:?задайте PUBLIC_ORIGIN, например https://tec.tj}
+      FRONTEND_URL: ${SITE_URL:?задайте SITE_URL, например https://tec.tj}
+      SEED_DEMO: ${SEED_DEMO:-off}
+      DEMO_STAND: ${DEMO_STAND:-false}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       CRM_WEBHOOK_URL: ${CRM_WEBHOOK_URL:-}
       ONEC_WEBHOOK_URL: ${ONEC_WEBHOOK_URL:-}
+      TRUST_PROXY: "true"
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-forwarded-for}
+      SELLER_NAME: ${SELLER_NAME:-}
+      SELLER_INN: ${SELLER_INN:-}
+      SELLER_ADDRESS: ${SELLER_ADDRESS:-}
+      SELLER_BANK: ${SELLER_BANK:-}
+      SELLER_ACCOUNT: ${SELLER_ACCOUNT:-}
       RUST_LOG: info
     ports:
-      - "8181:8181"
+      - "127.0.0.1:${API_PORT:-18181}:8181"
     depends_on:
-      postgres:
+      tek-db:
         condition: service_healthy
 
-  frontend:
+  tek-web:
+    image: ${TEK_FRONTEND_IMAGE:-tek-frontend:latest}
     build:
       context: .
       dockerfile: deploy/frontend.Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8181/api/v1}
-    container_name: tek-frontend
+        NEXT_PUBLIC_BASE_PATH: ${BASE_PATH:-}
+        NEXT_PUBLIC_API_URL: ${BASE_PATH:-}/api/v1
     restart: unless-stopped
+    environment:
+      API_URL: http://tek-api:8181/api/v1
+      SITE_URL: ${SITE_URL}
     ports:
-      - "3010:3010"
+      - "127.0.0.1:${WEB_PORT:-13010}:3010"
     depends_on:
-      - backend
+      tek-api:
+        condition: service_healthy
+
+volumes:
+  tek-pgdata:
+  tek-backups:

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Review, ReviewsResponse } from "@/lib/types";
 import { client } from "@/lib/client";
 import { ApiError } from "@/lib/api";
@@ -56,7 +57,7 @@ function ReviewItem({ r, onReply, onDelete }: { r: ReviewItemT; onReply: () => v
             <ul className="mt-[23px] flex gap-[8px]">
               {photos.slice(0, 2).map((src) => (
                 <li key={src} className="relative size-[88px] overflow-hidden rounded-[5px] bg-[#D9D9D9]">
-                  <Image src={src} alt="" fill sizes="88px" unoptimized className="object-cover" />
+                  <Image src={src} alt="" fill sizes="88px" className="object-cover" />
                 </li>
               ))}
             </ul>
@@ -111,6 +112,7 @@ function ReviewItem({ r, onReply, onDelete }: { r: ReviewItemT; onReply: () => v
 export function Reviews({ slug, initial }: { slug: string; initial: ReviewsResponse }) {
   const hydrated = useHydrated();
   const user = useAuth((s) => s.user);
+  const router = useRouter();
   const [data, setData] = useState(initial);
   const [items, setItems] = useState<ReviewItemT[]>(initial.items);
   const [page, setPage] = useState(initial.page);
@@ -230,7 +232,14 @@ export function Reviews({ slug, initial }: { slug: string; initial: ReviewsRespo
         slug={slug}
         onCreated={(r) => {
           setItems((prev) => [r, ...prev]);
-          setData((d) => ({ ...d, summary: { ...d.summary, count: d.summary.count + 1 } }));
+          setData((d) => {
+            const distribution = { ...d.summary.distribution, [r.rating]: (d.summary.distribution[r.rating] ?? 0) + 1 };
+            const count = d.summary.count + 1;
+            const sum = Object.entries(distribution).reduce((a, [k, v]) => a + Number(k) * Number(v), 0);
+            return { ...d, summary: { avg: Math.round((sum / count) * 10) / 10, count, distribution } };
+          });
+          // счётчики во вкладках и рейтинг в шапке товара — серверные: перерисовываем страницу
+          router.refresh();
         }}
       />
     </div>

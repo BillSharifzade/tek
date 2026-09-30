@@ -1,3 +1,4 @@
+import { BASE_PATH } from "./asset";
 import type { User } from "./types";
 
 export const AUTH_KEY = "tek_auth_v1";
@@ -68,5 +69,5 @@ export function writeCartToken(token: string | null) {
 function setCookie(name: string, value: string, maxAgeSeconds: number) {
   if (!isBrowser()) return;
   const secure = window.location.protocol === "https:" ? "; Secure" : "";
-  document.cookie = `${name}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSeconds}; SameSite=Lax${secure}`;
+  document.cookie = `${name}=${encodeURIComponent(value)}; Path=${BASE_PATH || "/"}; Max-Age=${maxAgeSeconds}; SameSite=Lax${secure}`;
 }

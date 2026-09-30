@@ -23,9 +23,21 @@ const Ctx = createContext<BuyState | null>(null);
 export function BuyProvider({ product, children }: { product: Product; children: React.ReactNode }) {
   const hydrated = useHydrated();
   const add = useCart((s) => s.add);
-  const inCartQty = useCart((s) => s.cart?.items.find((i) => i.product.id === product.id)?.qty ?? 0);
+  const update = useCart((s) => s.update);
+  const inCartItem = useCart((s) => s.cart?.items.find((i) => i.product.id === product.id) ?? null);
+  const inCartQty = inCartItem?.qty ?? 0;
   const step = product.pack?.qty && product.pack.qty > 0 ? product.pack.qty : 1;
-  const [qty, setQty] = useState(step);
+  const [draftQty, setDraftQty] = useState(step);
+  // товар уже в корзине — степпер показывает и меняет количество в корзине, а не черновик
+  const linked = hydrated && inCartItem !== null;
+  const qty = linked ? inCartQty : draftQty;
+  const setQty = useCallback(
+    (v: number) => {
+      if (linked && inCartItem) void update(inCartItem.id, { qty: v }).catch(() => undefined);
+      else setDraftQty(v);
+    },
+    [linked, inCartItem, update],
+  );
   const [busy, setBusy] = useState(false);
 
   const addToCart = useCallback(async () => {
@@ -41,7 +53,7 @@ export function BuyProvider({ product, children }: { product: Product; children:
 
   const value = useMemo<BuyState>(
     () => ({ product, step, qty, setQty, busy, addToCart, inCartQty: hydrated ? inCartQty : 0 }),
-    [product, step, qty, busy, addToCart, hydrated, inCartQty],
+    [product, step, qty, setQty, busy, addToCart, hydrated, inCartQty],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

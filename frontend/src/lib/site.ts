@@ -1,5 +1,7 @@
 export const SITE = {
   name: "ТЭК",
+  /** публичный адрес сайта: canonical/OG-ссылки, sitemap, robots (встраивается при сборке) */
+  url: (process.env.SITE_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://127.0.0.1:3010").replace(/\/+$/, ""),
   company: "ООО «Точикэлектрокомплект»",
   phoneShort: "446 20 60 60",
   phone: "+992 (44) 620 60 60",

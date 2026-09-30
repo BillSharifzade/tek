@@ -9,6 +9,7 @@ import { ContactForm } from "@/components/content/ContactForm";
 import { IconArrowSmall } from "@/components/content/icons";
 import { SALES_EMAIL, SOCIAL_LINKS } from "@/components/content/company";
 import type { CmsPage, StoreItem } from "@/components/content/types";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "Контакты",
@@ -171,9 +172,9 @@ export default async function ContactsPage() {
           </dl>
           <div className="mt-[18px] rounded-[7px] bg-[#F4EFFE] px-[20px] py-[14px] text-[14px] leading-[22px] text-[#313033]">
             Для юридических лиц: счёт на оплату и закрывающие документы — в{" "}
-            <a href="/account/documents" className="font-semibold underline underline-offset-2 hover:text-black">
+            <Link href="/account/documents" className="font-semibold underline underline-offset-2 hover:text-black">
               личном кабинете
-            </a>
+            </Link>
             .
           </div>
         </aside>

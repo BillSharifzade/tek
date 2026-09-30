@@ -5,6 +5,12 @@ export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   "http://127.0.0.1:8181/api/v1";
 
+/** Адрес API для ссылок в HTML (скачивание документов): публичный, а не внутренний адрес контейнера. */
+export const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8181/api/v1";
+
+/** Серверный рендер не ждёт зависший API дольше этого (браузерные запросы — без ограничения). */
+const SERVER_TIMEOUT_MS = 10_000;
+
 export class ApiError extends Error {
   code: string;
   status: number;
@@ -102,7 +108,7 @@ export async function api<T>(path: string, opts: RequestOptions = {}): Promise<T
     method,
     headers,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-    signal: opts.signal,
+    signal: opts.signal ?? (typeof window === "undefined" ? AbortSignal.timeout(SERVER_TIMEOUT_MS) : undefined),
   };
   if (revalidate === false) {
     init.cache = "no-store";

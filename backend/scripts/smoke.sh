@@ -24,6 +24,8 @@ check "GET /catalog/products?q="          200 "$(req GET '/catalog/products?q=%D
 check "GET /catalog/products?attr."       200 "$(req GET '/catalog/products?category=kabelenesushchie-sistemy&attr.%D0%A8%D0%B8%D1%80%D0%B8%D0%BD%D0%B0%2C%20%D0%BC%D0%BC=200')"
 req GET '/catalog/products?category=kabelnye-lotki-dks&sort=popular' >/dev/null
 SLUG=$(jqv "['items'][0]['slug']"); PID=$(jqv "['items'][0]['id']")
+# кратность упаковки товара (лоток — 3 м): все количества в тесте кратны ей
+PACK=$(jqv "['items'][0].get('pack_qty') or 1" | python3 -c "import sys; v=float(sys.stdin.read()); print(int(v) if v.is_integer() else v)")
 check "GET /catalog/products/{slug}"      200 "$(req GET "/catalog/products/$SLUG")"
 check "GET /catalog/products/{slug} 404"  404 "$(req GET /catalog/products/nope)"
 # торговые предложения: у автомата две оси, текущее исполнение есть среди items, у каждого исполнения значения по всем осям
@@ -73,12 +75,14 @@ check "PUT /admin/users/{id}/pricing"     200 "$(req PUT "/admin/users/$NEW_ID/p
 check "GET /admin/users forbidden for client" 403 "$(req GET /admin/users '' -H "$AUTHV")"
 
 echo "== guest cart =="
-check "GET /cart (guest)"                 200 "$(req GET /cart)"
+check "GET /cart (guest, no cart created)" 200 "$(req GET /cart)"
+check "POST /cart/items (guest, new cart)" 200 "$(req POST /cart/items "{\"product_id\":\"$PID\",\"qty\":$((PACK*2))}")"
 CT=$(jqv "['cart_token']")
-check "POST /cart/items (guest)"          200 "$(req POST /cart/items "{\"product_id\":\"$PID\",\"qty\":2}" -H "X-Cart-Token: $CT")"
 ITEM=$(jqv "['items'][0]['id']")
 check "POST /cart/items too many -> 422"  422 "$(req POST /cart/items "{\"product_id\":\"$PID\",\"qty\":999999}" -H "X-Cart-Token: $CT")"
-check "PATCH /cart/items/{id}"            200 "$(req PATCH "/cart/items/$ITEM" '{"qty":3}' -H "X-Cart-Token: $CT")"
+check "PATCH /cart/items/{id}"            200 "$(req PATCH "/cart/items/$ITEM" "{\"qty\":$((PACK*3))}" -H "X-Cart-Token: $CT")"
+check "PATCH qty not multiple of pack"    "$([ "$PACK" = 1 ] && echo 200 || echo 422)" "$(req PATCH "/cart/items/$ITEM" "{\"qty\":$((PACK*3+1))}" -H "X-Cart-Token: $CT")"
+req PATCH "/cart/items/$ITEM" "{\"qty\":$((PACK*3))}" -H "X-Cart-Token: $CT" >/dev/null
 check "POST /cart/coupon TEK10"           200 "$(req POST /cart/coupon '{"code":"tek10"}' -H "X-Cart-Token: $CT")"
 check "POST /cart/coupon invalid -> 422"  422 "$(req POST /cart/coupon '{"code":"NOPE"}' -H "X-Cart-Token: $CT")"
 check "GET /cart/export.xlsx"             200 "$(req GET /cart/export.xlsx '' -H "X-Cart-Token: $CT")"
@@ -95,13 +99,17 @@ check "GET /account/favorites"            200 "$(req GET /account/favorites '' -
 check "POST /account/favorites"           200 "$(req POST /account/favorites "{\"product_id\":\"$PID\"}" -H "$AUTHV")"
 
 echo "== checkout =="
+stock() { req GET "/catalog/products/$SLUG" '' -H "$AUTHV" >/dev/null; jqv "['stock_total']"; }
+S0=$(stock)
 DATE=$(req GET /checkout/options >/dev/null; jqv "['delivery_dates'][1]['date']")
 check "POST /checkout (invoice, courier)" 201 "$(req POST /checkout "{\"contact\":{\"first_name\":\"Фаррух\",\"last_name\":\"Назаров\",\"phone\":\"+992900000001\",\"email\":\"client@tec.tj\"},\"delivery\":{\"method\":\"courier\",\"address\":\"Душанбе, Сомони 68\",\"date\":\"$DATE\"},\"payment\":{\"method\":\"invoice\"},\"comment\":\"smoke\"}" -H "$AUTHV")"
 ORDER=$(jqv "['order']['number']")
+S1=$(stock)
+check "stock reserved by order"           True "$(python3 -c "print($S1 < $S0)")"
 check "GET /orders/{number}"              200 "$(req GET "/orders/$ORDER" '' -H "$AUTHV")"
 check "GET /orders/{number}/invoice.xlsx" 200 "$(req GET "/orders/$ORDER/invoice.xlsx" '' -H "$AUTHV")"
 check "POST /checkout empty cart -> 422"  422 "$(req POST /checkout '{"contact":{"first_name":"A","phone":"1"},"delivery":{"method":"pickup","store_id":1},"payment":{"method":"cash"}}' -H "$AUTHV")"
-req POST /cart/items "{\"product_id\":\"$PID\",\"qty\":1}" -H "X-Cart-Token: $CT" >/dev/null
+req POST /cart/items "{\"product_id\":\"$PID\",\"qty\":$PACK}" -H "X-Cart-Token: $CT" >/dev/null
 check "POST /checkout guest alif"         201 "$(req POST /checkout '{"contact":{"first_name":"Гость","phone":"+992900000009","email":"guest@test.tj"},"delivery":{"method":"pickup","store_id":1},"payment":{"method":"alif"}}' -H "X-Cart-Token: $CT")"
 GORDER=$(jqv "['order']['number']")
 check "POST /payments/alif/callback"      200 "$(req POST /payments/alif/callback "{\"order_number\":\"$GORDER\",\"status\":\"paid\",\"txn_id\":\"tx1\"}")"
@@ -116,9 +124,11 @@ check "GET /account/company"              200 "$(req GET /account/company '' -H 
 check "GET /account/orders"               200 "$(req GET /account/orders '' -H "$AUTHV")"
 check "GET /account/orders?from&to"       200 "$(req GET '/account/orders?from=2025-01-01&to=2030-01-01' '' -H "$AUTHV")"
 check "GET /account/orders/{number}"      200 "$(req GET "/account/orders/$ORDER" '' -H "$AUTHV")"
-check "PUT /account/orders/{number}"      200 "$(req PUT "/account/orders/$ORDER" "{\"items\":[{\"product_id\":\"$PID\",\"qty\":1}],\"comment\":\"edited\"}" -H "$AUTHV")"
+check "PUT /account/orders/{number}"      200 "$(req PUT "/account/orders/$ORDER" "{\"items\":[{\"product_id\":\"$PID\",\"qty\":$PACK}],\"comment\":\"edited\"}" -H "$AUTHV")"
 check "POST /account/orders/{n}/cancel"   200 "$(req POST "/account/orders/$ORDER/cancel" '' -H "$AUTHV")"
 check "POST cancel again -> 409"          409 "$(req POST "/account/orders/$ORDER/cancel" '' -H "$AUTHV")"
+# отмена вернула резерв клиента; остался только 1 шт. гостевого заказа
+check "stock released on cancel"          True "$(python3 -c "print($(stock) == $S0 - $PACK)")"
 check "GET /account/reconciliation"       200 "$(req GET /account/reconciliation '' -H "$AUTHV")"
 check "GET /account/reconciliation.xlsx"  200 "$(req GET /account/reconciliation.xlsx '' -H "$AUTHV")"
 check "GET /account/bonus"                200 "$(req GET /account/bonus '' -H "$AUTHV")"

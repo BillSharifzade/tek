@@ -31,6 +31,9 @@ cd frontend && cp .env.example .env.local && bun install && bun run dev -p 3010
 
 ## Тестовые аккаунты
 
+Только для локальной разработки (`SEED_DEMO=full`, по умолчанию вне production). В production демо-аккаунтов нет
+(или их пароли сразу меняются командой `tek-api set-password` на демо-стенде).
+
 | Логин              | Пароль        | Роль                                            |
 |--------------------|---------------|-------------------------------------------------|
 | client@tec.tj      | Client1234    | B2B закупщик, скидка 10 %, кешбэк 3 %, есть заказы |
@@ -66,5 +69,17 @@ cd frontend && cp .env.example .env.local && bun install && bun run dev -p 3010
 ## Продакшн
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+cp .env.production.example .env        # заполнить: SITE_URL, PUBLIC_ORIGIN, POSTGRES_PASSWORD, JWT_SECRET, ADMIN_*…
+docker compose -f docker-compose.prod.yml up -d --build
+# за общим reverse proxy другого проекта (одна docker-сеть):
+docker compose -f docker-compose.prod.yml -f deploy/edge-network.override.yml up -d
 ```
+
+* `APP_ENV=production`: бэкенд не стартует с небезопасными настройками (дефолтный JWT_SECRET, CORS `*`, не-https FRONTEND_URL,
+  демо-аккаунты без `DEMO_STAND=true`). Первый администратор — из `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+* Наружу публикуются только `127.0.0.1:18181` (API) и `127.0.0.1:13010` (сайт) — TLS и маршруты на reverse proxy
+  (пример для подпути `/tek` — `deploy/Caddyfile.tek`; сайт в подпути собирается с `BASE_PATH=/tek`).
+* База — только во внутренней сети; ежедневный `pg_dump` в том `tek-backups` (14 последних).
+* Онлайн-оплата Алиф / ДС выключена до подключения эквайринга (callback без подписи в production отключён).
+  События в CRM / 1С копятся в очереди, пока не заданы `CRM_WEBHOOK_URL` / `ONEC_WEBHOOK_URL`.
+* Сброс пароля (писем пока нет): `docker compose exec -e NEW_PASSWORD='…' tek-api /app/tek-api set-password user@example.com`.

@@ -146,11 +146,6 @@ export function Footer({ categories }: { categories: CategoryNode[] }) {
           </span>
           <div className="flex flex-wrap items-center gap-x-[20px] gap-y-2">
             <span>Оплата: Алиф Банк · Душанбе Сити · наличные · по счёту</span>
-            <span className="flex items-center gap-[12px]">
-              <span className="font-medium text-g333">Русский</span>
-              <span>English</span>
-              <span>Тоҷикӣ</span>
-            </span>
           </div>
         </div>
       </div>

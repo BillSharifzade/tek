@@ -1,3 +1,4 @@
+import { useId } from "react";
 import { cn } from "@/lib/cn";
 
 /** Правильная пятиконечная звезда 14×13.4 (Figma «Vector», #FFCC33). */
@@ -5,7 +6,8 @@ const STAR = "M7 0L8.65 5.09H14L9.67 8.23L11.33 13.31L7 10.17L2.67 13.31L4.33 8.
 
 export function Star({ size = 14, fill = 1, empty = "#D9D9D9", className }: { size?: number; fill?: number; empty?: string; className?: string }) {
   const h = (size * 13.4) / 14;
-  const id = `st${Math.round(fill * 100)}`;
+  // уникальный id на каждую звезду: общий id ломается, если первая копия на странице скрыта (display:none)
+  const id = `st${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   return (
     <svg width={size} height={h} viewBox="0 0 14 13.4" aria-hidden className={cn("shrink-0", className)}>
       {fill > 0 && fill < 1 ? (

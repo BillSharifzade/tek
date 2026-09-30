@@ -10,6 +10,7 @@ import { ImageBox } from "@/components/ui/ImageBox";
 import { useProductSuggest, type SuggestProduct } from "@/components/layout/SearchBox";
 import { DashLine, DashedFrame } from "./parts";
 import { IconInStock, IconPlus16 } from "./icons";
+import { packStep } from "@/lib/qty";
 
 function ResultRow({ p, divider }: { p: SuggestProduct; divider?: boolean }) {
   const add = useCart((s) => s.add);
@@ -51,7 +52,7 @@ function ResultRow({ p, divider }: { p: SuggestProduct; divider?: boolean }) {
         onClick={async () => {
           setBusy(true);
           try {
-            await add(p.id, 1, { silent: true });
+            await add(p.id, packStep(p), { silent: true });
             toast.success(inCart > 0 ? "Количество в корзине увеличено" : "Товар добавлен в корзину");
           } catch {
             /* тост из стора */

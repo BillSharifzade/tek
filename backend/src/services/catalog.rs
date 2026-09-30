@@ -39,6 +39,7 @@ pub fn to_card(p: &ProductRow, ctx: &PriceCtx) -> ProductCard {
         reviews_count: p.reviews_count,
         price_unit_label: if p.unit == "м" { "за метр" } else { "за шт" },
         category: BrandRef { slug: p.category_slug.clone(), name: p.category_name.clone() },
+        pack_qty: p.pack_qty,
     }
 }
 

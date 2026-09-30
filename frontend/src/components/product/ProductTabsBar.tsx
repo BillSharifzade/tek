@@ -8,6 +8,7 @@ import { cn } from "@/lib/cn";
 import { FavoriteButton } from "./FavoriteButton";
 import { priceLabel } from "./ProductCard";
 import { useBuy } from "./BuyContext";
+import { FADE_X, useScrollFade } from "@/components/layout/ScrollFade";
 
 export interface TabAnchor {
   id: string;
@@ -55,8 +56,10 @@ function scrollToSection(id: string) {
 /* ---------- сегмент-табы (Figma «Меню»: 1260×43, #EEF0F2 r10, активная — белая 308×35 r7 с тенью) ---------- */
 
 export function SegmentTabs({ tabs, active, onSelect, className }: { tabs: TabAnchor[]; active: string; onSelect: (id: string) => void; className?: string }) {
+  // на мобильных полоса прокручивается — правый край гаснет, пока есть скрытые вкладки
+  const ref = useScrollFade<HTMLDivElement>();
   return (
-    <div role="tablist" className={cn("flex h-[43px] gap-[4px] overflow-x-auto rounded-[10px] bg-btn p-[4px] scrollbar-none xl:justify-between xl:gap-0", className)}>
+    <div ref={ref} role="tablist" className={cn("flex h-[43px] gap-[4px] overflow-x-auto rounded-[10px] bg-btn p-[4px] scrollbar-none xl:justify-between xl:gap-0", FADE_X, className)}>
       {tabs.map((t) => {
         const on = t.id === active;
         return (
@@ -187,7 +190,7 @@ function StickyProductBar({
         <div className="container-page flex h-[77px] items-start">
           {img ? (
             <span className="relative mt-[15px] size-[45px] shrink-0 overflow-hidden rounded-[5px] xl:ml-px">
-              <Image src={img} alt="" fill sizes="45px" unoptimized className="object-cover" />
+              <Image src={img} alt="" fill sizes="45px" className="object-cover" />
             </span>
           ) : null}
           <p className="ml-[17px] mt-[28.7px] line-clamp-2 min-w-0 flex-1 pr-6 text-[14px] font-semibold leading-[15px] text-black">{product.name}</p>

@@ -34,6 +34,8 @@ export interface ProductCard {
   rating: number;
   reviews_count: number;
   price_unit_label: string; // "за шт" | "за метр"
+  /** кратность упаковки: количество меняется этим шагом */
+  pack_qty?: number | null;
 }
 
 export interface StoreStock {
@@ -166,7 +168,7 @@ export interface Order {
     method_label: string;
     address: string | null;
     date: string | null;
-    store: string | null;
+    store: { id: number; city: string; name: string; address: string } | null;
     price: number;
   };
   payment: {
@@ -439,7 +441,7 @@ export interface Store {
 }
 
 export interface CheckoutOptions {
-  delivery_methods: { code: string; label: string; price: number; description: string }[];
+  delivery_methods: { code: string; label: string; price: number; free_from?: number | null; description: string }[];
   delivery_dates: { date: string; label: string; day_label: string; available: boolean }[];
   payment_methods: { code: string; label: string; sublabel: string; available: boolean }[];
   stores: { id: number; city: string; name: string; address: string }[];

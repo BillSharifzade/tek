@@ -1,13 +1,10 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import { money } from "@/lib/format";
 import { useClickOutside, useDebounced, useEscape } from "@/lib/hooks";
-import { useCart } from "@/store/cart";
-import { ImageBox } from "@/components/ui/ImageBox";
+import { SearchDropdown, searchOptions } from "./SearchDropdown";
 
 export interface SuggestProduct {
   id: string;
@@ -18,33 +15,47 @@ export interface SuggestProduct {
   price: number;
   unit: string;
   in_stock: boolean;
+  pack_qty?: number | null;
 }
 export interface SuggestCategory {
   slug: string;
   name: string;
   image: string | null;
 }
-interface SuggestData {
+export interface SuggestBrand {
+  slug: string;
+  name: string;
+  logo?: string | null;
+}
+export interface SuggestData {
   products: SuggestProduct[];
   categories: SuggestCategory[];
+  brands: SuggestBrand[];
 }
 
-const EMPTY: SuggestData = { products: [], categories: [] };
+const EMPTY: SuggestData = { products: [], categories: [], brands: [] };
 
-/** Подсказки поиска по товарам. Как у Петровича, но одной колонкой: 5 товаров, ниже — категории (ТЗ). */
+/**
+ * Подсказки поиска (/catalog/suggest): до 5 товаров, до 5 категорий и 3 брендов.
+ * `loaded` — ответ пришёл именно для текущего `term` (чтобы не мигать «Ничего не найдено» до ответа).
+ */
 export function useProductSuggest(q: string) {
-  const [data, setData] = useState<SuggestData>(EMPTY);
+  const [state, setState] = useState<{ key: string; data: SuggestData }>({ key: "", data: EMPTY });
   const debounced = useDebounced(q.trim(), 200);
   useEffect(() => {
     const ctrl = new AbortController();
     const run = async () => {
       if (debounced.length < 2) {
-        setData(EMPTY);
+        setState({ key: debounced, data: EMPTY });
         return;
       }
       try {
-        const r = await api<SuggestData>("/catalog/suggest", { query: { q: debounced }, revalidate: false, signal: ctrl.signal });
-        if (!ctrl.signal.aborted) setData({ products: r.products.slice(0, 5), categories: r.categories });
+        const r = await api<Partial<SuggestData>>("/catalog/suggest", { query: { q: debounced }, revalidate: false, signal: ctrl.signal });
+        if (!ctrl.signal.aborted)
+          setState({
+            key: debounced,
+            data: { products: (r.products ?? []).slice(0, 5), categories: (r.categories ?? []).slice(0, 5), brands: (r.brands ?? []).slice(0, 3) },
+          });
       } catch {
         /* aborted / network */
       }
@@ -52,99 +63,116 @@ export function useProductSuggest(q: string) {
     void run();
     return () => ctrl.abort();
   }, [debounced]);
-  return { data, term: debounced };
+  return { data: state.data, term: debounced, loaded: state.key === debounced };
 }
 
-export function SuggestProductRow({
-  p,
-  onNavigate,
-  action,
-}: {
-  p: SuggestProduct;
-  onNavigate?: () => void;
-  /** custom action (cart page uses «Добавить») */
-  action?: React.ReactNode;
-}) {
-  const add = useCart((s) => s.add);
-  const [busy, setBusy] = useState(false);
-  return (
-    <li className="group relative flex gap-[16px] rounded-[6px] px-[12px] py-[10px] transition-colors hover:bg-page">
-      <Link href={`/product/${p.slug}`} onClick={onNavigate} className="absolute inset-0" aria-label={p.name} />
-      <ImageBox src={p.image} alt="" className="size-[56px] shrink-0 bg-white" sizes="56px" rounded="rounded-[4px]" />
-      <div className="min-w-0 flex-1">
-        <p className="text-[13px] leading-[17px] text-muted">
-          Код: <span className="text-g333">{p.code}</span>
-        </p>
-        <p className="mt-[3px] line-clamp-2 text-[14px] leading-[18px] text-g333">{p.name}</p>
-        <div className="mt-[4px] flex items-center justify-between gap-3">
-          <span className="text-[16px] font-bold leading-[20px] tnum">{money(p.price)}</span>
-          {action ??
-            (p.in_stock ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={async () => {
-                  setBusy(true);
-                  try {
-                    await add(p.id, 1);
-                  } catch {
-                    /* toast from store */
-                  } finally {
-                    setBusy(false);
-                  }
-                }}
-                className="relative z-[1] h-[28px] rounded-[6px] bg-brand px-[18px] text-[14px] font-medium leading-[15px] opacity-0 transition-[opacity,background-color] hover:bg-brand-hover focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-60"
-              >
-                В корзину
-              </button>
-            ) : null)}
-        </div>
-      </div>
-    </li>
-  );
+interface Box {
+  left: number;
+  width: number;
+  vw: number;
 }
 
-export function SuggestCategories({ items, onNavigate }: { items: SuggestCategory[]; onNavigate?: () => void }) {
-  if (items.length === 0) return null;
-  return (
-    <div className="border-t border-line px-[12px] pb-[8px] pt-[16px]">
-      <p className="mb-[8px] text-[13px] font-bold uppercase leading-[16px] tracking-[1px] text-black">Перейти в категорию:</p>
-      <ul>
-        {items.map((c) => (
-          <li key={c.slug}>
-            <Link
-              href={`/catalog/${c.slug}`}
-              onClick={onNavigate}
-              className="flex items-center gap-[16px] rounded-[6px] py-[8px] text-[15px] leading-[20px] text-g333 transition-colors hover:text-black"
-            >
-              <ImageBox src={c.image} alt="" className="size-[48px] shrink-0 bg-white" sizes="48px" rounded="rounded-[4px]" />
-              {c.name}
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+/**
+ * Ширина выпадашки: в две колонки — шире поля (референс ≈ 800px), в одну — по ширине поля.
+ * Левый край — по полю, правый — не дальше края окна.
+ */
+function panelWidth({ left, width, vw }: Box, twoCols: boolean): number {
+  const want = !twoCols ? width : vw >= 1024 ? 820 : vw >= 768 ? 600 : width;
+  return Math.round(Math.max(width, Math.min(want, vw - left - 16)));
 }
 
 export function SearchBox({ initial = "" }: { initial?: string }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const uid = useId();
+  const listId = `search-list${uid}`;
+  const optionId = useCallback((i: number) => `${listId}-o${i}`, [listId]);
+
   const [q, setQ] = useState(initial);
   const [open, setOpen] = useState(false);
-  const { data, term } = useProductSuggest(q);
+  const [active, setActive] = useState(-1);
+  const [box, setBox] = useState<Box | null>(null);
+  const { data, term, loaded } = useProductSuggest(q);
   const ref = useRef<HTMLFormElement>(null);
-  useClickOutside(ref, () => setOpen(false), open);
-  useEscape(() => setOpen(false), open);
+
+  const close = useCallback(() => {
+    setOpen(false);
+    setActive(-1);
+  }, []);
+  useClickOutside(ref, close, open);
+  useEscape(close, open);
+
+  // переход на другую страницу — закрываем подсказки
+  const [lastPath, setLastPath] = useState(pathname);
+  if (lastPath !== pathname) {
+    setLastPath(pathname);
+    setOpen(false);
+    setActive(-1);
+  }
+  // новые подсказки — сбрасываем активный пункт
+  const [lastData, setLastData] = useState(data);
+  if (lastData !== data) {
+    setLastData(data);
+    setActive(-1);
+  }
+
+  const show = open && term.length >= 2;
+  const options = searchOptions(term, data.categories, data.brands, data.products);
+  const twoCols = data.products.length > 0 && data.categories.length + data.brands.length > 0;
+
+  const measure = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setBox({ left: r.left, width: r.width, vw: document.documentElement.clientWidth });
+  }, []);
+  useEffect(() => {
+    if (!show) return;
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [show, measure]);
+
+  // активный пункт всегда в зоне видимости (внутренний скролл выпадашки)
+  useEffect(() => {
+    if (show && active >= 0) document.getElementById(optionId(active))?.scrollIntoView({ block: "nearest" });
+  }, [show, active, optionId]);
+
+  const openPanel = () => {
+    measure();
+    setOpen(true);
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     const t = q.trim();
     if (!t) return;
-    setOpen(false);
+    close();
     router.push(`/search?q=${encodeURIComponent(t)}`);
   };
-  const close = () => setOpen(false);
-  const show = open && term.length >= 2;
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const n = options.length;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!show) {
+        openPanel();
+        return;
+      }
+      if (n === 0) return;
+      if (e.key === "ArrowDown") setActive((i) => (i + 1 >= n ? 0 : i + 1));
+      else setActive((i) => (i <= 0 ? n - 1 : i - 1));
+    } else if (e.key === "Enter" && show && active >= 0 && active < n) {
+      e.preventDefault();
+      const href = options[active].href;
+      close();
+      router.push(href);
+    } else if (e.key === "Tab") {
+      close();
+    } else if (e.key === "Escape" && show) {
+      e.preventDefault(); // не очищать поле type=search
+      close();
+    }
+  };
 
   return (
     <form ref={ref} onSubmit={submit} role="search" className="relative w-full">
@@ -155,11 +183,17 @@ export function SearchBox({ initial = "" }: { initial?: string }) {
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
-            setOpen(true);
+            openPanel();
           }}
-          onFocus={() => setOpen(true)}
+          onFocus={openPanel}
+          onKeyDown={onKeyDown}
           placeholder="Код, наименование или бренд"
           aria-label="Поиск по товарам"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={show}
+          aria-controls={show ? listId : undefined}
+          aria-activedescendant={show && active >= 0 ? optionId(active) : undefined}
           autoComplete="off"
           className="h-full min-w-0 flex-1 rounded-l-[5px] border-2 border-r-0 border-brand bg-white pl-[11px] pr-2 text-[14px] leading-[12px] text-black outline-none placeholder:text-muted [&::-webkit-search-cancel-button]:hidden"
         />
@@ -168,22 +202,19 @@ export function SearchBox({ initial = "" }: { initial?: string }) {
         </button>
       </div>
       {show ? (
-        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-[90] max-h-[calc(100vh-140px)] overflow-y-auto rounded-[6px] bg-white p-[8px] shadow-pop animate-fade-in">
-          {data.products.length + data.categories.length > 0 ? (
-            <>
-              {data.products.length > 0 ? (
-                <ul className="pb-[8px]">
-                  {data.products.map((p) => (
-                    <SuggestProductRow key={p.slug} p={p} onNavigate={close} />
-                  ))}
-                </ul>
-              ) : null}
-              <SuggestCategories items={data.categories} onNavigate={close} />
-            </>
-          ) : (
-            <p className="px-[12px] py-[10px] text-[14px] leading-[20px] text-sub">Ничего не найдено по запросу «{term}»</p>
-          )}
-        </div>
+        <SearchDropdown
+          id={listId}
+          term={term}
+          loaded={loaded}
+          categories={data.categories}
+          brands={data.brands}
+          products={data.products}
+          active={active}
+          optionId={optionId}
+          onActive={setActive}
+          onNavigate={close}
+          style={box ? { width: panelWidth(box, twoCols) } : undefined}
+        />
       ) : null}
     </form>
   );

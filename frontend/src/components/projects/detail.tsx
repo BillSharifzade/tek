@@ -95,7 +95,7 @@ export function BrandTiles({ brands }: { brands: BrandLite[] }) {
           <>
             <span className="relative block h-[40px] w-full">
               {logo ? (
-                <Image src={logo} alt={b.name} fill unoptimized sizes="150px" className="object-contain mix-blend-multiply" />
+                <Image src={logo} alt={b.name} fill sizes="150px" className="object-contain mix-blend-multiply" />
               ) : (
                 <span className="flex h-full items-center justify-center text-[16px] font-bold">{b.name}</span>
               )}

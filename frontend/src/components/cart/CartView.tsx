@@ -19,6 +19,9 @@ import { AddProductPanel } from "./AddProductPanel";
 import { AccessoriesModal, SaveEstimateModal, ShareCartModal } from "./CartModals";
 import { IconDownload, IconEstimate, IconShare, IconTrash } from "./icons";
 import { bigYellowBtn } from "./parts";
+import { asset } from "@/lib/asset";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
 
 const actionCls = "link-hover flex items-center text-[14px] leading-[12px] text-sub disabled:pointer-events-none disabled:opacity-50";
 
@@ -50,6 +53,8 @@ export function CartView() {
   const hydrated = useHydrated();
   const user = useAuth((s) => s.user);
   const { cart, loaded, loading, update, remove, removeSelected, selectAll, applyCoupon, removeCoupon } = useCart();
+  // «Удалить выбранные» по умолчанию выделяет всю корзину — спрашиваем подтверждение
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [accessoriesFor, setAccessoriesFor] = useState<{ name: string; items: Accessory[] } | null>(null);
   const [accBusy, setAccBusy] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
@@ -110,7 +115,7 @@ export function CartView() {
     setBusy("share");
     try {
       const r = await client.post<{ token: string; url: string }>("/cart/share");
-      setShareUrl(`${window.location.origin}/cart/shared/${r.token}`);
+      setShareUrl(`${window.location.origin}${asset(`/cart/shared/${r.token}`)}`);
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : "Не удалось поделиться корзиной");
     } finally {
@@ -145,7 +150,7 @@ export function CartView() {
               labelClassName="mt-[2px] leading-[12px] text-sub"
               className="ml-[1px] hover:[&>span:last-child]:text-black"
             />
-            <button type="button" disabled={!someSelected || loading} onClick={() => void removeSelected()} className={cn(actionCls, "ml-[21px] gap-[4px]")}>
+            <button type="button" disabled={!someSelected || loading} onClick={() => setConfirmDelete(true)} className={cn(actionCls, "ml-[21px] gap-[4px]")}>
               <IconTrash className="shrink-0" />
               <span className="mt-[2px]">Удалить выбранные ({selectedCount})</span>
             </button>
@@ -218,6 +223,33 @@ export function CartView() {
       <AccessoriesModal data={accessoriesFor} onClose={() => setAccessoriesFor(null)} />
       <ShareCartModal url={shareUrl} onClose={() => setShareUrl(null)} />
       <SaveEstimateModal open={saveOpen} busy={busy === "save"} onClose={() => setSaveOpen(false)} onSave={(n) => void saveEstimate(n)} />
+      <Modal
+        open={confirmDelete}
+        onClose={() => setConfirmDelete(false)}
+        title="Удалить товары из корзины?"
+        size="sm"
+        footer={
+          <div className="flex justify-end gap-[10px]">
+            <Button variant="secondary" onClick={() => setConfirmDelete(false)}>
+              Отмена
+            </Button>
+            <Button
+              variant="danger"
+              loading={loading}
+              onClick={() => {
+                setConfirmDelete(false);
+                void removeSelected().catch(() => undefined);
+              }}
+            >
+              Удалить
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-[14px] leading-[20px] text-sub">
+          {allSelected ? "Будут удалены все товары из корзины." : `Будут удалены выбранные товары: ${selectedCount}.`} Отменить это действие нельзя.
+        </p>
+      </Modal>
     </div>
   );
 }

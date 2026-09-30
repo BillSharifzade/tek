@@ -25,6 +25,8 @@ export function DocumentsView() {
   const [estimates, setEstimates] = useState<Estimate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // удаление сметы — вторым нажатием («Точно удалить?»)
+  const [armedId, setArmedId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   // Documents need the Bearer token, so they are fetched and saved rather than linked directly.
@@ -146,8 +148,14 @@ export function DocumentsView() {
                     <Button variant="secondary" loading={busyId === e.id} onClick={() => restore(e)}>
                       Восстановить в корзину
                     </Button>
-                    <Button variant="outline" disabled={busyId === e.id} onClick={() => remove(e)} aria-label={`Удалить смету ${e.name}`}>
-                      Удалить
+                    <Button
+                      variant={armedId === e.id ? "danger" : "outline"}
+                      disabled={busyId === e.id}
+                      onClick={() => (armedId === e.id ? void remove(e) : setArmedId(e.id))}
+                      onBlur={() => setArmedId((id) => (id === e.id ? null : id))}
+                      aria-label={armedId === e.id ? `Подтвердить удаление сметы ${e.name}` : `Удалить смету ${e.name}`}
+                    >
+                      {armedId === e.id ? "Точно удалить?" : "Удалить"}
                     </Button>
                   </div>
                 </li>

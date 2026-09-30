@@ -16,13 +16,29 @@ Pricing rule (applies everywhere a price is shown):
   discount_pct/cashback_pct = the most specific matching row of `user_price_rules` (product > brand > category (nearest ancestor) > user default from `users.discount_pct / cashback_pct`), default 0 after registration.
 * `sale_price` (Распродажа) replaces `list_price` when set, and the personal discount is applied on top; `list_price` is still returned so the UI can show it struck through + "выгода N с.".
 
+## Rules enforced by the API
+
+* **Errors** — always `{ "error": { code, message, details } }`, including framework rejections (bad JSON → 400/422, unknown route → 404).
+* **Rate limits** (per client IP, 429 + `Retry-After`): login 10/min, register 5/10 min, refresh 60/min, password change 5/10 min,
+  leads 5/10 min, checkout 10/10 min, cart share 20/10 min, reviews/questions 10/10 min each.
+* **Quantities** — positive; whole numbers for non-metre units; multiples of `pack_qty` when set (`invalid_qty` / `invalid_pack`).
+* **Stock** is reserved at checkout (row-locked per store, pickup store first) and returned on cancel / order edit.
+* **Delivery** — courier `price` (30 с.) is free from `free_from` (1000 с.) of the goods total; pickup is free.
+* **Payments** — `alif` / `dc` are `available: false` ("скоро") in production until acquiring is connected; the callback route
+  is disabled there. `invoice` requires a company verified by a manager (`POST /admin/users/{id}/approve` verifies it).
+* **Orders** — manager status changes follow new → confirmed → processing → shipped → delivered (cancel before delivery);
+  a cancel returns stock, reverses accrued cashback and issues a credit note; cashback is accrued on delivery;
+  paid orders can't be edited/cancelled by the client.
+* **Guest order lookup** (`/orders/{n}?email=`) works only for guest orders and a non-empty matching e-mail.
+
 ## Shared JSON shapes
 
 ```
 Price        { list: number, price: number, discount_pct: number, cashback: number, sale: bool, savings: number }
 ProductCard  { id, slug, code, name, brand: {slug,name}, unit: "шт"|"м", image: string|null,
                price: Price, stock_total: number, in_stock: bool, badges: ["sale"|"hit"|"new"],
-               rating: number, reviews_count: number, price_unit_label: "за шт"|"за метр" }
+               rating: number, reviews_count: number, price_unit_label: "за шт"|"за метр",
+               pack_qty: number|null }                              // кратность упаковки: qty в корзине/заказе кратно ей
 StoreStock   { store_id, city, name, qty, delivery_hint }        // delivery_hint: "сегодня" | "завтра" | "2-3 дня"
 Variants     { axes: [{ name, values: string[] }],                // trade offers (Petrovich-style), axes in display order,
                items: VariantItem[] }                               // values sorted naturally (0.75 < 1 < 1.5, E14 < E27)

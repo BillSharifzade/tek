@@ -17,7 +17,7 @@ export function BrandCard({ brand }: { brand: Brand }) {
     >
       <span className="flex h-[92px] items-center justify-center px-[20px]">
         {logo ? (
-          <Image src={logo} alt={brand.name} width={150} height={48} unoptimized className="h-auto max-h-[42px] w-auto max-w-[140px] object-contain transition-transform duration-200 group-hover:scale-105" />
+          <Image src={logo} alt={brand.name} width={150} height={48} className="h-auto max-h-[42px] w-auto max-w-[140px] object-contain transition-transform duration-200 group-hover:scale-105" />
         ) : (
           <span className="text-[18px] font-bold">{brand.name}</span>
         )}

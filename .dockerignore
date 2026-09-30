@@ -1,0 +1,12 @@
+# контекст сборки образов (deploy/*.Dockerfile) — только исходники
+.git
+.figma
+**/node_modules
+**/.next
+frontend/out
+backend/target
+**/*.log
+**/.env
+**/.env.local
+**/.DS_Store
+*.docx

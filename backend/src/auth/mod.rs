@@ -65,6 +65,29 @@ pub fn verify_password(password: &str, hash: &str) -> bool {
     }
 }
 
+/// Argon2 — ~15 мс CPU: считаем в пуле блокирующих задач, чтобы поток логинов не останавливал остальной API.
+pub async fn hash_password_async(password: String) -> AppResult<String> {
+    tokio::task::spawn_blocking(move || hash_password(&password)).await.map_err(|e| AppError::internal(format!("join: {e}")))?
+}
+
+/// Проверка пароля вне async-потоков. Для несуществующего логина сверяем с фиктивным хешем,
+/// чтобы время ответа не выдавало, зарегистрирован ли e-mail.
+pub async fn verify_password_async(password: String, hash: Option<String>) -> bool {
+    static DUMMY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    tokio::task::spawn_blocking(move || {
+        let dummy = DUMMY.get_or_init(|| hash_password("dummy-password-for-timing").unwrap_or_default());
+        match hash {
+            Some(h) => verify_password(&password, &h),
+            None => {
+                let _ = verify_password(&password, dummy);
+                false
+            }
+        }
+    })
+    .await
+    .unwrap_or(false)
+}
+
 pub fn sha256_hex(input: &str) -> String {
     hex::encode(Sha256::digest(input.as_bytes()))
 }

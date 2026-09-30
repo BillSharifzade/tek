@@ -156,7 +156,10 @@ export function CheckoutView() {
 
   const selectedItems = useMemo(() => cart?.items.filter((i) => i.selected) ?? [], [cart]);
   const deliveryMethod = options?.delivery_methods.find((m) => m.code === form.method);
-  const deliveryPrice = form.method === "pickup" ? 0 : (deliveryMethod?.price ?? 0);
+  const selectedTotal = cart?.total ?? 0;
+  // доставка бесплатна от суммы free_from (правило со страницы «Помощь»), иначе — тариф способа
+  const priceOf = (m?: { price: number; free_from?: number | null }) => (!m ? 0 : m.free_from != null && selectedTotal >= m.free_from ? 0 : m.price);
+  const deliveryPrice = form.method === "pickup" ? 0 : priceOf(deliveryMethod);
 
   if (!hydrated || !loaded || !options) {
     return (
@@ -220,7 +223,7 @@ export function CheckoutView() {
     const e: Errors = {};
     if (!form.first_name.trim()) e.first_name = "Укажите имя";
     if (!/^\+?\d[\d\s()-]{6,}$/.test(form.phone.trim())) e.phone = "Укажите корректный номер телефона";
-    if (!user && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = "Укажите e-mail — на него придёт подтверждение заказа";
+    if (!user && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = form.email.trim() ? "Проверьте e-mail — адрес указан с ошибкой" : "Укажите e-mail — по нему можно найти заказ";
     if (!pickup && !form.address.trim()) e.address = "Укажите адрес доставки";
     if (!pickup && !form.date) e.date = "Выберите дату доставки";
     if (pickup && !form.store_id) e.store_id = "Выберите магазин";
@@ -295,7 +298,7 @@ export function CheckoutView() {
                 active={form.method === m.code}
                 onClick={() => set("method", m.code)}
                 title={m.label}
-                sub={m.price > 0 ? money(m.price) : "бесплатно"}
+                sub={priceOf(m) > 0 ? `${money(m.price)}${m.free_from != null ? `, бесплатно от ${money(m.free_from)}` : ""}` : "бесплатно"}
               />
             ))}
           </div>

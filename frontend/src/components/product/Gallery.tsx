@@ -69,7 +69,7 @@ export function Gallery({ images, name, badges }: { images: string[]; name: stri
                     i === idx ? "h-[55px] border-2 border-brand" : "h-[56px] border border-[#ECEEF2] hover:border-outline",
                   )}
                 >
-                  <Image src={src} alt="" fill sizes="56px" unoptimized className="object-cover" />
+                  <Image src={src} alt="" fill sizes="56px" className="object-cover" />
                 </button>
               </li>
             ))}
@@ -89,7 +89,7 @@ export function Gallery({ images, name, badges }: { images: string[]; name: stri
 
       <div className="relative aspect-square w-full md:w-[449px] md:shrink-0">
         {current ? (
-          <Image src={current} alt={name} fill priority sizes="(max-width: 768px) 100vw, 449px" unoptimized className="object-cover" />
+          <Image src={current} alt={name} fill priority sizes="(max-width: 768px) 100vw, 449px" className="object-cover" />
         ) : (
           <div className="absolute inset-0 rounded-[10px] bg-surface" aria-hidden />
         )}

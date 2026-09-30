@@ -93,6 +93,123 @@ pub fn cart_estimate(company: Option<&str>, customer: &str, date: &str, cart: &C
     Ok(wb.save_to_buffer()?)
 }
 
+/// Покупатель в счёте.
+pub struct InvoiceBuyer {
+    pub company: Option<String>,
+    pub inn: Option<String>,
+    pub address: Option<String>,
+    pub contact: String,
+    pub phone: String,
+}
+
+pub struct InvoiceLine {
+    pub code: String,
+    pub name: String,
+    pub unit: String,
+    pub qty: rust_decimal::Decimal,
+    pub price: rust_decimal::Decimal,
+    pub total: rust_decimal::Decimal,
+}
+
+pub struct InvoiceTotals {
+    pub goods: rust_decimal::Decimal,
+    pub coupon: rust_decimal::Decimal,
+    pub delivery: rust_decimal::Decimal,
+    pub total: rust_decimal::Decimal,
+}
+
+/// Счёт на оплату (B2B, оплата по счёту): поставщик с реквизитами из SELLER_*, покупатель, товары, доставка, итог, срок оплаты.
+pub fn invoice(number: &str, date: &str, due: Option<&str>, buyer: &InvoiceBuyer, lines: &[InvoiceLine], t: &InvoiceTotals) -> AppResult<Vec<u8>> {
+    let s = styles();
+    let mut wb = Workbook::new();
+    let ws = wb.add_worksheet();
+    ws.set_name("Счёт")?;
+    for (col, w) in [(0u16, 5.0), (1, 12.0), (2, 56.0), (3, 7.0), (4, 10.0), (5, 14.0), (6, 16.0)] {
+        ws.set_column_width(col, w)?;
+    }
+    let env = |k: &str| std::env::var(k).ok().filter(|v| !v.trim().is_empty());
+    ws.merge_range(0, 0, 0, 6, &format!("Счёт на оплату № {number} от {date}"), &s.title)?;
+    let mut info: Vec<(&str, String)> = vec![("Поставщик:", env("SELLER_NAME").unwrap_or_else(|| "ООО «Точикэлектрокомплект»".into()))];
+    if let Some(inn) = env("SELLER_INN") {
+        info.push(("ИНН:", inn));
+    }
+    info.push(("Адрес:", env("SELLER_ADDRESS").unwrap_or_else(|| "г. Душанбе, ул. Академика Акобира Адхамова 43".into())));
+    if let Some(bank) = env("SELLER_BANK") {
+        info.push(("Банк:", bank));
+    }
+    if let Some(acc) = env("SELLER_ACCOUNT") {
+        info.push(("Р/с:", acc));
+    }
+    info.push(("Телефон:", "+992 (44) 620 60 60 · info@tec.tj".into()));
+    info.push(("", String::new()));
+    info.push((
+        "Покупатель:",
+        match &buyer.company {
+            Some(c) => format!("{c} ({})", buyer.contact),
+            None => buyer.contact.clone(),
+        },
+    ));
+    if let Some(inn) = &buyer.inn {
+        info.push(("ИНН:", inn.clone()));
+    }
+    if let Some(a) = &buyer.address {
+        info.push(("Адрес:", a.clone()));
+    }
+    info.push(("Телефон:", buyer.phone.clone()));
+    let mut row = 2u32;
+    for (label, value) in &info {
+        ws.write_string(row, 0, *label)?;
+        ws.write_string(row, 2, value)?;
+        row += 1;
+    }
+
+    let hr = row + 1;
+    for (i, h) in ["№", "Код", "Наименование", "Ед.", "Кол-во", "Цена, с.", "Сумма, с."].iter().enumerate() {
+        ws.write_string_with_format(hr, i as u16, *h, &s.head)?;
+    }
+    let mut r = hr + 1;
+    for (n, l) in lines.iter().enumerate() {
+        ws.write_number_with_format(r, 0, (n + 1) as f64, &s.cell)?;
+        ws.write_string_with_format(r, 1, &l.code, &s.cell)?;
+        ws.write_string_with_format(r, 2, &l.name, &s.cell)?;
+        ws.write_string_with_format(r, 3, &l.unit, &s.cell)?;
+        ws.write_number_with_format(r, 4, f(l.qty), &s.cell)?;
+        ws.write_number_with_format(r, 5, f(l.price), &s.num)?;
+        ws.write_number_with_format(r, 6, f(l.total), &s.num)?;
+        r += 1;
+    }
+    if !t.delivery.is_zero() {
+        ws.write_number_with_format(r, 0, (lines.len() + 1) as f64, &s.cell)?;
+        ws.write_string_with_format(r, 1, "", &s.cell)?;
+        ws.write_string_with_format(r, 2, "Доставка", &s.cell)?;
+        ws.write_string_with_format(r, 3, "усл.", &s.cell)?;
+        ws.write_number_with_format(r, 4, 1.0, &s.cell)?;
+        ws.write_number_with_format(r, 5, f(t.delivery), &s.num)?;
+        ws.write_number_with_format(r, 6, f(t.delivery), &s.num)?;
+        r += 1;
+    }
+    r += 1;
+    let mut totals = vec![("Товары:", t.goods)];
+    if !t.coupon.is_zero() {
+        totals.push(("Скидка по промокоду:", -t.coupon));
+    }
+    if !t.delivery.is_zero() {
+        totals.push(("Доставка:", t.delivery));
+    }
+    totals.push(("Итого к оплате:", t.total));
+    for (label, value) in totals {
+        ws.merge_range(r, 3, r, 5, label, &s.total_label)?;
+        ws.write_number_with_format(r, 6, f(value), &s.total_num)?;
+        r += 1;
+    }
+    r += 1;
+    ws.write_string(r, 0, "Без НДС.")?;
+    if let Some(d) = due {
+        ws.write_string(r + 1, 0, &format!("Оплатить до {d}. В назначении платежа укажите номер счёта."))?;
+    }
+    Ok(wb.save_to_buffer()?)
+}
+
 /// Акт сверки взаиморасчётов.
 pub fn reconciliation_xlsx(customer: &str, rec: &Reconciliation) -> AppResult<Vec<u8>> {
     let s = styles();

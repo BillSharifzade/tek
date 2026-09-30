@@ -1,5 +1,5 @@
 import type { ProductDocument } from "@/lib/types";
-import { API_URL } from "@/lib/api";
+import { PUBLIC_API_URL } from "@/lib/api";
 import { IconDownload } from "./icons";
 
 /** Группы документации как в макете: Сертификаты / Описание / Чертежи (+ Каталоги). */
@@ -19,7 +19,7 @@ function sizeLabel(kb: number): string {
 }
 
 export function docHref(d: ProductDocument): string {
-  return d.url?.startsWith("http") ? d.url : `${API_URL}/documents/${d.id}/download`;
+  return d.url?.startsWith("http") ? d.url : `${PUBLIC_API_URL}/documents/${d.id}/download`;
 }
 
 /** Заголовок боковой карточки: 14/15 #808080 и линия #D9DDE4 под ним (Figma «Документация», «Сервисы»). */

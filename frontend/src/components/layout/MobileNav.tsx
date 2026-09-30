@@ -41,7 +41,7 @@ export function MobileNav() {
   const items = [
     { href: "/", label: "Главная", Icon: IconHome, count: 0, match: (p: string) => p === "/" },
     { href: "/catalog", label: "Каталог", Icon: IconCatalog, count: 0, match: (p: string) => p.startsWith("/catalog") || p.startsWith("/product") || p.startsWith("/brands") },
-    { href: "/account/favorites", label: "Избранное", Icon: IconHeart, count: hydrated ? favCount : 0, match: (p: string) => p.startsWith("/account/favorites") },
+    { href: hydrated && user ? "/account/favorites" : "/favorites", label: "Избранное", Icon: IconHeart, count: hydrated ? favCount : 0, match: (p: string) => p.startsWith("/account/favorites") || p === "/favorites" },
     { href: "/cart", label: "Корзина", Icon: IconBasket, count: hydrated ? cartCount : 0, match: (p: string) => p.startsWith("/cart") || p.startsWith("/checkout") },
     { href: user ? "/account" : "/login", label: "Профиль", Icon: IconProfile, count: 0, match: (p: string) => (p.startsWith("/account") && !p.startsWith("/account/favorites")) || p === "/login" || p === "/register" },
   ];

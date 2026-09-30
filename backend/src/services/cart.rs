@@ -193,13 +193,14 @@ pub async fn add_item(state: &AppState, cart_id: Uuid, product_id: Uuid, qty: De
     if qty <= Decimal::ZERO {
         return Err(AppError::unprocessable("invalid_qty", "Количество должно быть больше нуля"));
     }
-    let stock: Option<Decimal> = sqlx::query_scalar(
-        "SELECT (SELECT COALESCE(SUM(qty),0) FROM stock WHERE product_id = p.id) FROM products p WHERE p.id = $1",
+    let row: Option<(Decimal, String, String, Option<Decimal>)> = sqlx::query_as(
+        "SELECT (SELECT COALESCE(SUM(qty),0) FROM stock WHERE product_id = p.id), p.unit, p.name, p.pack_qty FROM products p WHERE p.id = $1",
     )
     .bind(product_id)
     .fetch_optional(&state.pool)
     .await?;
-    let Some(stock) = stock else { return Err(AppError::not_found("Товар не найден")) };
+    let Some((stock, unit, name, pack)) = row else { return Err(AppError::not_found("Товар не найден")) };
+    crate::services::orders::validate_qty(qty, &unit, &name, pack)?;
     let existing: Option<Decimal> =
         sqlx::query_scalar("SELECT qty FROM cart_items WHERE cart_id = $1 AND product_id = $2")
             .bind(cart_id)

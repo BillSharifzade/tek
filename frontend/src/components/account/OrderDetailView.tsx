@@ -136,7 +136,7 @@ export function OrderDetailView({ number }: { number: string }) {
   const receiving = [
     order.delivery.method_label,
     order.delivery.address,
-    order.delivery.store,
+    order.delivery.store ? `${order.delivery.store.name}, ${order.delivery.store.address}` : null,
     order.delivery.date ? (order.delivery.date_label ?? date(order.delivery.date)) : null,
   ]
     .filter(Boolean)

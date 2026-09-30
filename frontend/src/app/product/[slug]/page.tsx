@@ -49,8 +49,9 @@ export default async function ProductRoute({ params }: Props) {
   const { slug } = await params;
   const [product, reviews, questions] = await Promise.all([
     optional(personalizedGet<Product>(`/catalog/products/${slug}`)),
-    safe(publicGet<ReviewsResponse>(`/catalog/products/${slug}/reviews`), EMPTY_REVIEWS),
-    safe(publicGet<QuestionsResponse>(`/catalog/products/${slug}/questions`), EMPTY_QUESTIONS),
+    // отзывы и вопросы — без кеша Next: только что оставленный отзыв виден сразу (API кеширует и сбрасывает сам)
+    safe(publicGet<ReviewsResponse>(`/catalog/products/${slug}/reviews`, undefined, 0), EMPTY_REVIEWS),
+    safe(publicGet<QuestionsResponse>(`/catalog/products/${slug}/questions`, undefined, 0), EMPTY_QUESTIONS),
   ]);
   if (!product) notFound();
 
@@ -100,7 +101,7 @@ export default async function ProductRoute({ params }: Props) {
 
         {product.short_description ? (
           <p className="mt-[20px] flex items-start text-[14px] font-semibold leading-[15px] text-[#F9AD42] xl:pl-[1.2px]">
-            <Image src="/figma/star-2.png" alt="" width={20} height={20} className="relative top-[-1.3px] size-[20px] shrink-0" unoptimized />
+            <Image src="/figma/star-2.png" alt="" width={20} height={20} className="relative top-[-1.3px] size-[20px] shrink-0" />
             <span className="relative top-[2.5px] ml-[7.8px]">{product.short_description}</span>
           </p>
         ) : null}
@@ -110,7 +111,7 @@ export default async function ProductRoute({ params }: Props) {
             <Gallery images={images} name={product.name} badges={product.badges} />
           </div>
 
-          <div className="min-w-0">
+          <div className="min-w-0 max-md:order-2">
             <div className="flex h-[15px] items-start xl:pl-px">
               <Stars value={product.rating || 0} size={14.6} step={15.6} className="mt-[0.1px] flex" />
               <a href="#reviews" className="ml-[7px] text-[14px] font-semibold leading-[15px] text-link link-hover">
@@ -149,7 +150,8 @@ export default async function ProductRoute({ params }: Props) {
             ) : null}
           </div>
 
-          <div className="offer-dim min-w-0 md:col-span-2 xl:col-span-1 xl:ml-auto xl:w-[292px]">
+          {/* на телефоне цена и «В корзину» — сразу под фото, а не после характеристик */}
+          <div className="offer-dim min-w-0 max-md:order-1 md:col-span-2 xl:col-span-1 xl:ml-auto xl:w-[292px]">
             <PromoPlaque />
             <div className="mt-[14px]">
               <BuyBox product={product} />

@@ -91,6 +91,9 @@ async fn register(State(state): State<AppState>, Json(body): Json<RegisterInput>
         _ => "retail",
     };
     let phone = body.phone.as_deref().map(normalize_phone).filter(|p| !p.is_empty());
+    if body.phone.as_deref().is_some_and(|p| !p.trim().is_empty()) && phone.as_deref().map(|p| p.chars().filter(char::is_ascii_digit).count()).unwrap_or(0) < 9 {
+        return Err(AppError::unprocessable("invalid_phone", "Укажите телефон в формате +992 XX XXX XX XX"));
+    }
     let exists: Option<Uuid> = sqlx::query_scalar("SELECT id FROM users WHERE email = $1 OR ($2::text IS NOT NULL AND phone = $2)")
         .bind(&email)
         .bind(&phone)
@@ -99,7 +102,7 @@ async fn register(State(state): State<AppState>, Json(body): Json<RegisterInput>
     if exists.is_some() {
         return Err(AppError::conflict("already_registered", "Пользователь с таким e-mail или телефоном уже зарегистрирован"));
     }
-    let hash = auth::hash_password(&body.password)?;
+    let hash = auth::hash_password_async(body.password.clone()).await?;
     let mut tx = state.pool.begin().await?;
     let company_id: Option<Uuid> = match &body.company {
         Some(c) if !c.name.trim().is_empty() => Some(
@@ -128,7 +131,7 @@ async fn register(State(state): State<AppState>, Json(body): Json<RegisterInput>
     .await?;
     outbox::enqueue(&mut tx, "crm", "user.registered", json!({ "user_id": user_id, "email": email, "phone": phone, "customer_type": customer_type, "company_id": company_id })).await?;
     tx.commit().await?;
-    Ok((StatusCode::ACCEPTED, Json(json!({ "message": "Заявка отправлена на одобрение. Мы сообщим вам по e-mail, когда аккаунт будет активирован.", "user_id": user_id }))).into_response())
+    Ok((StatusCode::ACCEPTED, Json(json!({ "message": "Заявка отправлена на одобрение. Менеджер свяжется с вами, когда аккаунт будет активирован.", "user_id": user_id }))).into_response())
 }
 
 #[derive(Deserialize)]
@@ -157,12 +160,10 @@ async fn login(State(state): State<AppState>, Json(body): Json<LoginInput>) -> A
         .bind(&phone)
         .fetch_optional(&state.pool)
         .await?;
-    let Some(user) = user else {
+    let ok = auth::verify_password_async(body.password.clone(), user.as_ref().map(|u| u.password_hash.clone())).await;
+    let Some(user) = user.filter(|_| ok) else {
         return Err(AppError::new(StatusCode::UNAUTHORIZED, "invalid_credentials", "Неверный логин или пароль"));
     };
-    if !auth::verify_password(&body.password, &user.password_hash) {
-        return Err(AppError::new(StatusCode::UNAUTHORIZED, "invalid_credentials", "Неверный логин или пароль"));
-    }
     match user.status.as_str() {
         "pending" => return Err(AppError::forbidden("account_pending", "Аккаунт ожидает одобрения компанией")),
         "blocked" => return Err(AppError::forbidden("account_blocked", "Аккаунт заблокирован")),

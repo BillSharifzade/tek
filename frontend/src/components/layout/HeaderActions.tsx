@@ -7,10 +7,12 @@ import { useCart, selectCartCount } from "@/store/cart";
 import { useAuth } from "@/store/auth";
 import { IconBasket, IconBox, IconHeart, IconProfile } from "@/components/icons/figma";
 import { cn } from "@/lib/cn";
+import { MiniCart, type MiniCartTriggerState } from "./MiniCart";
 
 /**
  * Иконки справа в шапке (Figma: Group 49–52). Ширины колонок и отступы — из макета:
  * Избранное 72 · 22 · Заказы 50 · 26 · Профиль 60 · 23 · Корзина 56 → правый край на x=1386.
+ * Подписи всегда #333 (в макете нет «активного» чёрного состояния), чёрные только при наведении.
  */
 function Action({
   href,
@@ -21,6 +23,8 @@ function Action({
   icon,
   badge,
   active,
+  highlight,
+  linkProps,
 }: {
   href: string;
   label: string;
@@ -30,13 +34,18 @@ function Action({
   icon: React.ReactNode;
   badge?: number;
   active?: boolean;
+  /** подсветить как при наведении (открыта мини-корзина) */
+  highlight?: boolean;
+  linkProps?: MiniCartTriggerState["triggerProps"] & { "data-minicart-trigger"?: boolean };
 }) {
   return (
     <Link
       href={href}
       aria-label={badge ? `${label}: ${badge}` : label}
+      aria-current={active ? "page" : undefined}
       style={{ width }}
-      className={cn("group relative block h-[46px] shrink-0 text-g333 transition-colors hover:text-black", active && "text-black", className)}
+      className={cn("group relative block h-[46px] shrink-0 text-g333 transition-colors hover:text-black", highlight && "text-black", className)}
+      {...linkProps}
     >
       <span className="absolute left-1/2 flex -translate-x-1/2 justify-center text-black" style={{ top: iconTop }}>
         {icon}
@@ -60,12 +69,12 @@ export function HeaderActions() {
   return (
     <nav aria-label="Пользователь" className="flex items-start">
       <Action
-        href="/account/favorites"
+        href={hydrated && user ? "/account/favorites" : "/favorites"}
         label="Избранное"
         width={72}
         iconTop={5}
         icon={<IconHeart />}
-        active={pathname === "/account/favorites"}
+        active={pathname === "/account/favorites" || pathname === "/favorites"}
         className="hidden sm:block"
       />
       <Action
@@ -86,16 +95,21 @@ export function HeaderActions() {
         active={pathname === "/account"}
         className="ml-[26px]"
       />
-      <Action
-        href="/cart"
-        label="Корзина"
-        width={56}
-        iconTop={6.5}
-        icon={<IconBasket />}
-        badge={hydrated ? cartCount : 0}
-        active={pathname === "/cart"}
-        className="ml-[23px]"
-      />
+      <MiniCart className="ml-[23px]" disabled={pathname.startsWith("/cart")}>
+        {({ open, triggerProps }) => (
+          <Action
+            href="/cart"
+            label="Корзина"
+            width={56}
+            iconTop={6.5}
+            icon={<IconBasket />}
+            badge={hydrated ? cartCount : 0}
+            active={pathname === "/cart"}
+            highlight={open}
+            linkProps={{ ...triggerProps, "data-minicart-trigger": true }}
+          />
+        )}
+      </MiniCart>
     </nav>
   );
 }

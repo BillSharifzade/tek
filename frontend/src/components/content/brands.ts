@@ -19,6 +19,11 @@ const LOGOS = new Set([
 
 const WORDMARKS = new Set(["systeme-electric", "hes-kablo", "iek", "abb", "tsmo", "metz", "promrukav"]);
 
+/** Есть ли у бренда настоящий логотип (webp с tectj.com), а не словесный знак-заглушка. */
+export function hasRealLogo(slug: string): boolean {
+  return LOGOS.has(slug);
+}
+
 export function brandLogo(b: { slug: string; logo?: string | null }): string | null {
   if (LOGOS.has(b.slug)) return `/corporate/brands/${b.slug}.webp`;
   if (WORDMARKS.has(b.slug)) return `/corporate/brands/${b.slug}.svg`;

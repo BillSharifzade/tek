@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use sqlx::{PgPool, Postgres, Transaction};
 use uuid::Uuid;
 
-use crate::{auth::hash_password, services::pdf::translit, services::pricing::round2};
+use crate::{auth::hash_password, config::SeedMode, services::pdf::translit, services::pricing::round2};
 
 struct Rng(u64);
 impl Rng {
@@ -192,7 +192,8 @@ async fn insert_product(tx: &mut Tx<'_>, ctx: &mut Ctx, p: P) -> anyhow::Result<
         attrs.push(json!({ "name": "Страна", "value": country(p.brand) }));
     }
     if !p.attrs.iter().any(|(k, _)| k == "Гарантия") {
-        attrs.push(json!({ "name": "Гарантия", "value": format!("{} лет", [1, 2, 3, 5][(ctx.rng.next() % 4) as usize]) }));
+        let warranty = ["1 год", "2 года", "3 года", "5 лет"][(ctx.rng.next() % 4) as usize];
+        attrs.push(json!({ "name": "Гарантия", "value": warranty }));
     }
     let popularity = if p.popularity > 0 { p.popularity } else { ctx.rng.range(0, 1000) };
     let hit = p.hit || popularity > 900;
@@ -270,7 +271,13 @@ async fn insert_category(tx: &mut Tx<'_>, parent: Option<(i32, &str)>, slug: &st
     Ok(id)
 }
 
-pub async fn run(pool: &PgPool) -> anyhow::Result<bool> {
+/// Заполняет пустую базу. `SeedMode::Catalog` — каталог и контент сайта; `Full` — плюс демо-аккаунты
+/// (admin@tec.tj / Admin1234 …), их заказы, отзывы и купоны; `Off` — ничего.
+pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
+    if mode == SeedMode::Off {
+        return Ok(false);
+    }
+    let demo = mode == SeedMode::Full;
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM products").fetch_one(pool).await?;
     if count > 0 {
         return Ok(false);
@@ -733,68 +740,6 @@ pub async fn run(pool: &PgPool) -> anyhow::Result<bool> {
         .await?;
     sqlx::query("UPDATE categories c SET product_count = (SELECT count(*) FROM products p JOIN categories pc ON pc.id = p.category_id WHERE pc.path = c.path OR pc.path LIKE c.path || '/%')").execute(&mut *tx).await?;
 
-    // ---------- companies & users ----------
-    let company_id: Uuid = sqlx::query_scalar("INSERT INTO companies (name, inn, address, phone, email) VALUES ('ООО «Точикэлектрокомплект»', '123123123', 'Таджикистан, 734060, г. Душанбе, ул. Исмоили Сомони 68/13', '+992 (44) 620 60 60', 'info@tec.tj') RETURNING id")
-        .fetch_one(&mut *tx).await?;
-    let mk_user = |email: &str, phone: &str, pw: &str, fname: &str, lname: &str, role: &str, status: &str, ctype: &str, company: Option<Uuid>, manager: Option<Uuid>, lead: bool, d: Decimal, c: Decimal| {
-        let hash = hash_password(pw).expect("hash");
-        UserSeed { email: email.to_string(), phone: phone.to_string(), hash, first_name: fname.to_string(), last_name: lname.to_string(), role: role.to_string(), status: status.to_string(), ctype: ctype.to_string(), company, manager, lead, discount: d, cashback: c }
-    };
-    let admin_id = insert_user(&mut tx, mk_user("admin@tec.tj", "+992446206060", "Admin1234", "Администратор", "ТЭК", "admin", "approved", "purchaser", None, None, false, dec!(0), dec!(0))).await?;
-    let manager_id = insert_user(&mut tx, mk_user("manager@tec.tj", "+9926969696969", "Manager1234", "Абдурахим", "Фозилов", "manager", "approved", "purchaser", None, None, true, dec!(0), dec!(0))).await?;
-    let client_id = insert_user(&mut tx, mk_user("client@tec.tj", "+992900000001", "Client1234", "Фаррух", "Назаров", "customer", "approved", "purchaser", Some(company_id), Some(manager_id), false, dec!(10), dec!(3))).await?;
-    let electric_id = insert_user(&mut tx, mk_user("electric@tec.tj", "+992900000002", "Electric1234", "Далер", "Рахимов", "customer", "approved", "electrician", None, None, false, dec!(5), dec!(2))).await?;
-    let _pending_id = insert_user(&mut tx, mk_user("pending@tec.tj", "+992900000003", "Pending1234", "Нозим", "Курбонов", "customer", "pending", "retail", None, None, false, dec!(0), dec!(0))).await?;
-    let _ = admin_id;
-    sqlx::query("INSERT INTO user_price_rules (user_id, category_id, discount_pct, cashback_pct) VALUES ($1, $2, 15, 5)")
-        .bind(client_id).bind(ctx.cats["kabelenesushchie-sistemy"]).execute(&mut *tx).await?;
-    sqlx::query("INSERT INTO user_price_rules (user_id, brand_id, discount_pct, cashback_pct) VALUES ($1, $2, 8, 3)")
-        .bind(electric_id).bind(ctx.brands["dks"]).execute(&mut *tx).await?;
-
-    // ---------- coupons ----------
-    sqlx::query("INSERT INTO coupons (code, kind, value, min_total, active) VALUES ('TEK10', 'percent', 10, 0, true), ('WELCOME50', 'fixed', 50, 500, true)").execute(&mut *tx).await?;
-
-    // ---------- reviews & questions ----------
-    let tray200 = tray_ids.iter().find(|(w, _)| *w == 200).unwrap().1;
-    let socket_id: Uuid = sqlx::query_scalar("SELECT id FROM products WHERE code = '101010'").fetch_one(&mut *tx).await?;
-    let reviewers = ["Таварали Пармалиевич", "Винттобак Чарогович", "Абдулло электрик", "Сухроб Н.", "Манучехр Р.", "Фируз Д.", "Умед К.", "Джамшед С.", "Бахтиёр А.", "Шерали М.", "Ойбек Т.", "Рустам Х.", "Нурали Ф.", "Комрон Б.", "Сино Ш.", "Хуршед Г.", "Азиз Р."];
-    let long_text = "Покупал две ушм для работы сотрудниками в цеху. Положился на качество макиты. Одну болгарку проверил а вторую нет. Итог на второй клинила кнопка пуска. Спустя неделю работы перестал запускаться. Сдали по гарантии. Гарантийка длилась 1,5 месяца, купили новые болгарки. Гарантия отказала в ремонте и предложила вернуть деньги, но факт в том что потеряли время в простое работы и купили новые.";
-    let texts = [long_text, "Покупал две ушм для работы сотрудниками в цеху. Положился на качество макиты.", "Отличное качество, всё пришло вовремя. Менеджер помог с подбором.", "Лоток ровный, оцинковка хорошая. Доставили на следующий день.", "Цена выше рынка, но зато оригинал и с документами.", "Брали для объекта в Худжанде, всё подошло по размерам.", "Нормальный товар, без нареканий."];
-    for (pid, n, avg_hi) in [(tray200, 17usize, true), (socket_id, 13usize, false)] {
-        for i in 0..n {
-            let author = reviewers[i % reviewers.len()];
-            let rating = if i == 0 { 4 } else if i == 1 { 5 } else if avg_hi { *ctx.rng.pick(&[5, 5, 4, 4, 5, 3]) } else { *ctx.rng.pick(&[5, 4, 4, 5, 3, 5, 4]) };
-            let (pros, cons, body) = if i == 0 { ("Надёжность и простота.", "Не выявлено.", texts[0]) } else if i == 1 { ("Нет.", "Нет.", texts[1]) } else { (*ctx.rng.pick(&["Качество", "Цена/качество", "Быстрая доставка", "Оригинал"]), *ctx.rng.pick(&["Не выявлено", "Нет", "Дорого"]), *ctx.rng.pick(&texts[2..])) };
-            let days = 1700 - (i as i64) * 37;
-            let created = Utc::now() - Duration::days(days.max(1));
-            let (reply, replied_at) = if i == 1 || ctx.rng.chance(40) { (Some("Спасибо за отзыв!"), Some(created + Duration::days(1))) } else { (None, None) };
-            let user_id = if i == 2 && pid == socket_id { Some(client_id) } else { None };
-            sqlx::query("INSERT INTO reviews (product_id, user_id, author_name, rating, pros, cons, body, reply_text, reply_author, replied_at, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
-                .bind(pid).bind(user_id).bind(author).bind(rating).bind(pros).bind(cons).bind(body).bind(reply).bind(reply.map(|_| "Точикэлектрокомплект")).bind(replied_at).bind(created)
-                .execute(&mut *tx).await?;
-        }
-    }
-    for (pid, author, q, a) in [
-        (tray200, "Таварали Пармалиевич", "Покупал две ушм для работы сотрудниками в цеху. Положился на качество макиты. Есть ли крышки на этот лоток в наличии?", Some("Да, крышки шириной 200 мм есть в наличии на складе в Душанбе — см. раздел «Комплектующие».")),
-        (tray200, "Абдулло электрик", "Какой максимальный шаг опор при монтаже?", Some("Рекомендуемый шаг консолей — 1,5 м при равномерной нагрузке до 60 кг/м.")),
-        (tray200, "Сухроб Н.", "Есть ли доставка в Худжанд и сколько по времени?", None),
-        (socket_id, "Манучехр Р.", "Подходит ли для установки во влажных помещениях?", Some("Степень защиты IP20 — только для сухих помещений. Для влажных выбирайте розетку с крышкой IP44.")),
-    ] {
-        let created = Utc::now() - Duration::days(ctx.rng.range(5, 400));
-        let user_id = if author == "Сухроб Н." { Some(client_id) } else { None };
-        sqlx::query("INSERT INTO questions (product_id, user_id, author_name, body, answer_text, answer_author, answered_at, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)")
-            .bind(pid).bind(user_id).bind(author).bind(q).bind(a).bind(a.map(|_| "Точикэлектрокомплект")).bind(a.map(|_| created + Duration::days(1))).bind(created)
-            .execute(&mut *tx).await?;
-    }
-    sqlx::query(
-        r#"UPDATE products p SET reviews_count = s.cnt, rating = s.avg, questions_count = (SELECT count(*) FROM questions q WHERE q.product_id = p.id)
-           FROM (SELECT product_id, count(*) AS cnt, round(avg(rating)::numeric, 2) AS avg FROM reviews GROUP BY product_id) s WHERE s.product_id = p.id"#,
-    )
-    .execute(&mut *tx)
-    .await?;
-    // some ratings for other products
-    sqlx::query("UPDATE products SET rating = 4 + (popularity % 10)::numeric / 10, reviews_count = (popularity % 7) WHERE reviews_count = 0 AND popularity > 600").execute(&mut *tx).await?;
-
     // sub-category tiles reuse the product illustration of the same slug (top-level categories have their own art)
     sqlx::query("UPDATE categories SET image_url = '/products/' || slug || '.svg' WHERE image_url IS NULL AND parent_id IS NOT NULL")
         .execute(&mut *tx)
@@ -913,112 +858,199 @@ pub async fn run(pool: &PgPool) -> anyhow::Result<bool> {
         sqlx::query("INSERT INTO pages (slug, title, body_html) VALUES ($1,$2,$3)").bind(slug).bind(title).bind(body).execute(&mut *tx).await?;
     }
 
-    // ---------- client history: orders, ledger, bonus, notifications ----------
-    let today = crate::services::delivery::today_local();
-    let product_pool: Vec<(Uuid, String, String, String, Decimal)> = sqlx::query_as(
-        "SELECT id, code, name, unit, list_price FROM products WHERE unit = 'шт' AND list_price BETWEEN 20 AND 3000 ORDER BY popularity DESC LIMIT 60",
-    )
-    .fetch_all(&mut *tx)
-    .await?;
-    let plan: [(i64, &str, &str, bool, bool); 8] = [
-        // (days ago, status, payment, paid in full, overdue-69)
-        (85, "delivered", "invoice", true, false),
-        (72, "delivered", "invoice", true, false),
-        (60, "delivered", "invoice", false, true),
-        (45, "delivered", "alif", true, false),
-        (30, "delivered", "invoice", true, false),
-        (18, "shipped", "invoice", true, false),
-        (9, "processing", "invoice", false, false),
-        (2, "new", "cash", false, false),
-    ];
-    let mut receivable_from_orders = Decimal::ZERO;
-    for (i, (days, status, payment, paid_full, overdue69)) in plan.iter().enumerate() {
-        let created = Utc::now() - Duration::days(*days);
-        let created_date = (created + Duration::hours(5)).date_naive();
-        let seq: i64 = sqlx::query_scalar("SELECT nextval('order_number_seq')").fetch_one(&mut *tx).await?;
-        let number = format!("TEK-{seq:06}");
-        let n_items = 2 + (i % 3);
-        let mut subtotal_list = Decimal::ZERO;
-        let mut subtotal = Decimal::ZERO;
-        let mut cashback = Decimal::ZERO;
-        let mut lines = Vec::new();
-        for j in 0..n_items {
-            let (pid, code, name, unit, list) = product_pool[(i * 7 + j * 3) % product_pool.len()].clone();
-            let qty = Decimal::from(ctx.rng.range(1, 6));
-            let price = round2(list * dec!(0.9));
-            let line_total = round2(price * qty);
-            let line_cb = round2(line_total * dec!(0.03));
-            subtotal_list += round2(list * qty);
-            subtotal += line_total;
-            cashback += line_cb;
-            lines.push((pid, code, name, unit, qty, list, price, line_total, line_cb));
-        }
-        let delivery_price = if i % 2 == 0 { dec!(30) } else { dec!(0) };
-        let total = round2(subtotal + delivery_price);
-        let paid = if *paid_full { total } else if *overdue69 { round2(total - dec!(69)) } else { Decimal::ZERO };
-        let due = if *payment == "invoice" { Some(created_date + Duration::days(14)) } else { None };
-        let payment_status = if paid >= total { "paid" } else if *payment == "invoice" { "invoice_issued" } else { "pending" };
-        let order_id: Uuid = sqlx::query_scalar(
-            r#"INSERT INTO orders (number, user_id, company_id, first_name, last_name, phone, email, status, delivery_method, delivery_address, delivery_date, delivery_price,
-                 payment_method, payment_status, subtotal_list, discount_total, subtotal, total, cashback_total, paid_amount, due_date, assigned_manager_id, crm_status, reservation_status, created_at, updated_at)
-               VALUES ($1,$2,$3,'Фаррух','Назаров','+992900000001','client@tec.tj',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'sent_mock','sent_mock',$19,$19) RETURNING id"#,
-        )
-        .bind(&number).bind(client_id).bind(company_id).bind(status)
-        .bind(if i % 2 == 0 { "courier" } else { "pickup" })
-        .bind(if i % 2 == 0 { Some("г. Душанбе, ул. Исмоили Сомони 68/13") } else { None })
-        .bind(created_date + Duration::days(1))
-        .bind(delivery_price).bind(payment).bind(payment_status)
-        .bind(subtotal_list).bind(round2(subtotal_list - subtotal)).bind(subtotal).bind(total).bind(cashback).bind(paid).bind(due).bind(manager_id).bind(created)
-        .fetch_one(&mut *tx)
-        .await?;
-        for (pid, code, name, unit, qty, list, price, line_total, line_cb) in &lines {
-            sqlx::query("INSERT INTO order_items (order_id, product_id, code, name, unit, qty, list_price, price, discount_pct, cashback_pct, line_total, line_cashback) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,10,3,$9,$10)")
-                .bind(order_id).bind(pid).bind(code).bind(name).bind(unit).bind(qty).bind(list).bind(price).bind(line_total).bind(line_cb)
-                .execute(&mut *tx).await?;
-        }
-        let steps: Vec<(&str, &str, i64)> = match *status {
-            "delivered" => vec![("created", "Заказ создан", 0), ("confirmed", "Подтверждён менеджером", 1), ("processing", "Собирается на складе", 2), ("shipped", "Передан в доставку", 3), ("delivered", "Доставлен", 4)],
-            "shipped" => vec![("created", "Заказ создан", 0), ("confirmed", "Подтверждён менеджером", 1), ("processing", "Собирается на складе", 2), ("shipped", "Передан в доставку", 3)],
-            "processing" => vec![("created", "Заказ создан", 0), ("confirmed", "Подтверждён менеджером", 1), ("processing", "Собирается на складе", 2)],
-            _ => vec![("created", "Заказ создан", 0)],
+    // ---------- демо: аккаунты с известными паролями, их заказы, отзывы, купоны (только SEED_DEMO=full) ----------
+    if demo {
+        // ---------- companies & users ----------
+        let company_id: Uuid = sqlx::query_scalar("INSERT INTO companies (name, inn, address, phone, email) VALUES ('ООО «Точикэлектрокомплект»', '123123123', 'Таджикистан, 734060, г. Душанбе, ул. Исмоили Сомони 68/13', '+992 (44) 620 60 60', 'info@tec.tj') RETURNING id")
+            .fetch_one(&mut *tx).await?;
+        let mk_user = |email: &str, phone: &str, pw: &str, fname: &str, lname: &str, role: &str, status: &str, ctype: &str, company: Option<Uuid>, manager: Option<Uuid>, lead: bool, d: Decimal, c: Decimal| {
+            let hash = hash_password(pw).expect("hash");
+            UserSeed { email: email.to_string(), phone: phone.to_string(), hash, first_name: fname.to_string(), last_name: lname.to_string(), role: role.to_string(), status: status.to_string(), ctype: ctype.to_string(), company, manager, lead, discount: d, cashback: c }
         };
-        for (kind, label, offset_h) in steps {
-            sqlx::query("INSERT INTO order_events (order_id, kind, label, created_at) VALUES ($1,$2,$3,$4)")
-                .bind(order_id).bind(kind).bind(label).bind(created + Duration::hours(offset_h * 6))
+        let admin_id = insert_user(&mut tx, mk_user("admin@tec.tj", "+992446206060", "Admin1234", "Администратор", "ТЭК", "admin", "approved", "purchaser", None, None, false, dec!(0), dec!(0))).await?;
+        let manager_id = insert_user(&mut tx, mk_user("manager@tec.tj", "+992935000010", "Manager1234", "Абдурахим", "Фозилов", "manager", "approved", "purchaser", None, None, true, dec!(0), dec!(0))).await?;
+        let client_id = insert_user(&mut tx, mk_user("client@tec.tj", "+992900000001", "Client1234", "Фаррух", "Назаров", "customer", "approved", "purchaser", Some(company_id), Some(manager_id), false, dec!(10), dec!(3))).await?;
+        let electric_id = insert_user(&mut tx, mk_user("electric@tec.tj", "+992900000002", "Electric1234", "Далер", "Рахимов", "customer", "approved", "electrician", None, None, false, dec!(5), dec!(2))).await?;
+        let _pending_id = insert_user(&mut tx, mk_user("pending@tec.tj", "+992900000003", "Pending1234", "Нозим", "Курбонов", "customer", "pending", "retail", None, None, false, dec!(0), dec!(0))).await?;
+        let _ = admin_id;
+        sqlx::query("INSERT INTO user_price_rules (user_id, category_id, discount_pct, cashback_pct) VALUES ($1, $2, 15, 5)")
+            .bind(client_id).bind(ctx.cats["kabelenesushchie-sistemy"]).execute(&mut *tx).await?;
+        sqlx::query("INSERT INTO user_price_rules (user_id, brand_id, discount_pct, cashback_pct) VALUES ($1, $2, 8, 3)")
+            .bind(electric_id).bind(ctx.brands["dks"]).execute(&mut *tx).await?;
+
+        // ---------- coupons ----------
+        sqlx::query("INSERT INTO coupons (code, kind, value, min_total, active) VALUES ('TEK10', 'percent', 10, 0, true), ('WELCOME50', 'fixed', 50, 500, true)").execute(&mut *tx).await?;
+
+        // ---------- reviews & questions ----------
+        let tray200 = tray_ids.iter().find(|(w, _)| *w == 200).unwrap().1;
+        let socket_id: Uuid = sqlx::query_scalar("SELECT id FROM products WHERE code = '101010'").fetch_one(&mut *tx).await?;
+        let reviewers = ["Таварали Пармалиевич", "Винттобак Чарогович", "Абдулло электрик", "Сухроб Н.", "Манучехр Р.", "Фируз Д.", "Умед К.", "Джамшед С.", "Бахтиёр А.", "Шерали М.", "Ойбек Т.", "Рустам Х.", "Нурали Ф.", "Комрон Б.", "Сино Ш.", "Хуршед Г.", "Азиз Р."];
+        let long_text = "Покупал две ушм для работы сотрудниками в цеху. Положился на качество макиты. Одну болгарку проверил а вторую нет. Итог на второй клинила кнопка пуска. Спустя неделю работы перестал запускаться. Сдали по гарантии. Гарантийка длилась 1,5 месяца, купили новые болгарки. Гарантия отказала в ремонте и предложила вернуть деньги, но факт в том что потеряли время в простое работы и купили новые.";
+        let texts = [long_text, "Покупал две ушм для работы сотрудниками в цеху. Положился на качество макиты.", "Отличное качество, всё пришло вовремя. Менеджер помог с подбором.", "Лоток ровный, оцинковка хорошая. Доставили на следующий день.", "Цена выше рынка, но зато оригинал и с документами.", "Брали для объекта в Худжанде, всё подошло по размерам.", "Нормальный товар, без нареканий."];
+        for (pid, n, avg_hi) in [(tray200, 17usize, true), (socket_id, 13usize, false)] {
+            for i in 0..n {
+                let author = reviewers[i % reviewers.len()];
+                let rating = if i == 0 { 4 } else if i == 1 { 5 } else if avg_hi { *ctx.rng.pick(&[5, 5, 4, 4, 5, 3]) } else { *ctx.rng.pick(&[5, 4, 4, 5, 3, 5, 4]) };
+                let (pros, cons, body) = if i == 0 { ("Надёжность и простота.", "Не выявлено.", texts[0]) } else if i == 1 { ("Нет.", "Нет.", texts[1]) } else { (*ctx.rng.pick(&["Качество", "Цена/качество", "Быстрая доставка", "Оригинал"]), *ctx.rng.pick(&["Не выявлено", "Нет", "Дорого"]), *ctx.rng.pick(&texts[2..])) };
+                let days = 1700 - (i as i64) * 37;
+                let created = Utc::now() - Duration::days(days.max(1));
+                let (reply, replied_at) = if i == 1 || ctx.rng.chance(40) { (Some("Спасибо за отзыв!"), Some(created + Duration::days(1))) } else { (None, None) };
+                let user_id = if i == 2 && pid == socket_id { Some(client_id) } else { None };
+                sqlx::query("INSERT INTO reviews (product_id, user_id, author_name, rating, pros, cons, body, reply_text, reply_author, replied_at, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
+                    .bind(pid).bind(user_id).bind(author).bind(rating).bind(pros).bind(cons).bind(body).bind(reply).bind(reply.map(|_| "Точикэлектрокомплект")).bind(replied_at).bind(created)
+                    .execute(&mut *tx).await?;
+            }
+        }
+        for (pid, author, q, a) in [
+            (tray200, "Таварали Пармалиевич", "Покупал две ушм для работы сотрудниками в цеху. Положился на качество макиты. Есть ли крышки на этот лоток в наличии?", Some("Да, крышки шириной 200 мм есть в наличии на складе в Душанбе — см. раздел «Комплектующие».")),
+            (tray200, "Абдулло электрик", "Какой максимальный шаг опор при монтаже?", Some("Рекомендуемый шаг консолей — 1,5 м при равномерной нагрузке до 60 кг/м.")),
+            (tray200, "Сухроб Н.", "Есть ли доставка в Худжанд и сколько по времени?", None),
+            (socket_id, "Манучехр Р.", "Подходит ли для установки во влажных помещениях?", Some("Степень защиты IP20 — только для сухих помещений. Для влажных выбирайте розетку с крышкой IP44.")),
+        ] {
+            let created = Utc::now() - Duration::days(ctx.rng.range(5, 400));
+            let user_id = if author == "Сухроб Н." { Some(client_id) } else { None };
+            sqlx::query("INSERT INTO questions (product_id, user_id, author_name, body, answer_text, answer_author, answered_at, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)")
+                .bind(pid).bind(user_id).bind(author).bind(q).bind(a).bind(a.map(|_| "Точикэлектрокомплект")).bind(a.map(|_| created + Duration::days(1))).bind(created)
                 .execute(&mut *tx).await?;
         }
-        sqlx::query("INSERT INTO ledger_entries (user_id, company_id, entry_date, doc_type, doc_number, debit, credit, order_id, due_date, note) VALUES ($1,$2,$3,'invoice',$4,$5,0,$6,$7,$8)")
-            .bind(client_id).bind(company_id).bind(created_date).bind(format!("СЧ-{seq:06}")).bind(total).bind(order_id).bind(due).bind(format!("Заказ {number}"))
+        sqlx::query(
+            r#"UPDATE products p SET reviews_count = s.cnt, rating = s.avg, questions_count = (SELECT count(*) FROM questions q WHERE q.product_id = p.id)
+               FROM (SELECT product_id, count(*) AS cnt, round(avg(rating)::numeric, 2) AS avg FROM reviews GROUP BY product_id) s WHERE s.product_id = p.id"#,
+        )
+        .execute(&mut *tx)
+        .await?;
+        // отзывы у популярных товаров — настоящими строками, чтобы счётчик на карточке совпадал с вкладкой «Отзывы»
+        let popular: Vec<(Uuid, i32)> = sqlx::query_as("SELECT id, popularity FROM products WHERE reviews_count = 0 AND popularity > 600 ORDER BY code").fetch_all(&mut *tx).await?;
+        for (pid, popularity) in popular {
+            for i in 0..(popularity % 7) as usize {
+                let rating = *ctx.rng.pick(&[5, 5, 4, 4, 5, 3]);
+                let created = Utc::now() - Duration::days(ctx.rng.range(3, 600));
+                sqlx::query("INSERT INTO reviews (product_id, author_name, rating, pros, cons, body, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)")
+                    .bind(pid)
+                    .bind(reviewers[(i + popularity as usize) % reviewers.len()])
+                    .bind(rating)
+                    .bind(*ctx.rng.pick(&["Качество", "Цена/качество", "Быстрая доставка", "Оригинал"]))
+                    .bind(*ctx.rng.pick(&["Не выявлено", "Нет", "Дорого"]))
+                    .bind(*ctx.rng.pick(&texts[2..]))
+                    .bind(created)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+        }
+        sqlx::query(
+            r#"UPDATE products p SET reviews_count = s.cnt, rating = s.avg
+               FROM (SELECT product_id, count(*) AS cnt, round(avg(rating)::numeric, 2) AS avg FROM reviews GROUP BY product_id) s WHERE s.product_id = p.id"#,
+        )
+        .execute(&mut *tx)
+        .await?;
+
+        // ---------- client history: orders, ledger, bonus, notifications ----------
+        let today = crate::services::delivery::today_local();
+        let product_pool: Vec<(Uuid, String, String, String, Decimal)> = sqlx::query_as(
+            "SELECT id, code, name, unit, list_price FROM products WHERE unit = 'шт' AND list_price BETWEEN 20 AND 3000 ORDER BY popularity DESC LIMIT 60",
+        )
+        .fetch_all(&mut *tx)
+        .await?;
+        let plan: [(i64, &str, &str, bool, bool); 8] = [
+            // (days ago, status, payment, paid in full, overdue-69)
+            (85, "delivered", "invoice", true, false),
+            (72, "delivered", "invoice", true, false),
+            (60, "delivered", "invoice", false, true),
+            (45, "delivered", "alif", true, false),
+            (30, "delivered", "invoice", true, false),
+            (18, "shipped", "invoice", true, false),
+            (9, "processing", "invoice", false, false),
+            (2, "new", "cash", false, false),
+        ];
+        let mut receivable_from_orders = Decimal::ZERO;
+        for (i, (days, status, payment, paid_full, overdue69)) in plan.iter().enumerate() {
+            let created = Utc::now() - Duration::days(*days);
+            let created_date = (created + Duration::hours(5)).date_naive();
+            let seq: i64 = sqlx::query_scalar("SELECT nextval('order_number_seq')").fetch_one(&mut *tx).await?;
+            let number = format!("TEK-{seq:06}");
+            let n_items = 2 + (i % 3);
+            let mut subtotal_list = Decimal::ZERO;
+            let mut subtotal = Decimal::ZERO;
+            let mut cashback = Decimal::ZERO;
+            let mut lines = Vec::new();
+            for j in 0..n_items {
+                let (pid, code, name, unit, list) = product_pool[(i * 7 + j * 3) % product_pool.len()].clone();
+                let qty = Decimal::from(ctx.rng.range(1, 6));
+                let price = round2(list * dec!(0.9));
+                let line_total = round2(price * qty);
+                let line_cb = round2(line_total * dec!(0.03));
+                subtotal_list += round2(list * qty);
+                subtotal += line_total;
+                cashback += line_cb;
+                lines.push((pid, code, name, unit, qty, list, price, line_total, line_cb));
+            }
+            let delivery_price = if i % 2 == 0 { dec!(30) } else { dec!(0) };
+            let total = round2(subtotal + delivery_price);
+            let paid = if *paid_full { total } else if *overdue69 { round2(total - dec!(69)) } else { Decimal::ZERO };
+            let due = if *payment == "invoice" { Some(created_date + Duration::days(14)) } else { None };
+            let payment_status = if paid >= total { "paid" } else if *payment == "invoice" { "invoice_issued" } else { "pending" };
+            let order_id: Uuid = sqlx::query_scalar(
+                r#"INSERT INTO orders (number, user_id, company_id, first_name, last_name, phone, email, status, delivery_method, delivery_address, delivery_date, delivery_price,
+                     payment_method, payment_status, subtotal_list, discount_total, subtotal, total, cashback_total, paid_amount, due_date, assigned_manager_id, crm_status, reservation_status, created_at, updated_at)
+                   VALUES ($1,$2,$3,'Фаррух','Назаров','+992900000001','client@tec.tj',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'sent_mock','sent_mock',$19,$19) RETURNING id"#,
+            )
+            .bind(&number).bind(client_id).bind(company_id).bind(status)
+            .bind(if i % 2 == 0 { "courier" } else { "pickup" })
+            .bind(if i % 2 == 0 { Some("г. Душанбе, ул. Исмоили Сомони 68/13") } else { None })
+            .bind(created_date + Duration::days(1))
+            .bind(delivery_price).bind(payment).bind(payment_status)
+            .bind(subtotal_list).bind(round2(subtotal_list - subtotal)).bind(subtotal).bind(total).bind(cashback).bind(paid).bind(due).bind(manager_id).bind(created)
+            .fetch_one(&mut *tx)
+            .await?;
+            for (pid, code, name, unit, qty, list, price, line_total, line_cb) in &lines {
+                sqlx::query("INSERT INTO order_items (order_id, product_id, code, name, unit, qty, list_price, price, discount_pct, cashback_pct, line_total, line_cashback) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,10,3,$9,$10)")
+                    .bind(order_id).bind(pid).bind(code).bind(name).bind(unit).bind(qty).bind(list).bind(price).bind(line_total).bind(line_cb)
+                    .execute(&mut *tx).await?;
+            }
+            let steps: Vec<(&str, &str, i64)> = match *status {
+                "delivered" => vec![("created", "Заказ создан", 0), ("confirmed", "Подтверждён менеджером", 1), ("processing", "Собирается на складе", 2), ("shipped", "Передан в доставку", 3), ("delivered", "Доставлен", 4)],
+                "shipped" => vec![("created", "Заказ создан", 0), ("confirmed", "Подтверждён менеджером", 1), ("processing", "Собирается на складе", 2), ("shipped", "Передан в доставку", 3)],
+                "processing" => vec![("created", "Заказ создан", 0), ("confirmed", "Подтверждён менеджером", 1), ("processing", "Собирается на складе", 2)],
+                _ => vec![("created", "Заказ создан", 0)],
+            };
+            for (kind, label, offset_h) in steps {
+                sqlx::query("INSERT INTO order_events (order_id, kind, label, created_at) VALUES ($1,$2,$3,$4)")
+                    .bind(order_id).bind(kind).bind(label).bind(created + Duration::hours(offset_h * 6))
+                    .execute(&mut *tx).await?;
+            }
+            sqlx::query("INSERT INTO ledger_entries (user_id, company_id, entry_date, doc_type, doc_number, debit, credit, order_id, due_date, note) VALUES ($1,$2,$3,'invoice',$4,$5,0,$6,$7,$8)")
+                .bind(client_id).bind(company_id).bind(created_date).bind(format!("СЧ-{seq:06}")).bind(total).bind(order_id).bind(due).bind(format!("Заказ {number}"))
+                .execute(&mut *tx).await?;
+            if paid > Decimal::ZERO {
+                sqlx::query("INSERT INTO ledger_entries (user_id, company_id, entry_date, doc_type, doc_number, debit, credit, order_id, note) VALUES ($1,$2,$3,'payment',$4,0,$5,$6,$7)")
+                    .bind(client_id).bind(company_id).bind(created_date + Duration::days(3)).bind(format!("ПЛ-{seq:06}")).bind(paid).bind(order_id).bind(format!("Оплата заказа {number}"))
+                    .execute(&mut *tx).await?;
+            }
+            receivable_from_orders += total - paid;
+            if *status == "delivered" || *status == "shipped" {
+                sqlx::query("INSERT INTO bonus_transactions (user_id, order_id, entry_date, kind, amount, note) VALUES ($1,$2,$3,'accrual',$4,$5)")
+                    .bind(client_id).bind(order_id).bind(created_date + Duration::days(2)).bind(cashback).bind(format!("Кешбэк по заказу {number}"))
+                    .execute(&mut *tx).await?;
+            }
+            sqlx::query("INSERT INTO integration_outbox (target, event, payload, status, attempts, mock, created_at, sent_at) VALUES ('crm','order.created',$1,'sent',1,true,$2,$2), ('onec','stock.reserve',$1,'sent',1,true,$2,$2)")
+                .bind(json!({ "number": number, "order_id": order_id, "seeded": true })).bind(created)
+                .execute(&mut *tx).await?;
+        }
+        // opening balance so that receivable = 69 069.00 exactly
+        let opening = dec!(69069) - receivable_from_orders;
+        sqlx::query("INSERT INTO ledger_entries (user_id, company_id, entry_date, doc_type, doc_number, debit, credit, note) VALUES ($1,$2,$3,'invoice','СЧ-000900',$4,0,'Сальдо по договору поставки №12/2025')")
+            .bind(client_id).bind(company_id).bind(today - Duration::days(100)).bind(opening.max(Decimal::ZERO))
             .execute(&mut *tx).await?;
-        if paid > Decimal::ZERO {
-            sqlx::query("INSERT INTO ledger_entries (user_id, company_id, entry_date, doc_type, doc_number, debit, credit, order_id, note) VALUES ($1,$2,$3,'payment',$4,0,$5,$6,$7)")
-                .bind(client_id).bind(company_id).bind(created_date + Duration::days(3)).bind(format!("ПЛ-{seq:06}")).bind(paid).bind(order_id).bind(format!("Оплата заказа {number}"))
-                .execute(&mut *tx).await?;
-        }
-        receivable_from_orders += total - paid;
-        if *status == "delivered" || *status == "shipped" {
-            sqlx::query("INSERT INTO bonus_transactions (user_id, order_id, entry_date, kind, amount, note) VALUES ($1,$2,$3,'accrual',$4,$5)")
-                .bind(client_id).bind(order_id).bind(created_date + Duration::days(2)).bind(cashback).bind(format!("Кешбэк по заказу {number}"))
-                .execute(&mut *tx).await?;
-        }
-        sqlx::query("INSERT INTO integration_outbox (target, event, payload, status, attempts, mock, created_at, sent_at) VALUES ('crm','order.created',$1,'sent',1,true,$2,$2), ('onec','stock.reserve',$1,'sent',1,true,$2,$2)")
-            .bind(json!({ "number": number, "order_id": order_id, "seeded": true })).bind(created)
+        sqlx::query("INSERT INTO bonus_transactions (user_id, entry_date, kind, amount, note) VALUES ($1,$2,'spend',-200,'Оплата бонусами заказа TEK-001005')")
+            .bind(client_id).bind(today - Duration::days(40))
             .execute(&mut *tx).await?;
+        let socket_slug: String = sqlx::query_scalar("SELECT slug FROM products WHERE id = $1").bind(socket_id).fetch_one(&mut *tx).await?;
+        sqlx::query("INSERT INTO notifications (user_id, kind, title, body, link, is_read) VALUES ($1,'review_reply','Ответ на ваш отзыв','Специалист ТЭК ответил на ваш отзыв о товаре «Розетка Systeme Electric Этюд накладная белая (PA16-007B)».',$2,false), ($1,'order_status','Заказ отгружен','Заказ передан в доставку.', '/account/orders', true)")
+            .bind(client_id).bind(format!("/product/{socket_slug}#reviews"))
+            .execute(&mut *tx).await?;
+        // favorites for client
+        sqlx::query("INSERT INTO favorites (user_id, product_id) VALUES ($1,$2), ($1,$3)").bind(client_id).bind(tray200).bind(socket_id).execute(&mut *tx).await?;
     }
-    // opening balance so that receivable = 69 069.00 exactly
-    let opening = dec!(69069) - receivable_from_orders;
-    sqlx::query("INSERT INTO ledger_entries (user_id, company_id, entry_date, doc_type, doc_number, debit, credit, note) VALUES ($1,$2,$3,'invoice','СЧ-000900',$4,0,'Сальдо по договору поставки №12/2025')")
-        .bind(client_id).bind(company_id).bind(today - Duration::days(100)).bind(opening.max(Decimal::ZERO))
-        .execute(&mut *tx).await?;
-    sqlx::query("INSERT INTO bonus_transactions (user_id, entry_date, kind, amount, note) VALUES ($1,$2,'spend',-200,'Оплата бонусами заказа TEK-001005')")
-        .bind(client_id).bind(today - Duration::days(40))
-        .execute(&mut *tx).await?;
-    let socket_slug: String = sqlx::query_scalar("SELECT slug FROM products WHERE id = $1").bind(socket_id).fetch_one(&mut *tx).await?;
-    sqlx::query("INSERT INTO notifications (user_id, kind, title, body, link, is_read) VALUES ($1,'review_reply','Ответ на ваш отзыв','Специалист ТЭК ответил на ваш отзыв о товаре «Розетка Systeme Electric Этюд накладная белая (PA16-007B)».',$2,false), ($1,'order_status','Заказ отгружен','Заказ передан в доставку.', '/account/orders', true)")
-        .bind(client_id).bind(format!("/product/{socket_slug}#reviews"))
-        .execute(&mut *tx).await?;
-    // favorites for client
-    sqlx::query("INSERT INTO favorites (user_id, product_id) VALUES ($1,$2), ($1,$3)").bind(client_id).bind(tray200).bind(socket_id).execute(&mut *tx).await?;
 
     tx.commit().await?;
     Ok(true)
@@ -1101,6 +1133,25 @@ pub async fn enrich(pool: &PgPool) -> anyhow::Result<()> {
     }
 
     group_variants(&mut tx).await?;
+
+    // счётчики отзывов/вопросов и рейтинг — строго по опубликованным строкам (на карточке столько же, сколько во вкладке)
+    sqlx::query(
+        r#"UPDATE products p SET reviews_count = s.cnt, rating = s.avg, questions_count = s.qcnt
+           FROM (SELECT p2.id, count(r.id)::int AS cnt, COALESCE(round(avg(r.rating)::numeric, 2), 0) AS avg,
+                        (SELECT count(*)::int FROM questions q WHERE q.product_id = p2.id) AS qcnt
+                 FROM products p2 LEFT JOIN reviews r ON r.product_id = p2.id AND r.status = 'published' GROUP BY p2.id) s
+           WHERE s.id = p.id AND (p.reviews_count <> s.cnt OR p.rating <> s.avg OR p.questions_count <> s.qcnt)"#,
+    )
+    .execute(&mut *tx)
+    .await?;
+    // «1 лет» → «1 год», «2 лет» → «2 года»
+    for (from, to) in [("\"1 лет\"", "\"1 год\""), ("\"2 лет\"", "\"2 года\""), ("\"3 лет\"", "\"3 года\""), ("\"4 лет\"", "\"4 года\"")] {
+        sqlx::query("UPDATE products SET attributes = replace(attributes::text, $1, $2)::jsonb WHERE attributes::text LIKE '%' || $1 || '%'")
+            .bind(from)
+            .bind(to)
+            .execute(&mut *tx)
+            .await?;
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -1270,5 +1321,31 @@ async fn group_variants(tx: &mut Tx<'_>) -> anyhow::Result<()> {
     sqlx::query("DELETE FROM product_groups g WHERE g.name LIKE 'auto:%' AND NOT EXISTS (SELECT 1 FROM products p WHERE p.group_id = g.id)")
         .execute(&mut **tx)
         .await?;
+    Ok(())
+}
+
+// ---------- первый администратор ----------
+
+/// Production: если в базе нет ни одного администратора, создаёт его из ADMIN_EMAIL / ADMIN_PASSWORD.
+/// Демо-аккаунтов с известными паролями в production нет (SEED_DEMO=full запрещён валидацией конфига).
+pub async fn bootstrap_admin(pool: &PgPool, cfg: &crate::config::Config) -> anyhow::Result<()> {
+    let (Some(email), Some(password)) = (&cfg.admin_email, &cfg.admin_password) else {
+        return Ok(());
+    };
+    let has_admin: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM users WHERE role = 'admin')").fetch_one(pool).await?;
+    if has_admin {
+        return Ok(());
+    }
+    let hash = hash_password(password).map_err(|e| anyhow::anyhow!(e.message))?;
+    sqlx::query(
+        r#"INSERT INTO users (email, password_hash, first_name, last_name, role, status, customer_type)
+           VALUES ($1, $2, 'Администратор', 'ТЭК', 'admin', 'approved', 'purchaser')
+           ON CONFLICT (email) DO UPDATE SET role = 'admin', status = 'approved', password_hash = EXCLUDED.password_hash"#,
+    )
+    .bind(email)
+    .bind(hash)
+    .execute(pool)
+    .await?;
+    tracing::info!(%email, "administrator created from ADMIN_EMAIL");
     Ok(())
 }

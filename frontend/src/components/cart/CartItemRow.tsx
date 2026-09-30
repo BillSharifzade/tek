@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { ImageBox } from "@/components/ui/ImageBox";
 import { CartFavorite, discountPercent } from "./parts";
 import { IconInStock, IconTrash } from "./icons";
+import { packStep, snapQty } from "@/lib/qty";
 
 export interface CartItemRowProps {
   item: CartItem;
@@ -20,7 +21,7 @@ export interface CartItemRowProps {
 }
 
 /** Степпер строки корзины (Figma: «-  1000000  +», 14/12 Medium #666, без рамок). 106px — ширина колонки под ним. */
-function QtyStepper({ value, onChange, max, label }: { value: number; onChange: (v: number) => void; max?: number; label: string }) {
+function QtyStepper({ value, onChange, max, label, step = 1 }: { value: number; onChange: (v: number) => void; max?: number; label: string; step?: number }) {
   const [text, setText] = useState(String(value));
   const [last, setLast] = useState(value);
   if (last !== value) {
@@ -28,8 +29,7 @@ function QtyStepper({ value, onChange, max, label }: { value: number; onChange: 
     setText(String(value));
   }
   const commit = (raw: string) => {
-    const n = Math.floor(Number(raw.replace(",", ".").replace(/\s/g, "")));
-    const next = Number.isFinite(n) && n >= 1 ? n : 1;
+    const next = snapQty(Math.floor(Number(raw.replace(",", ".").replace(/\s/g, ""))), step);
     setText(String(next));
     if (next !== value) onChange(next);
   };
@@ -37,8 +37,8 @@ function QtyStepper({ value, onChange, max, label }: { value: number; onChange: 
     <div className="flex h-[12px] w-[106px] items-center" role="group" aria-label={label}>
       <button
         type="button"
-        onClick={() => value > 1 && onChange(value - 1)}
-        disabled={value <= 1}
+        onClick={() => value > step && onChange(value - step)}
+        disabled={value <= step}
         aria-label="Уменьшить"
         className="flex h-[24px] w-[18px] shrink-0 items-center justify-center text-sub transition-colors hover:text-black disabled:text-[#C4C4C4]"
       >
@@ -57,18 +57,18 @@ function QtyStepper({ value, onChange, max, label }: { value: number; onChange: 
           if (e.key === "Enter") commit((e.target as HTMLInputElement).value);
           if (e.key === "ArrowUp") {
             e.preventDefault();
-            onChange(value + 1);
+            onChange(value + step);
           }
-          if (e.key === "ArrowDown" && value > 1) {
+          if (e.key === "ArrowDown" && value > step) {
             e.preventDefault();
-            onChange(value - 1);
+            onChange(value - step);
           }
         }}
         className="h-[20px] w-[69px] min-w-0 rounded-[3px] bg-transparent p-0 text-center text-[14px] font-medium leading-[20px] text-sub tnum outline-none transition-colors hover:bg-surface focus:bg-surface"
       />
       <button
         type="button"
-        onClick={() => onChange(value + 1)}
+        onClick={() => onChange(value + step)}
         disabled={max !== undefined && value >= max}
         aria-label="Увеличить"
         className="flex h-[24px] w-[19px] shrink-0 items-center justify-center text-sub transition-colors hover:text-black disabled:text-[#C4C4C4]"
@@ -148,7 +148,7 @@ export function CartItemRow({ item, onQty, onSelect, onRemove, onAccessories, re
                 {fmtQty(item.qty)} {p.unit}
               </span>
             ) : (
-              <QtyStepper value={item.qty} onChange={onQty} label={`Количество ${p.name}`} />
+              <QtyStepper value={item.qty} onChange={onQty} step={packStep(p)} label={`Количество ${p.name}`} />
             )}
             {error ? (
               <span role="alert" className="absolute left-0 top-[19px] w-[106px] whitespace-nowrap text-center text-[12px] leading-[12px] text-sale tnum">

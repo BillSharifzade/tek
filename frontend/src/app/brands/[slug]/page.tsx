@@ -12,6 +12,7 @@ import { fetchListing, ListingResults } from "@/components/catalog/Listing";
 import { IconArrowSmall } from "@/components/content/icons";
 import { brandLogo, CERTIFICATES } from "@/components/content/brands";
 import { CATALOGS } from "@/components/content/catalogs";
+import { asset } from "@/lib/asset";
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -46,7 +47,7 @@ export default async function BrandRoute({ params, searchParams }: Props) {
         // карточка бренда: серая плашка #F7F8F9 r10, логотип на белом, страны — пилюли, ссылки на сертификат и каталоги
         <div className="flex flex-col gap-[20px] rounded-[10px] bg-surface-2 p-[16px] sm:flex-row sm:items-center md:gap-[28px] md:p-[20px]">
           <div className="flex h-[100px] w-full shrink-0 items-center justify-center rounded-[10px] bg-white px-[20px] sm:w-[220px]">
-            {logo ? <Image src={logo} alt={brand.name} width={180} height={60} unoptimized className="h-auto max-h-[56px] w-auto max-w-[170px] object-contain" /> : <span className="text-[22px] font-bold">{brand.name}</span>}
+            {logo ? <Image src={logo} alt={brand.name} width={180} height={60} className="h-auto max-h-[56px] w-auto max-w-[170px] object-contain" /> : <span className="text-[22px] font-bold">{brand.name}</span>}
           </div>
           <div className="min-w-0 flex-1">
             <ul className="flex flex-wrap gap-[8px]">
@@ -58,7 +59,7 @@ export default async function BrandRoute({ params, searchParams }: Props) {
           {cert || docs > 0 ? (
             <div className="flex shrink-0 flex-col gap-[8px] sm:pr-[8px]">
               {cert ? (
-                <a href={`/corporate/certs/${cert.n}.webp`} target="_blank" rel="noopener" className={link}>
+                <a href={asset(`/corporate/certs/${cert.n}.webp`)} target="_blank" rel="noopener" className={link}>
                   Сертификат дистрибьютора
                   <IconArrowSmall className="size-[11px]" />
                 </a>

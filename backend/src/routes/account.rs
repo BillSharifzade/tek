@@ -87,6 +87,8 @@ struct ProfileInput {
     last_name: Option<String>,
     phone: Option<String>,
     email: Option<String>,
+    /// нужен только при смене e-mail (это логин)
+    current_password: Option<String>,
 }
 
 async fn put_profile(State(state): State<AppState>, AuthUser(user): AuthUser, Json(body): Json<ProfileInput>) -> AppResult<Json<UserJson>> {
@@ -99,6 +101,25 @@ async fn put_profile(State(state): State<AppState>, AuthUser(user): AuthUser, Js
         if taken.is_some() {
             return Err(AppError::conflict("email_taken", "E-mail уже используется"));
         }
+        if *e != user.email {
+            let ok = match body.current_password.clone() {
+                Some(p) => auth::verify_password_async(p, Some(user.password_hash.clone())).await,
+                None => false,
+            };
+            if !ok {
+                return Err(AppError::unprocessable("password_required", "Для смены e-mail введите текущий пароль"));
+            }
+        }
+    }
+    let phone = body.phone.as_ref().map(|s| s.chars().filter(|c| c.is_ascii_digit() || *c == '+').collect::<String>()).filter(|s| !s.is_empty());
+    if let Some(p) = &phone {
+        if p.chars().filter(char::is_ascii_digit).count() < 9 {
+            return Err(AppError::unprocessable("invalid_phone", "Укажите телефон в формате +992 XX XXX XX XX"));
+        }
+        let taken: Option<Uuid> = sqlx::query_scalar("SELECT id FROM users WHERE phone = $1 AND id <> $2").bind(p).bind(user.id).fetch_optional(&state.pool).await?;
+        if taken.is_some() {
+            return Err(AppError::conflict("phone_taken", "Телефон уже используется другим аккаунтом"));
+        }
     }
     sqlx::query(
         r#"UPDATE users SET first_name = COALESCE($2, first_name), last_name = COALESCE($3, last_name),
@@ -107,11 +128,11 @@ async fn put_profile(State(state): State<AppState>, AuthUser(user): AuthUser, Js
     .bind(user.id)
     .bind(body.first_name.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()))
     .bind(body.last_name.map(|s| s.trim().to_string()))
-    .bind(body.phone.map(|s| s.chars().filter(|c| c.is_ascii_digit() || *c == '+').collect::<String>()).filter(|s| !s.is_empty()))
+    .bind(phone)
     .bind(email)
     .execute(&state.pool)
     .await?;
-    state.invalidate_user(user.id);
+    state.invalidate_user(user.id).await;
     let fresh = auth::load_user(&state, user.id).await?.ok_or_else(|| AppError::not_found("Пользователь не найден"))?;
     Ok(Json(user_json(&state, &fresh).await?))
 }
@@ -123,14 +144,14 @@ struct PasswordInput {
 }
 
 async fn put_password(State(state): State<AppState>, AuthUser(user): AuthUser, Json(body): Json<PasswordInput>) -> AppResult<StatusCode> {
-    if !auth::verify_password(&body.current_password, &user.password_hash) {
+    if !auth::verify_password_async(body.current_password.clone(), Some(user.password_hash.clone())).await {
         return Err(AppError::unprocessable("wrong_password", "Текущий пароль указан неверно"));
     }
     auth::validate_password(&body.new_password, &user.email, &user.first_name)?;
-    let hash = auth::hash_password(&body.new_password)?;
+    let hash = auth::hash_password_async(body.new_password.clone()).await?;
     sqlx::query("UPDATE users SET password_hash = $2 WHERE id = $1").bind(user.id).bind(hash).execute(&state.pool).await?;
     sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1").bind(user.id).execute(&state.pool).await?;
-    state.invalidate_user(user.id);
+    state.invalidate_user(user.id).await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -147,7 +168,7 @@ async fn put_notifications(State(state): State<AppState>, AuthUser(user): AuthUs
         .bind(body.notify_replies)
         .execute(&state.pool)
         .await?;
-    state.invalidate_user(user.id);
+    state.invalidate_user(user.id).await;
     let fresh = auth::load_user(&state, user.id).await?.ok_or_else(|| AppError::not_found("Пользователь не найден"))?;
     Ok(Json(user_json(&state, &fresh).await?))
 }
@@ -171,8 +192,11 @@ async fn put_company(State(state): State<AppState>, AuthUser(user): AuthUser, Js
     }
     let row = match user.company_id {
         Some(cid) => {
+            // смена реквизитов (наименование / ИНН) снова требует проверки менеджером для оплаты по счёту
             sqlx::query_as::<_, CompanyJson>(
-                "UPDATE companies SET name = $2, inn = $3, address = $4, phone = $5, email = $6 WHERE id = $1 RETURNING id, name, inn, address, phone, email",
+                r#"UPDATE companies SET name = $2, inn = $3, address = $4, phone = $5, email = $6,
+                   verified = verified AND name = $2 AND inn IS NOT DISTINCT FROM $3
+                   WHERE id = $1 RETURNING id, name, inn, address, phone, email"#,
             )
             .bind(cid)
             .bind(body.name.trim())
@@ -195,7 +219,7 @@ async fn put_company(State(state): State<AppState>, AuthUser(user): AuthUser, Js
             .fetch_one(&state.pool)
             .await?;
             sqlx::query("UPDATE users SET company_id = $2 WHERE id = $1").bind(user.id).bind(c.id).execute(&state.pool).await?;
-            state.invalidate_user(user.id);
+            state.invalidate_user(user.id).await;
             c
         }
     };

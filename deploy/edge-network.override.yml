@@ -1,0 +1,11 @@
+# Подключает tek-api и tek-web к внешней docker-сети общего reverse proxy (Caddy другого проекта на этом сервере).
+# docker compose -f docker-compose.prod.yml -f deploy/edge-network.override.yml up -d
+services:
+  tek-api:
+    networks: [default, edge]
+  tek-web:
+    networks: [default, edge]
+networks:
+  edge:
+    external: true
+    name: ${EDGE_NETWORK:?имя docker-сети reverse proxy}

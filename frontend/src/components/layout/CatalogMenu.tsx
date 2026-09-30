@@ -9,6 +9,7 @@ import { cn } from "@/lib/cn";
 import { useEscape, useHydrated, useLockBody } from "@/lib/hooks";
 import { ImageBox } from "@/components/ui/ImageBox";
 import { countLabel } from "@/lib/format";
+import { SITE, TOP_NAV } from "@/lib/site";
 
 /** Figma «Group 43»: 107×44, #FFCC33, r5; три линии 10.5px (stroke 1.3) + «Каталог» 14/12 Medium. */
 export function CatalogMenuButton({ categories }: { categories: CategoryNode[] }) {
@@ -55,8 +56,8 @@ export function CatalogMenu({ open, onClose, categories }: { open: boolean; onCl
         style={{ top: "var(--header-h, 114px)" }}
       >
         <div className="container-page">
-          <div className="grid max-h-[calc(100vh-140px)] grid-cols-1 md:grid-cols-[300px_1fr]">
-            <ul className="overflow-y-auto border-r border-line py-3" role="menu">
+          <div className="grid max-h-[calc(100vh-140px)] grid-cols-1 overflow-y-auto md:grid-cols-[300px_1fr] md:overflow-visible">
+            <ul className="overflow-y-auto border-r border-line pb-3 pt-12 md:pt-3" role="menu">
               {categories.map((c) => (
                 <li key={c.slug}>
                   <Link
@@ -77,6 +78,21 @@ export function CatalogMenu({ open, onClose, categories }: { open: boolean; onCl
                 </li>
               ))}
             </ul>
+            {/* на телефоне верхнего меню нет — разделы сайта и телефон здесь же, под каталогом */}
+            <nav aria-label="Разделы сайта" className="border-t border-line px-4 pb-5 pt-4 md:hidden">
+              <ul className="grid grid-cols-2 gap-x-4 gap-y-[10px] text-[14px] leading-[18px]">
+                {TOP_NAV.flatMap((item) => (item.children?.length ? item.children : [item])).filter((l, i, all) => all.findIndex((x) => x.href === l.href) === i).map((l) => (
+                  <li key={l.href}>
+                    <Link href={l.href} onClick={onClose} className="text-g333 hover:text-black">
+                      {l.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <a href={SITE.phoneHref} className="mt-4 inline-flex text-[15px] font-medium text-black">
+                {SITE.phone}
+              </a>
+            </nav>
             <div className="hidden overflow-y-auto p-6 md:block">
               {current ? (
                 <>

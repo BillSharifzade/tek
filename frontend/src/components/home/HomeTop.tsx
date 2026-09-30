@@ -56,7 +56,7 @@ export function HomeTop({ news }: { news: NewsWithTags[] }) {
                   <time dateTime={n.date} className="block text-[13px] leading-[20px] text-muted tnum">
                     {dateSlash(n.date)}
                   </time>
-                  <span className="mt-[3px] line-clamp-2 lg:h-[40px] text-[15px] font-medium leading-[20px] text-black transition-colors group-hover:text-black">
+                  <span className="mt-[3px] line-clamp-2 text-[15px] font-medium leading-[20px] text-black transition-colors group-hover:text-black">
                     {n.title}
                   </span>
                   <span className="mt-[8px] block whitespace-pre text-[13px] leading-[20px] text-muted">{newsTags(n).join("    ")}</span>

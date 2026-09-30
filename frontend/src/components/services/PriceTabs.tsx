@@ -5,6 +5,7 @@ import { cn } from "@/lib/cn";
 import type { PriceTab } from "./types";
 import { IconTruck, IconWarnTriangle } from "./icons";
 import { RequestButton } from "./RequestButton";
+import { FADE_X_BELOW_LG, useScrollFade } from "@/components/layout/ScrollFade";
 
 /**
  * Блок «Прайс» (Figma 10922:4174 и табы 10957:2695 / 10958:2057 / 10961:2097 / 10966:2173):
@@ -14,6 +15,7 @@ import { RequestButton } from "./RequestButton";
  */
 export function PriceTabs({ tabs, subject }: { tabs: PriceTab[]; subject: string }) {
   const uid = useId();
+  const stripRef = useScrollFade<HTMLDivElement>();
   const [activeId, setActiveId] = useState(tabs[0]?.id);
   if (tabs.length === 0) return null;
   const multi = tabs.length > 1;
@@ -21,7 +23,7 @@ export function PriceTabs({ tabs, subject }: { tabs: PriceTab[]; subject: string
   return (
     <div className="relative">
       {multi ? (
-        <div className="scrollbar-none -mx-4 mb-8 overflow-x-auto px-4 lg:absolute lg:left-0 lg:top-0 lg:z-10 lg:mx-0 lg:mb-0 lg:overflow-visible lg:px-0">
+        <div ref={stripRef} className={cn(FADE_X_BELOW_LG, "scrollbar-none -mx-4 mb-8 overflow-x-auto px-4 lg:absolute lg:left-0 lg:top-0 lg:z-10 lg:mx-0 lg:mb-0 lg:overflow-visible lg:px-0")}>
           <div role="tablist" aria-label="Виды работ" className="flex h-[41px] w-max gap-[4px] rounded-[10px] bg-btn p-[4px] lg:min-w-[698px]">
             {tabs.map((t) => {
               const on = t.id === activeId;

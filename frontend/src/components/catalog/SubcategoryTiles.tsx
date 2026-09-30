@@ -32,7 +32,7 @@ export function SubcategoryTile({ category, index = 0, className }: { category: 
       title={category.product_count !== undefined ? `${category.name} (${category.product_count})` : category.name}
     >
       <span className="absolute block" style={{ left: box.l, top: box.t, width: box.w, height: box.h }}>
-        <Image src={box.src} alt="" fill unoptimized sizes="88px" className="object-contain mix-blend-multiply" />
+        <Image src={box.src} alt="" fill sizes="88px" className="object-contain mix-blend-multiply" />
       </span>
       <span className="absolute left-[11px] right-[12px] top-[87.5px] line-clamp-2 text-center text-[14px] leading-[17px] text-g333 transition-colors group-hover:text-black">
         {category.name}

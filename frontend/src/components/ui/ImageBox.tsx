@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { useId } from "react";
 import { cn } from "@/lib/cn";
 
 /** Deterministic pastel from a string, for placeholder tiles. */
@@ -38,18 +39,19 @@ export interface ImageBoxProps {
  */
 export function ImageBox({ src, alt, label, className, imgClassName, sizes = "(max-width: 768px) 50vw, 25vw", priority, fit = "contain", rounded = "rounded-[8px]" }: ImageBoxProps) {
   const text = label ?? alt;
+  const gid = `g${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   if (!src) {
     const h = hue(text);
     return (
       <div className={cn("relative overflow-hidden bg-surface", rounded, className)} aria-label={alt} role="img">
         <svg viewBox="0 0 200 200" className="absolute inset-0 h-full w-full" aria-hidden>
           <defs>
-            <linearGradient id={`g${h}`} x1="0" y1="0" x2="1" y2="1">
+            <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
               <stop offset="0%" stopColor={`hsl(${h} 45% 96%)`} />
               <stop offset="100%" stopColor={`hsl(${h} 35% 90%)`} />
             </linearGradient>
           </defs>
-          <rect width="200" height="200" fill={`url(#g${h})`} />
+          <rect width="200" height="200" fill={`url(#${gid})`} />
           <circle cx="100" cy="100" r="46" fill="#ffffff" opacity="0.9" />
           <text x="100" y="100" textAnchor="middle" dominantBaseline="central" fontFamily="Inter, system-ui, sans-serif" fontSize="30" fontWeight="600" fill="#3f3f3f">
             {initials(text)}
@@ -66,7 +68,7 @@ export function ImageBox({ src, alt, label, className, imgClassName, sizes = "(m
         fill
         sizes={sizes}
         priority={priority}
-        unoptimized
+       
         className={cn(fit === "contain" ? "object-contain" : "object-cover", imgClassName)}
       />
     </div>

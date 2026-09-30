@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import type { Accessory } from "@/lib/types";
 import { cn } from "@/lib/cn";
-import { ProductGrid } from "./ProductGrid";
+import { AccessoryCard } from "./AccessoryCard";
 
 const ROW = 5;
 
@@ -26,7 +26,8 @@ export function MoreButton({ onClick, loading, className }: { onClick: () => voi
 
 /**
  * «Комплектующие» на странице товара (Figma 8612:316): чипсы-группы 39px (первая/активная — жёлтая,
- * остальные #EEF0F2, r5, 14/20 #333, через 11px), под ними ряд карточек товара и «Еще».
+ * остальные #EEF0F2, r5, 14/20 #333, через 11px), под ними ряд компактных карточек 216×421
+ * (5 в ряд, шаг 229.5 — x = 0 / 230 / 459 / 689 …, на 18px ниже чипсов) и «Еще» через 32px.
  */
 export function ProductAccessories({ items }: { items: Accessory[] }) {
   const groups = useMemo(() => {
@@ -67,7 +68,13 @@ export function ProductAccessories({ items }: { items: Accessory[] }) {
           );
         })}
       </div>
-      <ProductGrid products={shown} cols={5} className="mt-[18px]" />
+      <ul className="mt-[18px] grid grid-cols-2 gap-[10px] md:grid-cols-3 md:gap-[14px] lg:grid-cols-4 xl:grid-cols-[repeat(5,216px)] xl:gap-x-[13.5px]">
+        {shown.map((p) => (
+          <li key={p.id}>
+            <AccessoryCard product={p} />
+          </li>
+        ))}
+      </ul>
       {products.length > ROW && !expanded ? <MoreButton className="mx-auto mt-[32px]" onClick={() => setExpanded(true)} /> : null}
     </div>
   );

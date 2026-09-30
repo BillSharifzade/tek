@@ -35,6 +35,7 @@ async fn users(State(state): State<AppState>, Manager(_m): Manager, Query(q): Qu
     Ok(Json(rows))
 }
 
+/// Одобрение аккаунта; заодно подтверждает компанию пользователя (открывает оплату по счёту).
 async fn approve(State(state): State<AppState>, Manager(m): Manager, Path(id): Path<Uuid>) -> AppResult<Json<Value>> {
     let n = sqlx::query("UPDATE users SET status = 'approved', manager_id = COALESCE(manager_id, $2) WHERE id = $1 AND status = 'pending'")
         .bind(id)
@@ -42,14 +43,19 @@ async fn approve(State(state): State<AppState>, Manager(m): Manager, Path(id): P
         .execute(&state.pool)
         .await?
         .rows_affected();
-    if n == 0 {
+    let verified = sqlx::query("UPDATE companies SET verified = true WHERE id = (SELECT company_id FROM users WHERE id = $1) AND NOT verified")
+        .bind(id)
+        .execute(&state.pool)
+        .await?
+        .rows_affected();
+    if n == 0 && verified == 0 {
         return Err(AppError::not_found("Пользователь не найден или уже одобрен"));
     }
     sqlx::query("INSERT INTO notifications (user_id, kind, title, body, link) VALUES ($1, 'account', 'Аккаунт одобрен', 'Ваш аккаунт активирован. Теперь вам доступны персональные цены и кешбэк.', '/account')")
         .bind(id)
         .execute(&state.pool)
         .await?;
-    state.invalidate_user(id);
+    state.invalidate_user(id).await;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -70,7 +76,30 @@ struct PricingInput {
     rules: Option<Vec<RuleInput>>,
 }
 
-async fn pricing(State(state): State<AppState>, Manager(_m): Manager, Path(id): Path<Uuid>, Json(body): Json<PricingInput>) -> AppResult<Json<Value>> {
+fn pct_ok(v: Decimal, max: Decimal) -> bool {
+    v >= Decimal::ZERO && v <= max
+}
+
+/// Персональные цены: менеджер — только своим клиентам, себе — никто; скидка 0–90 %, кешбэк 0–50 %.
+async fn pricing(State(state): State<AppState>, Manager(m): Manager, Path(id): Path<Uuid>, Json(body): Json<PricingInput>) -> AppResult<Json<Value>> {
+    let (max_discount, max_cashback) = (Decimal::from(90), Decimal::from(50));
+    if id == m.id {
+        return Err(AppError::forbidden("self_pricing", "Нельзя менять собственные условия"));
+    }
+    let bad = body.discount_pct.is_some_and(|v| !pct_ok(v, max_discount))
+        || body.cashback_pct.is_some_and(|v| !pct_ok(v, max_cashback))
+        || body.rules.as_ref().is_some_and(|rs| rs.iter().any(|r| !pct_ok(r.discount_pct, max_discount) || !pct_ok(r.cashback_pct, max_cashback)));
+    if bad {
+        return Err(AppError::unprocessable("invalid_pct", "Скидка — от 0 до 90 %, кешбэк — от 0 до 50 %"));
+    }
+    if m.role != "admin" {
+        let owner: Option<Option<Uuid>> = sqlx::query_scalar("SELECT manager_id FROM users WHERE id = $1").bind(id).fetch_optional(&state.pool).await?;
+        match owner {
+            None => return Err(AppError::not_found("Пользователь не найден")),
+            Some(Some(mid)) if mid == m.id => {}
+            _ => return Err(AppError::forbidden("not_your_client", "Условия клиента может менять его менеджер или администратор")),
+        }
+    }
     let mut tx = state.pool.begin().await?;
     let n = sqlx::query("UPDATE users SET discount_pct = COALESCE($2, discount_pct), cashback_pct = COALESCE($3, cashback_pct), manager_id = COALESCE($4, manager_id) WHERE id = $1")
         .bind(id)
@@ -94,6 +123,10 @@ async fn pricing(State(state): State<AppState>, Manager(_m): Manager, Path(id): 
                 Some(s) => sqlx::query_scalar("SELECT id FROM brands WHERE slug = $1").bind(s).fetch_optional(&mut *tx).await?,
                 None => None,
             };
+            let unknown = (r.category_slug.is_some() && category_id.is_none()) || (r.brand_slug.is_some() && brand_id.is_none());
+            if unknown || (category_id.is_none() && brand_id.is_none() && r.product_id.is_none()) {
+                return Err(AppError::unprocessable("invalid_rule", "Правило должно ссылаться на существующую категорию, бренд или товар"));
+            }
             sqlx::query("INSERT INTO user_price_rules (user_id, category_id, brand_id, product_id, discount_pct, cashback_pct) VALUES ($1,$2,$3,$4,$5,$6)")
                 .bind(id)
                 .bind(category_id)
@@ -106,7 +139,7 @@ async fn pricing(State(state): State<AppState>, Manager(_m): Manager, Path(id): 
         }
     }
     tx.commit().await?;
-    state.invalidate_user(id);
+    state.invalidate_user(id).await;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -152,16 +185,26 @@ struct TextInput {
 }
 
 async fn reply_review(State(state): State<AppState>, Manager(m): Manager, Path(id): Path<Uuid>, Json(body): Json<TextInput>) -> AppResult<Json<Value>> {
+    let text = body.text.trim();
+    if text.is_empty() || text.chars().count() > 4000 {
+        return Err(AppError::unprocessable("invalid_text", "Напишите ответ (до 4000 символов)"));
+    }
+    // уведомляем только о первом ответе и только если клиент не отключил уведомления об ответах
+    let first: Option<bool> = sqlx::query_scalar("SELECT reply_text IS NULL FROM reviews WHERE id = $1").bind(id).fetch_optional(&state.pool).await?;
     let row: Option<(Option<Uuid>, Uuid)> = sqlx::query_as(
         "UPDATE reviews SET reply_text = $2, reply_author = 'Точикэлектрокомплект', replied_at = $3 WHERE id = $1 RETURNING user_id, product_id",
     )
     .bind(id)
-    .bind(body.text.trim())
+    .bind(text)
     .bind(Utc::now())
     .fetch_optional(&state.pool)
     .await?;
     let Some((user_id, product_id)) = row else { return Err(AppError::not_found("Отзыв не найден")) };
-    if let Some(uid) = user_id {
+    let wants: bool = match user_id {
+        Some(uid) => sqlx::query_scalar("SELECT notify_replies FROM users WHERE id = $1").bind(uid).fetch_optional(&state.pool).await?.unwrap_or(false),
+        None => false,
+    };
+    if let (Some(uid), Some(true), true) = (user_id, first, wants) {
         let slug: String = sqlx::query_scalar("SELECT slug FROM products WHERE id = $1").bind(product_id).fetch_one(&state.pool).await?;
         sqlx::query("INSERT INTO notifications (user_id, kind, title, body, link) VALUES ($1, 'review_reply', 'Ответ на ваш отзыв', $2, $3)")
             .bind(uid)
@@ -175,16 +218,26 @@ async fn reply_review(State(state): State<AppState>, Manager(m): Manager, Path(i
 }
 
 async fn answer_question(State(state): State<AppState>, Manager(m): Manager, Path(id): Path<Uuid>, Json(body): Json<TextInput>) -> AppResult<Json<Value>> {
+    let text = body.text.trim();
+    if text.is_empty() || text.chars().count() > 4000 {
+        return Err(AppError::unprocessable("invalid_text", "Напишите ответ (до 4000 символов)"));
+    }
+    // уведомляем только о первом ответе и только если клиент не отключил уведомления об ответах
+    let first: Option<bool> = sqlx::query_scalar("SELECT answer_text IS NULL FROM questions WHERE id = $1").bind(id).fetch_optional(&state.pool).await?;
     let row: Option<(Option<Uuid>, Uuid)> = sqlx::query_as(
         "UPDATE questions SET answer_text = $2, answer_author = 'Точикэлектрокомплект', answered_at = $3 WHERE id = $1 RETURNING user_id, product_id",
     )
     .bind(id)
-    .bind(body.text.trim())
+    .bind(text)
     .bind(Utc::now())
     .fetch_optional(&state.pool)
     .await?;
     let Some((user_id, product_id)) = row else { return Err(AppError::not_found("Вопрос не найден")) };
-    if let Some(uid) = user_id {
+    let wants: bool = match user_id {
+        Some(uid) => sqlx::query_scalar("SELECT notify_replies FROM users WHERE id = $1").bind(uid).fetch_optional(&state.pool).await?.unwrap_or(false),
+        None => false,
+    };
+    if let (Some(uid), Some(true), true) = (user_id, first, wants) {
         let slug: String = sqlx::query_scalar("SELECT slug FROM products WHERE id = $1").bind(product_id).fetch_one(&state.pool).await?;
         sqlx::query("INSERT INTO notifications (user_id, kind, title, body, link) VALUES ($1, 'question_answer', 'Ответ на ваш вопрос', $2, $3)")
             .bind(uid)

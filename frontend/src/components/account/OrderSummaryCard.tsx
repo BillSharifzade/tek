@@ -73,7 +73,7 @@ export function OrderSummaryCard({ number }: { number: string }) {
           <dd className="font-medium">
             {order.delivery.method_label}
             {order.delivery.address ? ` · ${order.delivery.address}` : ""}
-            {order.delivery.store ? ` · ${order.delivery.store}` : ""}
+            {order.delivery.store ? ` · ${order.delivery.store.name}, ${order.delivery.store.address}` : ""}
             {order.delivery.date ? ` · ${date(order.delivery.date)}` : ""}
           </dd>
         </div>

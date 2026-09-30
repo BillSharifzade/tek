@@ -94,7 +94,7 @@ export function ContactForm({
         <label htmlFor={`${uid}-msg`} className="sr-only">
           {messagePlaceholder}
         </label>
-        <textarea id={`${uid}-msg`} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={messagePlaceholder} rows={3} className={cn(field, "block min-h-[77px] resize-y border-line py-[14px]")} />
+        <textarea id={`${uid}-msg`} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={messagePlaceholder} rows={3} className={cn(field, "block min-h-[77px] resize-none border-line py-[14px]")} />
       </div>
       {withConsent ? (
         <div className="pt-[4px]">

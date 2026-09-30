@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import type { Question, QuestionsResponse } from "@/lib/types";
 import { client } from "@/lib/client";
 import { ApiError } from "@/lib/api";
@@ -25,6 +26,7 @@ const PAGE = 5;
 export function Questions({ slug, initial }: { slug: string; initial: QuestionsResponse }) {
   const hydrated = useHydrated();
   const user = useAuth((s) => s.user);
+  const router = useRouter();
   const [items, setItems] = useState(initial.items);
   const [shown, setShown] = useState(PAGE);
   const [open, setOpen] = useState(false);
@@ -56,6 +58,7 @@ export function Questions({ slug, initial }: { slug: string; initial: QuestionsR
     try {
       const q = await client.post<Question>(`/catalog/products/${slug}/questions`, { text });
       setItems((prev) => [q, ...prev]);
+      router.refresh();
       setText("");
       setOpen(false);
       toast.success("Вопрос отправлен. Ответим в ближайшее время");

@@ -24,7 +24,7 @@ export function ConfiguratorCard({ item }: { item: ConfiguratorItem }) {
       </div>
       {img ? (
         <div className="relative h-[180px] shrink-0 bg-[#F6F6F6] sm:h-auto sm:w-[38%]">
-          <Image src={img} alt="" fill unoptimized sizes="240px" className="object-contain p-[12px] transition-transform duration-300 group-hover:scale-105" />
+          <Image src={img} alt="" fill sizes="240px" className="object-contain p-[12px] transition-transform duration-300 group-hover:scale-105" />
         </div>
       ) : null}
     </article>

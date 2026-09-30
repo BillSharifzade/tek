@@ -1,5 +1,6 @@
 import type { ScheduleTable as Schedule } from "./types";
 import { IconTableCheck } from "./icons";
+import { ScrollFade } from "@/components/layout/ScrollFade";
 
 /**
  * «Периодичность ТО генераторов» — в макете это скриншот таблицы (to-table.png, 1259×404 на y=2542);
@@ -11,7 +12,7 @@ export function ScheduleTable({ data }: { data: Schedule }) {
   // 9 колонок по 82.75px как в макете; при меньшем числе колонок та же общая ширина делится поровну
   const colW = (82.75 * 9) / Math.max(n, 1);
   return (
-    <div className="scrollbar-none relative -mx-4 overflow-x-auto px-4 lg:mx-0 lg:overflow-visible lg:px-0">
+    <ScrollFade belowLg className="scrollbar-none relative -mx-4 overflow-x-auto px-4 lg:mx-0 lg:overflow-visible lg:px-0">
       <table className="w-full min-w-[1040px] table-fixed border-collapse text-[#222D3A] lg:ml-px lg:w-[1251px]">
         <colgroup>
           <col />
@@ -57,6 +58,6 @@ export function ScheduleTable({ data }: { data: Schedule }) {
           ))}
         </tbody>
       </table>
-    </div>
+    </ScrollFade>
   );
 }

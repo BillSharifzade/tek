@@ -1,31 +1,34 @@
 "use client";
 
+import Image from "next/image";
+
 /** Центр Душанбе по умолчанию (lon, lat). */
 export const DUSHANBE: [number, number] = [68.7738, 38.5598];
 
 /**
- * Карта доставки (Figma 10461:672, 665×407): живая Яндекс.Карта в iframe, поверх — пин из макета
- * (чёрная капля 33×49 с жёлтым кругом), остриём в центр карты. Под iframe — статичный скрин
- * из макета как фолбэк, если виджет не загрузился.
+ * Карта доставки (Figma 10461:672, 665×407, без скругления): статичный фрагмент карты из макета
+ * (public/figma/checkout-map.webp, пин уже на снимке — остриём в центре). Встраиваемый виджет Яндекса
+ * показывал стороннюю рекламу, поэтому вместо него — картинка и ссылка «Открыть на карте» (новая вкладка)
+ * с точкой по координатам адреса. Снимок чуть увеличен и сдвинут (scale 1.05, 40%), чтобы кнопки масштаба и логотип со скрина ушли за край.
  */
-export function DeliveryMap({ center, zoom = 13, className }: { center: [number, number]; zoom?: number; className?: string }) {
-  const src = `https://yandex.ru/map-widget/v1/?ll=${center[0].toFixed(6)},${center[1].toFixed(6)}&z=${zoom}&l=map`;
+export function DeliveryMap({ center, zoom = 16, className }: { center: [number, number]; zoom?: number; className?: string }) {
+  const [lon, lat] = center.map((n) => n.toFixed(6));
+  const href = `https://yandex.ru/maps/?ll=${lon},${lat}&z=${zoom}&pt=${lon},${lat},pm2ywm&l=map`;
   return (
-    <div
-      className={`relative h-[300px] w-full overflow-hidden sm:h-[407px] bg-[#E8E4DD] bg-cover bg-center ${className ?? ""}`}
-      style={{ backgroundImage: "url(/figma/checkout-map.webp)" }}
-    >
-      <iframe key={src} src={src} title="Карта доставки" loading="lazy" className="absolute inset-0 size-full border-0" allow="geolocation" />
-      <svg
-        width={34}
-        height={50}
-        viewBox="0 0 34 50"
-        aria-hidden
-        className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-full drop-shadow-[0_2px_2px_rgba(0,0,0,0.25)]"
+    <div className={`relative h-[300px] w-full overflow-hidden bg-[#E8E4DD] sm:h-[407px] ${className ?? ""}`}>
+      <Image src="/figma/checkout-map.webp" alt="" fill loading="eager" sizes="(min-width: 640px) 665px, 100vw" className="scale-[1.05] object-cover object-[40%_50%]" />
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="absolute left-[12px] top-[12px] flex h-[32px] items-center gap-[6px] rounded-[5px] bg-white px-[12px] text-[13px] font-medium leading-[16px] text-g333 shadow-soft transition-colors hover:text-black"
       >
-        <path d="M17 .5C7.9.5.5 7.9.5 17c0 5.6 2.6 9.9 6.4 14.3L17 49.5l10.1-18.2c3.8-4.4 6.4-8.7 6.4-14.3C33.5 7.9 26.1.5 17 .5Z" fill="#292829" />
-        <circle cx="17" cy="17" r="12.5" fill="#FBC642" />
-      </svg>
+        Открыть на карте
+        <svg width={11} height={11} viewBox="0 0 11 11" fill="none" aria-hidden className="shrink-0">
+          <path d="M4.5 1.5H2a1 1 0 0 0-1 1V9a1 1 0 0 0 1 1h6.5a1 1 0 0 0 1-1V6.5M6.5 1H10v3.5M10 1 5 6" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <span className="sr-only">(откроется в новой вкладке)</span>
+      </a>
     </div>
   );
 }

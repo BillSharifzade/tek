@@ -61,23 +61,29 @@ export const client = {
   delete: <T>(path: string) => request<T>("DELETE", path),
 };
 
+/** Секунд до истечения access-токена (JWT exp); -1 — не удалось прочитать. */
+function secondsLeft(token: string): number {
+  try {
+    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))) as { exp?: number };
+    return typeof payload.exp === "number" ? payload.exp - Date.now() / 1000 : -1;
+  } catch {
+    return -1;
+  }
+}
+
+/**
+ * Держит access-токен (и cookie для серверного рендера) свежим: обновляет, если он истекает в ближайшие `within` секунд.
+ * Возвращает true, если токен был обновлён.
+ */
+export async function ensureFreshAccess(within = 90): Promise<boolean> {
+  const auth = readAuth();
+  if (!auth || secondsLeft(auth.access) > within) return false;
+  return (await refreshAccessToken()) !== null;
+}
+
 /** Remember the guest cart token issued by the backend. */
 export function rememberCartToken(token: string | null | undefined) {
   if (token && token !== readCartToken()) writeCartToken(token);
-}
-
-/** Build a URL for file downloads (xlsx etc.) with auth passed via query when needed. */
-export function downloadUrl(path: string, query?: Query): string {
-  const auth = readAuth();
-  const cartToken = readCartToken();
-  const q: Query = { ...(query ?? {}) };
-  if (auth?.access) q.access_token = auth.access;
-  if (cartToken) q.cart_token = cartToken;
-  const sp = new URLSearchParams();
-  for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== null) sp.set(k, String(v));
-  const base = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8181/api/v1";
-  const s = sp.toString();
-  return `${base}${path}${s ? `?${s}` : ""}`;
 }
 
 /** Download a file through fetch (so Authorization/X-Cart-Token headers are sent) and save it. */

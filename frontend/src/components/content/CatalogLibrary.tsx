@@ -46,7 +46,7 @@ export function CatalogLibrary() {
           <li key={c.n}>
             <a href={c.file} target="_blank" rel="noopener noreferrer" className="group flex h-full flex-col">
               <span className="relative flex aspect-[199/230] items-center justify-center overflow-hidden rounded-[8px] bg-surface p-[18px]">
-                <Image src={`/corporate/catalogs/${c.n}.webp`} alt="" width={180} height={240} unoptimized className="h-auto max-h-full w-auto max-w-full shadow-card transition-transform duration-300 group-hover:scale-[1.04]" />
+                <Image src={`/corporate/catalogs/${c.n}.webp`} alt="" width={180} height={240} className="h-auto max-h-full w-auto max-w-full shadow-card transition-transform duration-300 group-hover:scale-[1.04]" />
               </span>
               <span className="mt-[10px] line-clamp-3 text-[14px] leading-[18px] text-g333 transition-colors group-hover:text-black">{c.name}</span>
               <span className="mt-auto pt-[6px] text-[13px] leading-[18px] text-muted">

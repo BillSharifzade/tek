@@ -20,7 +20,8 @@ use crate::{
     services::{
         catalog::{product_by_slug, products_by_ids, to_card},
         pricing::PriceCtx,
-        variants::{self, Variants},
+        search,
+        variants::{self, natural_cmp, Variants},
     },
     state::AppState,
 };
@@ -131,7 +132,10 @@ async fn category(State(state): State<AppState>, Path(slug): Path<String>, heade
             let filters: Vec<Facet> = grouped
                 .into_iter()
                 .filter(|(_, v)| v.len() > 1 && v.len() <= 40)
-                .map(|(name, values)| Facet { name, values })
+                .map(|(name, mut values)| {
+                    values.sort_by(|a, b| natural_cmp(&a.value, &b.value));
+                    Facet { name, values }
+                })
                 .collect();
             let (min, max): (Option<Decimal>, Option<Decimal>) = sqlx::query_as(
                 r#"SELECT min(COALESCE(p.sale_price, p.list_price)), max(COALESCE(p.sale_price, p.list_price))
@@ -185,8 +189,20 @@ struct Listing {
     pages: i64,
 }
 
+/// Условие поиска: каждое слово (в любом из вариантов основы) встречается в нормализованном тексте товара.
+fn push_search(qb: &mut QueryBuilder<Postgres>, text: &str, haystack: &str) {
+    for alts in search::terms(text) {
+        qb.push(" AND (FALSE");
+        for t in alts {
+            qb.push(format!(" OR translate(lower({haystack}), '{}', '{}') LIKE ", search::SQL_NORMALIZE_FROM, search::SQL_NORMALIZE_TO))
+                .push_bind(search::like(&t));
+        }
+        qb.push(")");
+    }
+}
+
 async fn run_listing(state: &AppState, q: &HashMap<String, String>, ctx: &PriceCtx) -> AppResult<Listing> {
-    let page: i64 = q.get("page").and_then(|v| v.parse().ok()).unwrap_or(1).max(1);
+    let page: i64 = q.get("page").and_then(|v| v.parse().ok()).unwrap_or(1).clamp(1, 10_000);
     let per_page: i64 = q.get("per_page").and_then(|v| v.parse().ok()).unwrap_or(24).clamp(1, 100);
     let select = PRODUCT_SELECT.replacen("SELECT ", "SELECT count(*) OVER() AS total, ", 1);
     let mut qb = QueryBuilder::<Postgres>::new(select);
@@ -201,11 +217,9 @@ async fn run_listing(state: &AppState, q: &HashMap<String, String>, ctx: &PriceC
     if let Some(brand) = q.get("brand").filter(|s| !s.is_empty()) {
         qb.push(" AND b.slug = ANY(").push_bind(brand.split(',').map(|s| s.trim().to_string()).collect::<Vec<_>>()).push(")");
     }
-    if let Some(text) = q.get("q").map(|s| s.trim()).filter(|s| !s.is_empty()) {
-        let like = format!("%{text}%");
-        qb.push(" AND (p.name ILIKE ").push_bind(like.clone());
-        qb.push(" OR p.code ILIKE ").push_bind(like.clone());
-        qb.push(" OR b.name ILIKE ").push_bind(like).push(")");
+    let text = q.get("q").map(|s| s.trim()).filter(|s| !s.is_empty());
+    if let Some(text) = text {
+        push_search(&mut qb, text, "p.name || ' ' || p.code || ' ' || COALESCE(b.name, '') || ' ' || c.name");
     }
     let flag = |v: Option<&String>| v.map(|s| s == "1" || s == "true").unwrap_or(false);
     if flag(q.get("in_stock")) {
@@ -236,7 +250,12 @@ async fn run_listing(state: &AppState, q: &HashMap<String, String>, ctx: &PriceC
             qb.push(")");
         }
     }
+    if let (Some(text), None) = (text, q.get("sort")) {
+        // точное совпадение кода — первым
+        qb.push(" ORDER BY (p.code = ").push_bind(text.to_string()).push(") DESC, p.popularity DESC, p.id");
+    }
     let order = match q.get("sort").map(String::as_str) {
+        _ if text.is_some() && q.get("sort").is_none() => "",
         Some("new") => " ORDER BY p.created_at DESC, p.id",
         Some("price_asc") => " ORDER BY COALESCE(p.sale_price, p.list_price) ASC, p.id",
         Some("price_desc") => " ORDER BY COALESCE(p.sale_price, p.list_price) DESC, p.id",
@@ -503,6 +522,12 @@ async fn post_review(State(state): State<AppState>, AuthUser(user): AuthUser, Pa
     if body.text.trim().is_empty() {
         return Err(AppError::unprocessable("empty_text", "Напишите текст отзыва"));
     }
+    let too_long = body.text.chars().count() > 5000
+        || body.pros.as_deref().is_some_and(|t| t.chars().count() > 2000)
+        || body.cons.as_deref().is_some_and(|t| t.chars().count() > 2000);
+    if too_long {
+        return Err(AppError::unprocessable("text_too_long", "Отзыв слишком длинный: до 5000 символов, достоинства и недостатки — до 2000"));
+    }
     let pid: Uuid = sqlx::query_scalar("SELECT id FROM products WHERE slug = $1")
         .bind(&slug)
         .fetch_optional(&state.pool)
@@ -581,6 +606,9 @@ struct NewQuestion {
 async fn post_question(State(state): State<AppState>, AuthUser(user): AuthUser, Path(slug): Path<String>, Json(body): Json<NewQuestion>) -> AppResult<Response> {
     if body.text.trim().is_empty() {
         return Err(AppError::unprocessable("empty_text", "Напишите вопрос"));
+    }
+    if body.text.chars().count() > 2000 {
+        return Err(AppError::unprocessable("text_too_long", "Вопрос слишком длинный — до 2000 символов"));
     }
     let pid: Uuid = sqlx::query_scalar("SELECT id FROM products WHERE slug = $1")
         .bind(&slug)
@@ -668,6 +696,7 @@ struct SuggestProduct {
     image: Option<String>,
     unit: String,
     in_stock: bool,
+    pack_qty: Option<Decimal>,
 }
 
 #[derive(Serialize, sqlx::FromRow)]
@@ -677,28 +706,40 @@ struct SuggestCategory {
     image: Option<String>,
 }
 
-async fn suggest(State(state): State<AppState>, Query(q): Query<SuggestQuery>) -> AppResult<Json<Value>> {
+async fn suggest(State(state): State<AppState>, OptionalUser(user): OptionalUser, Query(q): Query<SuggestQuery>) -> AppResult<Json<Value>> {
     let text = q.q.unwrap_or_default().trim().to_string();
-    if text.len() < 2 {
+    if text.chars().count() < 2 {
         return Ok(Json(json!({ "products": [], "categories": [], "brands": [] })));
     }
-    let like = format!("%{text}%");
-    let products = sqlx::query_as::<_, SuggestProduct>(
-        r#"SELECT p.id, p.slug, p.name, p.code, COALESCE(p.sale_price, p.list_price) AS price, p.images[1] AS image, p.unit,
-                  EXISTS (SELECT 1 FROM stock s WHERE s.product_id = p.id AND s.qty > 0) AS in_stock
-           FROM products p
-           WHERE p.name ILIKE $1 OR p.code ILIKE $1 ORDER BY (p.code ILIKE $2) DESC, p.popularity DESC LIMIT 5"#,
-    )
-    .bind(&like)
-    .bind(format!("{text}%"))
-    .fetch_all(&state.pool)
-    .await?;
-    let categories = sqlx::query_as::<_, SuggestCategory>("SELECT slug, name, image_url AS image FROM categories WHERE name ILIKE $1 ORDER BY product_count DESC LIMIT 5")
-        .bind(&like)
-        .fetch_all(&state.pool)
-        .await?;
-    let brands = sqlx::query_as::<_, BrandRefRow>("SELECT slug, name FROM brands WHERE name ILIKE $1 ORDER BY sort LIMIT 5")
-        .bind(&like)
+    let ctx = PriceCtx::for_optional(&state.pool, user.as_deref()).await?;
+    let mut qb = QueryBuilder::<Postgres>::new(PRODUCT_SELECT);
+    qb.push(" WHERE TRUE");
+    push_search(&mut qb, &text, "p.name || ' ' || p.code || ' ' || COALESCE(b.name, '') || ' ' || c.name");
+    qb.push(" ORDER BY (p.code = ").push_bind(text.clone()).push(") DESC, p.popularity DESC LIMIT 5");
+    let rows: Vec<ProductRow> = qb.build_query_as().fetch_all(&state.pool).await?;
+    let products: Vec<SuggestProduct> = rows
+        .iter()
+        .map(|p| SuggestProduct {
+            id: p.id,
+            slug: p.slug.clone(),
+            name: p.name.clone(),
+            code: p.code.clone(),
+            price: ctx.price(p).price,
+            image: p.images.first().cloned(),
+            unit: p.unit.clone(),
+            in_stock: p.stock_total > Decimal::ZERO,
+            pack_qty: p.pack_qty,
+        })
+        .collect();
+    let mut qb = QueryBuilder::<Postgres>::new("SELECT c.slug, c.name, c.image_url AS image FROM categories c WHERE TRUE");
+    push_search(&mut qb, &text, "c.name");
+    qb.push(" ORDER BY c.product_count DESC LIMIT 5");
+    let categories: Vec<SuggestCategory> = qb.build_query_as().fetch_all(&state.pool).await?;
+    let mut qb = QueryBuilder::<Postgres>::new("SELECT b.slug, b.name FROM brands b WHERE TRUE");
+    push_search(&mut qb, &text, "b.name");
+    qb.push(" ORDER BY b.sort LIMIT 5");
+    let brands = qb
+        .build_query_as::<BrandRefRow>()
         .fetch_all(&state.pool)
         .await?
         .into_iter()

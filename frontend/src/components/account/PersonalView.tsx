@@ -25,7 +25,7 @@ type NotifyKey = "notify_marketing" | "notify_replies";
 const CUSTOMER_TYPE: Record<User["customer_type"], string> = { retail: "физическое лицо", electrician: "электрик", purchaser: "закупщик" };
 
 /** Жёлтая обводка из макета («СОХРАНИТЬ», 9085:409), размер/радиус — как у кнопок сайта (44px, r6). */
-export const saveBtnCls = "border border-brand bg-white uppercase tracking-[0.02em] text-black hover:border-brand-hover hover:bg-brand-hover";
+export const saveBtnCls = "border border-brand bg-white font-bold uppercase tracking-[0.02em] text-brand hover:border-brand-hover hover:bg-brand-hover hover:text-black";
 
 function field(invalid?: boolean) {
   return cn(fieldCls, invalid && "border-sale hover:border-sale focus:border-sale");
@@ -61,19 +61,26 @@ export function PersonalView() {
     setInvalid((i) => ({ ...i, [k]: false }));
   };
 
-  const wantPassword = Boolean(pw.next || pw.confirm || pw.current);
+  const wantPassword = Boolean(pw.next || pw.confirm);
+
+  // e-mail — это логин: сменить его можно только с текущим паролем
+  const emailChanged = Boolean(user && form.email.trim().toLowerCase() !== user.email.toLowerCase());
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     const bad: typeof invalid = {};
     if (!form.first_name.trim()) bad.first_name = true;
-    if (!form.phone.trim()) bad.phone = true;
+    if (form.phone.replace(/\D/g, "").length < 9) bad.phone = true;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) bad.email = true;
     if (Object.keys(bad).length) {
       setInvalid(bad);
       setError("Заполните имя, телефон и корректный e-mail");
       return;
+    }
+    if (emailChanged && !pw.current) {
+      setInvalid({ current: true });
+      return setError("Введите текущий пароль, чтобы сменить e-mail");
     }
     if (wantPassword) {
       if (!passwordValid(pw.next, user?.email)) {
@@ -96,7 +103,7 @@ export function PersonalView() {
       const profile = { first_name: form.first_name.trim(), last_name: form.last_name.trim(), phone: form.phone.trim(), email: form.email.trim() };
       const profileChanged = !user || (Object.keys(profile) as (keyof ProfileForm)[]).some((k) => profile[k] !== (user[k] ?? ""));
       if (profileChanged) {
-        latest = await client.put<User>("/account/profile", profile);
+        latest = await client.put<User>("/account/profile", emailChanged ? { ...profile, current_password: pw.current } : profile);
         setUser(latest);
       }
       const notifyChanged = !latest || latest.notify_marketing !== notify.notify_marketing || latest.notify_replies !== notify.notify_replies;
@@ -139,7 +146,7 @@ export function PersonalView() {
           </div>
           <div className="flex flex-col gap-[12px]">
             <Input aria-label="Подтверждение пароля" placeholder="Подтверждение пароля" type="password" value={pw.confirm} onChange={(e) => setP("confirm", e.target.value)} autoComplete="new-password" className={field(invalid.confirm || Boolean(pw.confirm && pw.confirm !== pw.next))} />
-            {wantPassword ? (
+            {wantPassword || emailChanged ? (
               <Input aria-label="Текущий пароль" placeholder="Текущий пароль" type="password" value={pw.current} onChange={(e) => setP("current", e.target.value)} autoComplete="current-password" className={field(invalid.current)} />
             ) : null}
           </div>

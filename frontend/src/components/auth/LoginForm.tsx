@@ -41,7 +41,7 @@ export function LoginForm() {
       router.refresh();
     } catch (err) {
       if (err instanceof ApiError && err.code === "account_pending") {
-        setError({ title: "Аккаунт ожидает одобрения", text: "Регистрация проходит проверку компанией. Мы сообщим на e-mail, когда доступ будет открыт." });
+        setError({ title: "Аккаунт ожидает одобрения", text: "Регистрация проходит проверку компанией — менеджер свяжется с вами, когда доступ будет открыт." });
       } else if (err instanceof ApiError && err.status === 401) {
         setError({ title: "Неверный логин или пароль" });
       } else {
@@ -55,7 +55,7 @@ export function LoginForm() {
     <form onSubmit={submit} noValidate className="flex flex-col gap-[16px]">
       {error ? <AuthAlert title={error.title} text={error.text} /> : null}
       <Field label="E-mail или телефон" htmlFor="login-id">
-        <Input id="login-id" value={loginValue} onChange={(e) => setLoginValue(e.target.value)} autoComplete="username" placeholder="client@tec.tj" autoFocus />
+        <Input id="login-id" value={loginValue} onChange={(e) => setLoginValue(e.target.value)} autoComplete="username" placeholder="E-mail или телефон" autoFocus />
       </Field>
       <Field label="Пароль" htmlFor="login-pass">
         <Input

@@ -100,7 +100,7 @@ export function RequestForm({ service, className = "mt-[25px]" }: { service: str
           onChange={(e) => setNote(e.target.value)}
           placeholder="Примечание"
           rows={2}
-          className={cn(field, "block h-[77px] min-h-[77px] resize-y pb-[8px] pt-[13px] leading-[20px]")}
+          className={cn(field, "block h-[77px] min-h-[77px] resize-none pb-[8px] pt-[13px] leading-[20px]")}
         />
       </div>
       <button
