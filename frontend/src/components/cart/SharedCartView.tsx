@@ -7,10 +7,12 @@ import { client } from "@/lib/client";
 import { ApiError } from "@/lib/api";
 import { useCart } from "@/store/cart";
 import { toast } from "@/store/toast";
-import { Button, ButtonLink } from "@/components/ui/Button";
+import Link from "next/link";
+import { cn } from "@/lib/cn";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { CartItemRow } from "./CartItemRow";
 import { CartSummary } from "./CartSummary";
+import { bigYellowBtn } from "./parts";
 
 export function SharedCartView({ token }: { token: string }) {
   const router = useRouter();
@@ -36,15 +38,15 @@ export function SharedCartView({ token }: { token: string }) {
 
   if (error) {
     return (
-      <div className="rounded-[8px] border border-dashed border-line py-16 text-center">
-        <p className="text-lg font-semibold">{error}</p>
-        <ButtonLink href="/catalog" className="mt-6">
+      <div className="mt-[31px] flex max-w-[831px] flex-col items-center rounded-[7px] bg-surface px-6 py-[56px] text-center">
+        <p className="text-[20px] font-bold leading-[24px]">{error}</p>
+        <Link href="/catalog" className={cn(bigYellowBtn, "mt-[24px] w-auto px-[32px]")}>
           Перейти в каталог
-        </ButtonLink>
+        </Link>
       </div>
     );
   }
-  if (!cart) return <Skeleton className="h-64" />;
+  if (!cart) return <Skeleton className="mt-[31px] h-64" />;
 
   const apply = async () => {
     setBusy(true);
@@ -60,19 +62,19 @@ export function SharedCartView({ token }: { token: string }) {
   };
 
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <ul className="rounded-[8px] border border-line bg-white px-5">
+    <div className="mt-[31px] grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_344px] lg:gap-x-[85px]">
+      <ul className="min-w-0">
         {cart.items.map((item) => (
           <CartItemRow key={item.id} item={item} readOnly onQty={() => undefined} onSelect={() => undefined} onRemove={() => undefined} />
         ))}
       </ul>
-      <div className="lg:sticky lg:top-[100px] lg:self-start">
+      <div className="lg:sticky lg:top-[134px] lg:self-start">
         <CartSummary
           cart={cart}
           action={
-            <Button full size="lg" onClick={apply} loading={busy}>
-              Добавить в мою корзину
-            </Button>
+            <button type="button" className={bigYellowBtn} onClick={apply} disabled={busy}>
+              {busy ? "Добавляем…" : "Добавить в мою корзину"}
+            </button>
           }
           note="Цены показаны с учётом условий вашего аккаунта."
         />

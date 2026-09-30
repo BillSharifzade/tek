@@ -2,24 +2,23 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Info, MapPin, Store, Truck } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Cart, CheckoutOptions, CheckoutPayload, CheckoutResult } from "@/lib/types";
 import { client } from "@/lib/client";
 import { ApiError } from "@/lib/api";
-import { money } from "@/lib/format";
+import { dayMonth, money } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { useCart } from "@/store/cart";
 import { useAuth } from "@/store/auth";
 import { toast } from "@/store/toast";
 import { useHydrated } from "@/lib/hooks";
-import { Button, ButtonLink } from "@/components/ui/Button";
-import { Field, Input, Textarea } from "@/components/ui/Input";
-import { Radio } from "@/components/ui/Checkbox";
+import { Input, Textarea } from "@/components/ui/Input";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { CartSummary } from "@/components/cart/CartSummary";
-import { ImageBox } from "@/components/ui/ImageBox";
 import { rememberOrderEmail } from "@/components/account/OrderSummaryCard";
+import { SummaryRow } from "@/components/cart/CartSummary";
+import { Chip, DashLine, Leader } from "@/components/cart/parts";
+import { IconAlif, IconCoins, IconDcBank, IconLift, IconLocateBtn } from "@/components/cart/icons";
+import { DUSHANBE, DeliveryMap, geocode, reverseGeocode } from "./DeliveryMap";
 
 interface FormState {
   first_name: string;
@@ -36,15 +35,87 @@ interface FormState {
 
 type Errors = Partial<Record<keyof FormState, string>>;
 
-function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+/** Поля чекаута в макете: рамка #E5E5E5, r7, плейсхолдер #666. */
+const coField = "rounded-[7px] border-line placeholder:text-sub";
+
+const confirmBtn =
+  "flex w-[253px] max-w-full shrink-0 items-center justify-center rounded-[4px] bg-brand text-[15px] font-medium leading-[24px] text-black transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60";
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[17px] font-semibold leading-[12px] text-black">{children}</h2>;
+}
+
+function FieldError({ children }: { children?: string }) {
+  if (!children) return null;
   return (
-    <section className="rounded-[8px] border border-line bg-white p-6">
-      <h2 className="mb-5 flex items-center gap-3 text-xl">
-        <span className="flex size-7 items-center justify-center rounded-full bg-brand text-sm font-bold">{n}</span>
-        {title}
-      </h2>
+    <p className="mt-[6px] text-[13px] leading-[17px] text-sale" role="alert">
       {children}
-    </section>
+    </p>
+  );
+}
+
+/** «Итого ……… 1 660,00 с.» 19/40 SemiBold, лидер Line 5 (Figma 10545:213–215). */
+function TotalLine({ total, className }: { total: number; className?: string }) {
+  return (
+    <div className={cn("flex w-[253px] max-w-full items-baseline text-[19px] font-semibold leading-[40px] text-black tnum", className)}>
+      <span className="shrink-0">Итого</span>
+      <Leader className="relative top-[4px] mb-[-2px] ml-[7px] mr-[5px] self-baseline" />
+      <span className="shrink-0 whitespace-nowrap">{money(total)}</span>
+    </div>
+  );
+}
+
+function IconInvoice(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg width={22} height={26} viewBox="0 0 22 26" fill="none" aria-hidden {...props}>
+      <path d="M3 1.2h11l6.8 6.8V23a1.8 1.8 0 0 1-1.8 1.8H3A1.8 1.8 0 0 1 1.2 23V3A1.8 1.8 0 0 1 3 1.2Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+      <path d="M13.6 1.6V8.4h6.8M5.5 13h11M5.5 17h11M5.5 21h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Поле «Дата» (Figma Group 106, 166×56): открывает нативный календарь в пределах доступных дат. */
+function DateField({ value, options, onChange, invalid }: { value: string; options: CheckoutOptions["delivery_dates"]; onChange: (d: string) => void; invalid?: boolean }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const available = options.filter((d) => d.available).map((d) => d.date);
+  return (
+    <div className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => {
+          const el = ref.current;
+          if (!el) return;
+          try {
+            el.showPicker();
+          } catch {
+            el.focus();
+          }
+        }}
+        className={cn(
+          "flex h-[56px] w-[166px] items-center rounded-[7px] border bg-white pb-[4px] pl-[13px] text-left text-[14px] leading-[12px] transition-colors hover:border-outline",
+          invalid ? "border-sale" : "border-line",
+          value ? "text-black" : "text-sub",
+        )}
+      >
+        {value ? dayMonth(value) : "Дата"}
+      </button>
+      <input
+        ref={ref}
+        type="date"
+        tabIndex={-1}
+        aria-label="Дата доставки"
+        value={value}
+        min={available[0]}
+        max={available[available.length - 1]}
+        onChange={(e) => {
+          const d = e.target.value;
+          if (!d) return;
+          if (available.includes(d)) onChange(d);
+          else toast.error("На эту дату доставка недоступна");
+        }}
+        className="pointer-events-none absolute bottom-0 left-0 h-px w-px opacity-0"
+      />
+    </div>
   );
 }
 
@@ -58,6 +129,8 @@ export function CheckoutView() {
   const [errors, setErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
+  const [center, setCenter] = useState<[number, number]>(DUSHANBE);
+  const [locating, setLocating] = useState(false);
 
   useEffect(() => {
     client
@@ -76,7 +149,7 @@ export function CheckoutView() {
   }, []);
 
   if (user && !prefilled) {
-    // first render with a known user → prefill contact fields once (derived-state pattern, no effect)
+    // первый рендер с известным пользователем → один раз подставляем контакты (derived state, без эффекта)
     setPrefilled(true);
     setForm((f) => ({ ...f, first_name: user.first_name, last_name: user.last_name, phone: user.phone, email: user.email, address: user.company?.address ?? f.address }));
   }
@@ -87,43 +160,70 @@ export function CheckoutView() {
 
   if (!hydrated || !loaded || !options) {
     return (
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="flex flex-col gap-6">
-          <Skeleton className="h-56" />
-          <Skeleton className="h-64" />
-          <Skeleton className="h-40" />
-        </div>
-        <Skeleton className="h-80" />
+      <div className="mt-[32px] grid grid-cols-1 gap-6 lg:grid-cols-[740px_297px] lg:gap-x-[36px]">
+        <Skeleton className="h-[1284px] rounded-[10px]" />
+        <Skeleton className="h-[137px] rounded-[10px]" />
       </div>
     );
   }
 
   if (!cart || selectedItems.length === 0) {
     return (
-      <div className="rounded-[8px] border border-dashed border-line py-16 text-center">
-        <p className="text-lg font-semibold">В корзине нет выбранных товаров</p>
-        <p className="mt-1 text-sm text-sub">Отметьте товары в корзине, чтобы оформить заказ.</p>
-        <ButtonLink href="/cart" className="mt-6">
+      <div className="mt-[32px] max-w-[740px] rounded-[10px] border border-line-3 bg-white px-[38px] py-[48px] text-center">
+        <p className="text-[20px] font-bold leading-[24px]">В корзине нет выбранных товаров</p>
+        <p className="mt-[8px] text-[14px] leading-[20px] text-sub">Отметьте товары в корзине, чтобы оформить заказ.</p>
+        <Link href="/cart" className={cn(confirmBtn, "mx-auto mt-[24px] h-[44px]")}>
           Перейти в корзину
-        </ButtonLink>
+        </Link>
       </div>
     );
   }
+
+  const total = Math.round((cart.total + deliveryPrice) * 100) / 100;
+  const pickup = form.method === "pickup";
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => {
     setForm((f) => ({ ...f, [k]: v }));
     setErrors((e) => ({ ...e, [k]: undefined }));
   };
 
+  const locate = () => {
+    if (!navigator.geolocation) {
+      toast.error("Браузер не поддерживает определение местоположения");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const c: [number, number] = [pos.coords.longitude, pos.coords.latitude];
+        setCenter(c);
+        const addr = await reverseGeocode(c[0], c[1]);
+        if (addr) set("address", addr);
+        setLocating(false);
+      },
+      () => {
+        setLocating(false);
+        toast.error("Не удалось определить местоположение");
+      },
+      { timeout: 10000 },
+    );
+  };
+
+  const findOnMap = async () => {
+    const q = form.address.trim();
+    if (q.length < 4) return;
+    const c = await geocode(q);
+    if (c) setCenter(c);
+  };
+
   const validate = (): boolean => {
     const e: Errors = {};
     if (!form.first_name.trim()) e.first_name = "Укажите имя";
-    if (!form.last_name.trim()) e.last_name = "Укажите фамилию";
     if (!/^\+?\d[\d\s()-]{6,}$/.test(form.phone.trim())) e.phone = "Укажите корректный номер телефона";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = "Укажите корректный e-mail";
-    if (form.method !== "pickup" && !form.address.trim()) e.address = "Укажите адрес доставки";
-    if (form.method !== "pickup" && !form.date) e.date = "Выберите дату доставки";
-    if (form.method === "pickup" && !form.store_id) e.store_id = "Выберите магазин";
+    if (!user && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = "Укажите e-mail — на него придёт подтверждение заказа";
+    if (!pickup && !form.address.trim()) e.address = "Укажите адрес доставки";
+    if (!pickup && !form.date) e.date = "Выберите дату доставки";
+    if (pickup && !form.store_id) e.store_id = "Выберите магазин";
     if (!form.payment) e.payment = "Выберите способ оплаты";
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -136,18 +236,16 @@ export function CheckoutView() {
       return;
     }
     setBusy(true);
+    const email = form.email.trim() || user?.email || "";
     const payload: CheckoutPayload = {
-      contact: { first_name: form.first_name.trim(), last_name: form.last_name.trim(), phone: form.phone.trim(), email: form.email.trim() },
-      delivery:
-        form.method === "pickup"
-          ? { method: "pickup", store_id: form.store_id ?? undefined }
-          : { method: form.method, address: form.address.trim(), date: form.date },
+      contact: { first_name: form.first_name.trim(), last_name: form.last_name.trim(), phone: form.phone.trim(), email },
+      delivery: pickup ? { method: "pickup", store_id: form.store_id ?? undefined } : { method: form.method, address: form.address.trim(), date: form.date },
       payment: { method: form.payment },
       comment: form.comment.trim() || undefined,
     };
     try {
       const r = await client.post<CheckoutResult>("/checkout", payload);
-      rememberOrderEmail(payload.contact.email);
+      rememberOrderEmail(email);
       try {
         setCart(await client.get<Cart>("/cart"));
       } catch {
@@ -169,173 +267,244 @@ export function CheckoutView() {
     }
   };
 
+  const payIcon = (code: string) => {
+    switch (code) {
+      case "alif":
+        return { icon: <IconAlif className="mr-[13px] shrink-0" />, cls: "pl-[17px]" };
+      case "dc":
+        return { icon: <IconDcBank className="mr-[15px] shrink-0" />, cls: "pl-[15px]" };
+      case "cash":
+        return { icon: <IconCoins className="mr-[12px] shrink-0 text-[#5F6061]" />, cls: "pl-[15px]" };
+      default:
+        return { icon: <IconInvoice className="mr-[12px] shrink-0 text-[#5F6061]" />, cls: "pl-[17px]" };
+    }
+  };
+
   return (
-    <form onSubmit={submit} noValidate className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="flex min-w-0 flex-col gap-6">
-        <Step n={1} title="Контактные данные">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Имя" htmlFor="co-first" required error={errors.first_name}>
-              <Input id="co-first" value={form.first_name} onChange={(e) => set("first_name", e.target.value)} invalid={Boolean(errors.first_name)} autoComplete="given-name" />
-            </Field>
-            <Field label="Фамилия" htmlFor="co-last" required error={errors.last_name}>
-              <Input id="co-last" value={form.last_name} onChange={(e) => set("last_name", e.target.value)} invalid={Boolean(errors.last_name)} autoComplete="family-name" />
-            </Field>
-            <Field label="Телефон" htmlFor="co-phone" required error={errors.phone}>
-              <Input id="co-phone" type="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} invalid={Boolean(errors.phone)} placeholder="+992" autoComplete="tel" />
-            </Field>
-            <Field label="E-mail" htmlFor="co-email" required error={errors.email}>
-              <Input id="co-email" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} invalid={Boolean(errors.email)} autoComplete="email" />
-            </Field>
+    <form onSubmit={submit} noValidate className="mt-[32px] grid grid-cols-1 gap-6 lg:grid-cols-[740px_297px] lg:items-start lg:gap-x-[36px]">
+      <div className="min-w-0 rounded-[10px] border border-line-3 bg-white">
+        {/* Способ получения — из API (доставка / самовывоз), в стиле чипсов макета */}
+        <section className="px-[16px] pb-[23px] pt-[30px] sm:pl-[38px] sm:pr-[35px]">
+          <SectionTitle>Способ получения</SectionTitle>
+          <div className="mt-[22px] flex flex-wrap gap-[9px]" role="radiogroup" aria-label="Способ получения">
+            {options.delivery_methods.map((m) => (
+              <Chip
+                key={m.code}
+                role="radio"
+                aria-checked={form.method === m.code}
+                active={form.method === m.code}
+                onClick={() => set("method", m.code)}
+                title={m.label}
+                sub={m.price > 0 ? money(m.price) : "бесплатно"}
+              />
+            ))}
           </div>
-          {!user ? (
-            <p className="mt-4 text-sm text-sub">
-              Уже есть аккаунт?{" "}
-              <Link href="/login?next=/checkout" className="text-info hover:underline">
-                Войдите
-              </Link>
-              , чтобы получить персональные цены и кешбэк.
-            </p>
-          ) : null}
-        </Step>
+        </section>
+        <DashLine />
 
-        <Step n={2} title="Способ получения">
-          <div className="mb-5 grid grid-cols-2 gap-2 rounded-[8px] bg-surface p-1" role="radiogroup" aria-label="Способ получения">
-            {options.delivery_methods.map((m) => {
-              const Icon = m.code === "pickup" ? Store : Truck;
-              const active = form.method === m.code;
-              return (
-                <button
-                  key={m.code}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => set("method", m.code)}
-                  className={cn("flex h-11 items-center justify-center gap-2 rounded-[6px] text-base font-medium transition-colors", active ? "bg-white shadow-sm" : "text-sub hover:text-ink")}
-                >
-                  <Icon className="size-4" />
-                  {m.label}
-                  <span className="text-xs text-sub">{m.price > 0 ? money(m.price) : "бесплатно"}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {form.method === "pickup" ? (
-            <div className="flex flex-col gap-3" role="radiogroup" aria-label="Магазин самовывоза">
-              {options.stores.map((s) => (
-                <label key={s.id} className={cn("flex cursor-pointer items-start gap-3 rounded-[8px] border p-4 transition-colors", form.store_id === s.id ? "border-brand bg-brand-light/40" : "border-line hover:border-muted")}>
-                  <Radio name="store" checked={form.store_id === s.id} onChange={() => set("store_id", s.id)} />
-                  <span>
-                    <span className="block text-base font-medium">
-                      {s.city} · {s.name}
-                    </span>
-                    <span className="mt-0.5 flex items-center gap-1 text-sm text-sub">
-                      <MapPin className="size-3.5" />
-                      {s.address}
-                    </span>
-                  </span>
-                </label>
-              ))}
-              {errors.store_id ? <p className="text-sm text-sale">{errors.store_id}</p> : null}
-            </div>
-          ) : (
-            <>
-              <Field label="Адрес доставки" htmlFor="co-address" required error={errors.address} hint={deliveryMethod?.description}>
-                <Input id="co-address" value={form.address} onChange={(e) => set("address", e.target.value)} invalid={Boolean(errors.address)} placeholder="Город, улица, дом, офис" autoComplete="street-address" />
-              </Field>
-              <div className="mt-5">
-                <p className="mb-2 text-sm text-sub">
-                  Дата доставки<span className="text-sale"> *</span>
-                </p>
-                <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Дата доставки">
-                  {options.delivery_dates.map((d) => {
-                    const active = form.date === d.date;
-                    return (
-                      <button
-                        key={d.date}
-                        type="button"
-                        role="radio"
-                        aria-checked={active}
-                        disabled={!d.available}
-                        onClick={() => set("date", d.date)}
-                        className={cn(
-                          "flex min-w-[120px] flex-col items-start rounded-[6px] border px-4 py-2.5 text-left transition-colors",
-                          active ? "border-brand bg-brand-light/50" : "border-line hover:border-ink",
-                          !d.available && "cursor-not-allowed opacity-50 hover:border-line",
-                        )}
-                      >
-                        <span className="text-base font-semibold">{d.label}</span>
-                        <span className="text-sm text-sub">{d.available ? d.day_label : "Недоступно"}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-                {errors.date ? <p className="mt-2 text-sm text-sale">{errors.date}</p> : null}
-              </div>
-              <p className="mt-4 flex items-start gap-2 rounded-[6px] bg-surface px-3 py-2.5 text-sm text-sub">
-                <Info className="mt-0.5 size-4 shrink-0" />
+        {!pickup ? (
+          <>
+            <section className="px-[16px] pb-[28px] pt-[25px] sm:pl-[38px] sm:pr-[35px]">
+              <p className="inline-flex min-h-[38px] items-center rounded-[7px] bg-brand-light py-[8px] pl-[16px] pr-[15px] text-[14px] leading-[16px] text-g333">
+                <IconLift className="mr-[9px] shrink-0 text-g333" />
                 {options.note}
               </p>
-            </>
-          )}
-        </Step>
+              <div className="mt-[20px]">
+                <SectionTitle>Адрес доставки</SectionTitle>
+              </div>
+              <div className="mt-[19px] flex gap-[7px]">
+                <button
+                  type="button"
+                  onClick={locate}
+                  disabled={locating}
+                  aria-label="Определить моё местоположение"
+                  title="Определить моё местоположение"
+                  className="flex size-[36px] shrink-0 items-center justify-center rounded-[6px] bg-btn text-[#5F6061] transition-colors hover:bg-btn-hover hover:text-black disabled:animate-pulse"
+                >
+                  <IconLocateBtn />
+                </button>
+                <div className="min-w-0 flex-1">
+                  <Input
+                    id="co-address"
+                    value={form.address}
+                    onChange={(e) => set("address", e.target.value)}
+                    onBlur={() => void findOnMap()}
+                    invalid={Boolean(errors.address)}
+                    placeholder="Адрес"
+                    aria-label="Адрес доставки"
+                    autoComplete="street-address"
+                    className={coField}
+                  />
+                  <FieldError>{errors.address}</FieldError>
+                </div>
+              </div>
+              <DeliveryMap center={center} className="mt-[17px]" />
+            </section>
+            <DashLine />
 
-        <Step n={3} title="Способ оплаты">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Способ оплаты">
-            {options.payment_methods.map((p) => (
-              <label
-                key={p.code}
-                className={cn(
-                  "flex cursor-pointer items-start gap-3 rounded-[8px] border p-4 transition-colors",
-                  form.payment === p.code ? "border-brand bg-brand-light/40" : "border-line hover:border-muted",
-                  !p.available && "cursor-not-allowed opacity-50",
-                )}
-              >
-                <Radio name="payment" checked={form.payment === p.code} disabled={!p.available} onChange={() => set("payment", p.code)} />
-                <span>
-                  <span className="block text-base font-medium">{p.label}</span>
-                  <span className="block text-sm text-sub">{p.sublabel}</span>
-                </span>
-              </label>
-            ))}
+            <section className="px-[16px] pb-[23px] pt-[25px] sm:pl-[38px] sm:pr-[35px]">
+              <SectionTitle>Дата доставки</SectionTitle>
+              <div className="mt-[20px] flex flex-wrap gap-[9px]" role="radiogroup" aria-label="Дата доставки">
+                <DateField value={form.date} options={options.delivery_dates} onChange={(d) => set("date", d)} invalid={Boolean(errors.date)} />
+                {options.delivery_dates.map((d) => (
+                  <Chip
+                    key={d.date}
+                    role="radio"
+                    aria-checked={form.date === d.date}
+                    active={form.date === d.date}
+                    disabled={!d.available}
+                    onClick={() => set("date", d.date)}
+                    title={d.label}
+                    sub={d.available ? d.day_label : "недоступно"}
+                  />
+                ))}
+              </div>
+              <FieldError>{errors.date}</FieldError>
+            </section>
+          </>
+        ) : (
+          <section className="px-[16px] pb-[23px] pt-[25px] sm:pl-[38px] sm:pr-[35px]">
+            <SectionTitle>Пункт самовывоза</SectionTitle>
+            <div className="mt-[20px] flex flex-wrap gap-[9px]" role="radiogroup" aria-label="Магазин самовывоза">
+              {options.stores.map((s) => (
+                <Chip
+                  key={s.id}
+                  role="radio"
+                  aria-checked={form.store_id === s.id}
+                  active={form.store_id === s.id}
+                  onClick={() => set("store_id", s.id)}
+                  title={`${s.city} · ${s.name}`}
+                  sub={s.address}
+                  className="h-auto min-h-[56px] max-w-full py-[13px] [&_span]:whitespace-normal [&_span:last-child]:leading-[16px] [&_span:last-child]:mt-[4px]"
+                />
+              ))}
+            </div>
+            <FieldError>{errors.store_id}</FieldError>
+            <p className="mt-[16px] text-[14px] leading-[18px] text-sub">{deliveryMethod?.description}</p>
+          </section>
+        )}
+        <DashLine />
+
+        <section className="px-[16px] pb-[25px] pt-[26px] sm:pl-[38px] sm:pr-[35px]">
+          <SectionTitle>Способ оплаты</SectionTitle>
+          <div className="mt-[22px] flex flex-wrap gap-[9px]" role="radiogroup" aria-label="Способ оплаты">
+            {options.payment_methods
+              .filter((p) => p.available || p.code !== "invoice")
+              .map((p) => {
+                const { icon, cls } = payIcon(p.code);
+                return (
+                  <Chip
+                    key={p.code}
+                    role="radio"
+                    aria-checked={form.payment === p.code}
+                    active={form.payment === p.code}
+                    disabled={!p.available}
+                    onClick={() => set("payment", p.code)}
+                    icon={icon}
+                    title={p.label}
+                    sub={p.sublabel}
+                    className={cn("pb-[2px]", cls)}
+                  />
+                );
+              })}
           </div>
-          {errors.payment ? <p className="mt-2 text-sm text-sale">{errors.payment}</p> : null}
-        </Step>
+          <FieldError>{errors.payment}</FieldError>
+        </section>
+        <DashLine />
 
-        <Step n={4} title="Комментарий к заказу">
-          <Textarea value={form.comment} onChange={(e) => set("comment", e.target.value)} placeholder="Пожелания по доставке, контактное лицо на объекте и т. д." aria-label="Комментарий к заказу" />
-        </Step>
-      </div>
+        <section className="px-[16px] pb-[28px] pt-[27px] sm:pl-[38px] sm:pr-[35px]">
+          <SectionTitle>Контактные данные</SectionTitle>
+          <div className="mt-[22px] grid grid-cols-1 gap-x-[17px] gap-y-[12px] sm:grid-cols-2">
+            <div>
+              <Input
+                value={form.first_name}
+                onChange={(e) => set("first_name", e.target.value)}
+                invalid={Boolean(errors.first_name)}
+                placeholder="Имя"
+                aria-label="Имя"
+                autoComplete="given-name"
+                className={coField}
+              />
+              <FieldError>{errors.first_name}</FieldError>
+            </div>
+            <div>
+              <Input
+                type="tel"
+                value={form.phone}
+                onChange={(e) => set("phone", e.target.value)}
+                invalid={Boolean(errors.phone)}
+                placeholder="Телефон"
+                aria-label="Телефон"
+                autoComplete="tel"
+                className={coField}
+              />
+              <FieldError>{errors.phone}</FieldError>
+            </div>
+            {!user ? (
+              <div>
+                <Input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => set("email", e.target.value)}
+                  invalid={Boolean(errors.email)}
+                  placeholder="E-mail"
+                  aria-label="E-mail"
+                  autoComplete="email"
+                  className={coField}
+                />
+                <FieldError>{errors.email}</FieldError>
+              </div>
+            ) : null}
+          </div>
+          {!user ? (
+            <p className="mt-[12px] text-[13px] leading-[17px] text-muted">
+              <Link href="/login?next=/checkout" className="link-hover text-link">
+                Войдите
+              </Link>
+              , чтобы получить персональные цены, кэшбэк и оплату по счёту для юрлиц.
+            </p>
+          ) : null}
+        </section>
+        <DashLine />
 
-      <div className="lg:sticky lg:top-[100px] lg:self-start">
-        <div className="mb-4 rounded-[8px] border border-line bg-white p-4">
-          <p className="mb-3 text-sm font-semibold">Товары ({selectedItems.length})</p>
-          <ul className="flex max-h-[240px] flex-col gap-3 overflow-y-auto pr-1">
-            {selectedItems.map((i) => (
-              <li key={i.id} className="flex items-center gap-3">
-                <ImageBox src={i.product.image} alt={i.product.name} className="size-12 shrink-0 border border-line" sizes="48px" rounded="rounded-[4px]" />
-                <span className="min-w-0 flex-1">
-                  <span className="line-clamp-1 text-sm">{i.product.name}</span>
-                  <span className="text-xs text-sub tnum">
-                    {i.qty} {i.product.unit} × {money(i.price.price)}
-                  </span>
-                </span>
-                <span className="text-sm font-semibold tnum">{money(i.line_total)}</span>
-              </li>
-            ))}
-          </ul>
+        <section className="px-[16px] pb-[29px] pt-[25px] sm:pl-[36px] sm:pr-[35px]">
+          <SectionTitle>Комментарий к заказу</SectionTitle>
+          <Textarea
+            value={form.comment}
+            onChange={(e) => set("comment", e.target.value)}
+            placeholder="Комментарий"
+            aria-label="Комментарий к заказу"
+            className={cn(coField, "mt-[20px] h-[72px] min-h-[72px] resize-none py-[7px] sm:w-[667px]")}
+          />
+        </section>
+        <DashLine />
+
+        <div className="flex flex-wrap items-start gap-x-[93px] gap-y-4 px-[16px] pb-[34px] pt-[29px] sm:pl-[36px] sm:pr-[35px]">
+          <TotalLine total={total} className="mt-[4px]" />
+          <button type="submit" disabled={busy} className={cn(confirmBtn, "h-[45px]")}>
+            {busy ? "Оформляем…" : "Подтвердить заказ"}
+          </button>
         </div>
-        <CartSummary
-          cart={cart}
-          deliveryPrice={deliveryPrice}
-          action={
-            <Button type="submit" full size="lg" loading={busy}>
-              Подтвердить заказ
-            </Button>
-          }
-          note="Нажимая «Подтвердить заказ», вы соглашаетесь с условиями продажи и обработкой персональных данных."
-        />
       </div>
+
+      <aside className="rounded-[10px] border border-line-3 bg-white px-[21px] pb-[24px] pt-[21px] lg:sticky lg:top-[134px] lg:pt-[14px]">
+        <div className="hidden lg:block">
+          <TotalLine total={total} />
+          <button type="submit" disabled={busy} className={cn(confirmBtn, "mt-[12px] h-[44px]")}>
+            {busy ? "Оформляем…" : "Подтвердить заказ"}
+          </button>
+        </div>
+        <div className="flex flex-col gap-[7px] lg:mt-[16px]">
+          <SummaryRow label={`Товары (${selectedItems.length})`} value={money(cart.subtotal_list)} />
+          {cart.discount_total > 0 ? <SummaryRow label="Скидка" value={money(cart.discount_total)} green /> : null}
+          {cart.coupon ? <SummaryRow label={`Промокод ${cart.coupon.code}`} value={money(cart.coupon.discount)} green /> : null}
+          <SummaryRow label="Доставка" value={deliveryPrice > 0 ? money(deliveryPrice) : "бесплатно"} />
+          {cart.cashback_total > 0 ? <SummaryRow label="Кэшбэк" value={money(cart.cashback_total)} className="text-[#4938F8]" /> : null}
+        </div>
+        <p className="mt-[12px] text-[12px] leading-[16px] text-muted">
+          Нажимая «Подтвердить заказ», вы соглашаетесь с условиями продажи и обработкой персональных данных.
+        </p>
+      </aside>
     </form>
   );
 }

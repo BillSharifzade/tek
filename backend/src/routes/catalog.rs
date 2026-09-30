@@ -16,10 +16,11 @@ use uuid::Uuid;
 use crate::{
     auth::{AuthUser, OptionalUser},
     error::{AppError, AppResult},
-    models::{BrandRef, CategoryRow, Crumb, DocumentJson, ProductCard, ProductRow, Sibling, StoreStock, PRODUCT_SELECT},
+    models::{BrandRef, CategoryRow, Crumb, DocumentJson, ProductCard, ProductRow, StoreStock, PRODUCT_SELECT},
     services::{
         catalog::{product_by_slug, products_by_ids, to_card},
         pricing::PriceCtx,
+        variants::{self, Variants},
     },
     state::AppState,
 };
@@ -240,6 +241,8 @@ async fn run_listing(state: &AppState, q: &HashMap<String, String>, ctx: &PriceC
         Some("price_asc") => " ORDER BY COALESCE(p.sale_price, p.list_price) ASC, p.id",
         Some("price_desc") => " ORDER BY COALESCE(p.sale_price, p.list_price) DESC, p.id",
         Some("name") => " ORDER BY p.name, p.id",
+        Some("rating") => " ORDER BY p.rating DESC, p.reviews_count DESC, p.popularity DESC, p.id",
+        Some("reviews") => " ORDER BY p.reviews_count DESC, p.rating DESC, p.popularity DESC, p.id",
         _ => " ORDER BY p.popularity DESC, p.id",
     };
     qb.push(order);
@@ -289,7 +292,7 @@ struct ProductJson {
     attributes: Value,
     pack: Option<Value>,
     stock: Vec<StoreStock>,
-    group: Option<Value>,
+    variants: Option<Variants>,
     documents: Vec<DocumentJson>,
     accessories: Vec<Value>,
     configurator: Option<Value>,
@@ -306,14 +309,6 @@ struct StockRow {
     name: String,
     qty: Decimal,
     delivery_hint: String,
-}
-
-#[derive(sqlx::FromRow)]
-struct SiblingRow {
-    slug: String,
-    code: String,
-    param_value: Option<String>,
-    stock_total: Decimal,
 }
 
 #[derive(sqlx::FromRow)]
@@ -351,30 +346,8 @@ async fn build_product(state: &AppState, p: &ProductRow, ctx: &PriceCtx) -> AppR
         qty: s.qty,
     })
     .collect();
-    let group = match p.group_id {
-        Some(gid) => {
-            let param_name: String = sqlx::query_scalar("SELECT param_name FROM product_groups WHERE id = $1").bind(gid).fetch_one(pool).await?;
-            let mut sib = sqlx::query_as::<_, SiblingRow>(
-                r#"SELECT p.slug, p.code, p.param_value, (SELECT COALESCE(SUM(qty),0) FROM stock s WHERE s.product_id = p.id) AS stock_total
-                   FROM products p WHERE p.group_id = $1"#,
-            )
-            .bind(gid)
-            .fetch_all(pool)
-            .await?;
-            sib.sort_by(|a, b| {
-                let na = a.param_value.as_deref().and_then(|v| v.parse::<f64>().ok());
-                let nb = b.param_value.as_deref().and_then(|v| v.parse::<f64>().ok());
-                match (na, nb) {
-                    (Some(x), Some(y)) => x.partial_cmp(&y).unwrap_or(std::cmp::Ordering::Equal),
-                    _ => a.param_value.cmp(&b.param_value),
-                }
-            });
-            let siblings: Vec<Sibling> = sib
-                .into_iter()
-                .map(|s| Sibling { slug: s.slug, code: s.code, param_value: s.param_value.unwrap_or_default(), in_stock: s.stock_total > Decimal::ZERO })
-                .collect();
-            Some(json!({ "param_name": param_name, "current": p.param_value, "siblings": siblings }))
-        }
+    let variants = match p.group_id {
+        Some(gid) => variants::load(pool, gid, ctx).await?,
         None => None,
     };
     let documents: Vec<DocumentJson> = sqlx::query_as::<_, crate::models::DocumentRow>(
@@ -418,7 +391,7 @@ async fn build_product(state: &AppState, p: &ProductRow, ctx: &PriceCtx) -> AppR
         attributes: p.attributes.clone(),
         pack,
         stock,
-        group,
+        variants,
         documents,
         accessories,
         configurator,
@@ -633,6 +606,51 @@ async fn post_question(State(state): State<AppState>, AuthUser(user): AuthUser, 
     Ok((StatusCode::CREATED, Json(question_json(&row))).into_response())
 }
 
+// ---------- delete own review / question ----------
+
+async fn delete_review(State(state): State<AppState>, AuthUser(user): AuthUser, Path((slug, id)): Path<(String, Uuid)>) -> AppResult<StatusCode> {
+    let mut tx = state.pool.begin().await?;
+    let pid: Option<Uuid> = sqlx::query_scalar(
+        "DELETE FROM reviews r USING products p WHERE r.id = $1 AND r.product_id = p.id AND p.slug = $2 AND r.user_id = $3 RETURNING r.product_id",
+    )
+    .bind(id)
+    .bind(&slug)
+    .bind(user.id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let pid = pid.ok_or_else(|| AppError::not_found("Отзыв не найден"))?;
+    sqlx::query(
+        r#"UPDATE products SET reviews_count = (SELECT count(*) FROM reviews WHERE product_id = $1 AND status = 'published'),
+           rating = (SELECT COALESCE(round(avg(rating)::numeric, 2), 0) FROM reviews WHERE product_id = $1 AND status = 'published') WHERE id = $1"#,
+    )
+    .bind(pid)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    state.invalidate_public();
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_question(State(state): State<AppState>, AuthUser(user): AuthUser, Path((slug, id)): Path<(String, Uuid)>) -> AppResult<StatusCode> {
+    let mut tx = state.pool.begin().await?;
+    let pid: Option<Uuid> = sqlx::query_scalar(
+        "DELETE FROM questions q USING products p WHERE q.id = $1 AND q.product_id = p.id AND p.slug = $2 AND q.user_id = $3 RETURNING q.product_id",
+    )
+    .bind(id)
+    .bind(&slug)
+    .bind(user.id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let pid = pid.ok_or_else(|| AppError::not_found("Вопрос не найден"))?;
+    sqlx::query("UPDATE products SET questions_count = (SELECT count(*) FROM questions WHERE product_id = $1) WHERE id = $1")
+        .bind(pid)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    state.invalidate_public();
+    Ok(StatusCode::NO_CONTENT)
+}
+
 // ---------- suggest ----------
 
 #[derive(Deserialize)]
@@ -642,10 +660,20 @@ struct SuggestQuery {
 
 #[derive(Serialize, sqlx::FromRow)]
 struct SuggestProduct {
+    id: Uuid,
     slug: String,
     name: String,
     code: String,
     price: Decimal,
+    image: Option<String>,
+    unit: String,
+    in_stock: bool,
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+struct SuggestCategory {
+    slug: String,
+    name: String,
     image: Option<String>,
 }
 
@@ -656,14 +684,16 @@ async fn suggest(State(state): State<AppState>, Query(q): Query<SuggestQuery>) -
     }
     let like = format!("%{text}%");
     let products = sqlx::query_as::<_, SuggestProduct>(
-        r#"SELECT slug, name, code, COALESCE(sale_price, list_price) AS price, images[1] AS image FROM products
-           WHERE name ILIKE $1 OR code ILIKE $1 ORDER BY (code ILIKE $2) DESC, popularity DESC LIMIT 6"#,
+        r#"SELECT p.id, p.slug, p.name, p.code, COALESCE(p.sale_price, p.list_price) AS price, p.images[1] AS image, p.unit,
+                  EXISTS (SELECT 1 FROM stock s WHERE s.product_id = p.id AND s.qty > 0) AS in_stock
+           FROM products p
+           WHERE p.name ILIKE $1 OR p.code ILIKE $1 ORDER BY (p.code ILIKE $2) DESC, p.popularity DESC LIMIT 5"#,
     )
     .bind(&like)
     .bind(format!("{text}%"))
     .fetch_all(&state.pool)
     .await?;
-    let categories = sqlx::query_as::<_, Crumb>("SELECT slug, name FROM categories WHERE name ILIKE $1 ORDER BY product_count DESC LIMIT 5")
+    let categories = sqlx::query_as::<_, SuggestCategory>("SELECT slug, name, image_url AS image FROM categories WHERE name ILIKE $1 ORDER BY product_count DESC LIMIT 5")
         .bind(&like)
         .fetch_all(&state.pool)
         .await?;
@@ -691,6 +721,8 @@ pub fn routes() -> Router<AppState> {
         .route("/catalog/products/{slug}", get(product))
         .route("/catalog/products/{slug}/reviews", get(reviews).post(post_review))
         .route("/catalog/products/{slug}/questions", get(questions).post(post_question))
+        .route("/catalog/products/{slug}/reviews/{id}", axum::routing::delete(delete_review))
+        .route("/catalog/products/{slug}/questions/{id}", axum::routing::delete(delete_question))
         .route("/catalog/suggest", get(suggest))
 }
 

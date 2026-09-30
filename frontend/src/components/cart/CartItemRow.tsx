@@ -1,15 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { AlertCircle } from "lucide-react";
+import { useState } from "react";
 import type { CartItem } from "@/lib/types";
 import { money, qty as fmtQty } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { inCity, useCity } from "@/store/city";
-import { useHydrated } from "@/lib/hooks";
 import { Checkbox } from "@/components/ui/Checkbox";
-import { Stepper } from "@/components/ui/Stepper";
 import { ImageBox } from "@/components/ui/ImageBox";
+import { CartFavorite, discountPercent } from "./parts";
+import { IconInStock, IconTrash } from "./icons";
 
 export interface CartItemRowProps {
   item: CartItem;
@@ -20,76 +19,179 @@ export interface CartItemRowProps {
   readOnly?: boolean;
 }
 
+/** Степпер строки корзины (Figma: «-  1000000  +», 14/12 Medium #666, без рамок). 106px — ширина колонки под ним. */
+function QtyStepper({ value, onChange, max, label }: { value: number; onChange: (v: number) => void; max?: number; label: string }) {
+  const [text, setText] = useState(String(value));
+  const [last, setLast] = useState(value);
+  if (last !== value) {
+    setLast(value);
+    setText(String(value));
+  }
+  const commit = (raw: string) => {
+    const n = Math.floor(Number(raw.replace(",", ".").replace(/\s/g, "")));
+    const next = Number.isFinite(n) && n >= 1 ? n : 1;
+    setText(String(next));
+    if (next !== value) onChange(next);
+  };
+  return (
+    <div className="flex h-[12px] w-[106px] items-center" role="group" aria-label={label}>
+      <button
+        type="button"
+        onClick={() => value > 1 && onChange(value - 1)}
+        disabled={value <= 1}
+        aria-label="Уменьшить"
+        className="flex h-[24px] w-[18px] shrink-0 items-center justify-center text-sub transition-colors hover:text-black disabled:text-[#C4C4C4]"
+      >
+        <svg width={7} height={2} viewBox="0 0 7 2" aria-hidden>
+          <rect y="0.35" width="7" height="1.3" fill="currentColor" />
+        </svg>
+      </button>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={text}
+        aria-label={label}
+        onChange={(e) => setText(e.target.value.replace(/[^\d]/g, ""))}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit((e.target as HTMLInputElement).value);
+          if (e.key === "ArrowUp") {
+            e.preventDefault();
+            onChange(value + 1);
+          }
+          if (e.key === "ArrowDown" && value > 1) {
+            e.preventDefault();
+            onChange(value - 1);
+          }
+        }}
+        className="h-[20px] w-[69px] min-w-0 rounded-[3px] bg-transparent p-0 text-center text-[14px] font-medium leading-[20px] text-sub tnum outline-none transition-colors hover:bg-surface focus:bg-surface"
+      />
+      <button
+        type="button"
+        onClick={() => onChange(value + 1)}
+        disabled={max !== undefined && value >= max}
+        aria-label="Увеличить"
+        className="flex h-[24px] w-[19px] shrink-0 items-center justify-center text-sub transition-colors hover:text-black disabled:text-[#C4C4C4]"
+      >
+        <svg width={9} height={9} viewBox="0 0 9 9" aria-hidden>
+          <path d="M0 4.5h9M4.5 0v9" stroke="currentColor" strokeWidth="1.3" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Строка корзины 1:1 с Figma 8641:438 (Group 57 / 111): чекбокс 16, фото 81×81 r5, «Код» + наличие,
+ * название, [«Распродажа»], цена за шт (со скидкой — зачёркнутая + зелёная), степпер, сумма строки,
+ * «-12%» и зачёркнутая сумма, «Комплектующие» / «Удалить», сердечко 24×24.
+ */
 export function CartItemRow({ item, onQty, onSelect, onRemove, onAccessories, readOnly }: CartItemRowProps) {
-  const hydrated = useHydrated();
-  const city = useCity((s) => s.city);
   const p = item.product;
   const discounted = item.price.price < item.price.list - 0.004;
+  const pct = discountPercent(item.price.list, item.price.price);
+  const sale = p.badges.includes("sale") || item.price.sale;
   const error = item.error ?? (item.qty > item.stock_total && item.stock_total >= 0 ? { code: "insufficient_stock" as const, available: item.stock_total } : null);
+  const inStock = item.stock_total > 0;
 
   return (
-    <li className={cn("flex gap-4 border-b border-line py-5 last:border-b-0", !item.selected && !readOnly && "opacity-70")}>
-      {!readOnly ? (
-        <div className="pt-1">
-          <Checkbox checked={item.selected} onChange={(e) => onSelect(e.target.checked)} aria-label={`Выбрать ${p.name}`} />
-        </div>
-      ) : null}
-      <Link href={`/product/${p.slug}`} className="shrink-0">
-        <ImageBox src={p.image} alt={p.name} className="size-20 border border-line sm:size-24" sizes="96px" rounded="rounded-[6px]" />
+    <li className={cn("relative flex border-b border-line pb-[32px] pt-[40px] first:pt-0 last:border-b-0 last:pb-0", !item.selected && !readOnly && "[&_.cart-dim]:opacity-60")}>
+      {!readOnly ? <Checkbox box={16} checked={item.selected} onChange={(e) => onSelect(e.target.checked)} aria-label={`Выбрать ${p.name}`} className="ml-[1px] h-[16px] shrink-0 self-start" /> : null}
+      <Link href={`/product/${p.slug}`} className={cn("cart-dim shrink-0 transition-opacity", !readOnly && "ml-[13px]")} tabIndex={-1} aria-hidden>
+        <ImageBox src={p.image} alt={p.name} className="size-[81px] bg-white" sizes="81px" rounded="rounded-[5px]" />
       </Link>
-      <div className="grid min-w-0 flex-1 grid-cols-1 gap-x-6 gap-y-3 md:grid-cols-[minmax(0,1fr)_auto_140px]">
-        <div className="min-w-0">
-          <Link href={`/product/${p.slug}`} className="line-clamp-2 text-base font-medium hover:text-brand-hover">
-            {p.name}
-          </Link>
-          <p className="mt-1 text-xs text-sub">Код: {p.code}</p>
-          <p className="mt-1 text-sm">
-            <span className={item.stock_total > 0 ? "text-ink" : "text-sale"}>
-              {inCity(hydrated ? city : "Душанбе")}: {item.stock_total > 0 ? `${fmtQty(item.stock_total)} ${p.unit}` : "нет в наличии"}
-            </span>
-            {item.stock_total > 0 ? <span className="text-sub"> · Доставка: сегодня</span> : null}
-          </p>
-          {!readOnly ? (
-            <div className="mt-3 flex items-center gap-4 text-sm">
-              {onAccessories ? (
-                <button type="button" onClick={onAccessories} className="font-medium text-info hover:underline">
-                  Комплектующие
-                </button>
-              ) : null}
-              <button type="button" onClick={onRemove} className="text-sub hover:text-sale">
-                Удалить
-              </button>
-            </div>
-          ) : null}
-        </div>
-        <div className="flex flex-col items-start gap-1.5 md:items-center">
-          {readOnly ? (
-            <span className="text-base font-medium tnum">
-              {fmtQty(item.qty)} {p.unit}
+
+      <div className="cart-dim relative ml-[16px] min-w-0 flex-1 transition-opacity">
+        <div className="mt-[3px] flex flex-wrap items-center gap-y-[6px] pr-[36px] text-[14px] leading-[12px] sm:h-[12px] sm:flex-nowrap">
+          <span className="whitespace-nowrap text-sub">Код: {p.code}</span>
+          {inStock ? (
+            <span className="ml-[12px] flex items-center gap-[5px] whitespace-nowrap text-black">
+              <IconInStock className="shrink-0" />
+              В наличии ({fmtQty(item.stock_total)} {p.unit})
             </span>
           ) : (
-            <Stepper value={item.qty} onChange={onQty} min={1} max={item.stock_total > 0 ? item.stock_total : undefined} ariaLabel={`Количество ${p.name}`} />
+            <span className="ml-[12px] whitespace-nowrap text-sale">Нет в наличии</span>
           )}
-          <span className="text-xs text-sub tnum">
-            {money(item.price.price)} {p.price_unit_label}
+        </div>
+
+        <Link href={`/product/${p.slug}`} className="link-hover mt-[10px] block max-w-[660px] pr-[36px] text-[14px] leading-[18px] text-black line-clamp-2">
+          {p.name}
+        </Link>
+
+        {discounted ? (
+          <span className="ml-[1px] mt-[7px] flex h-[19px] w-fit items-center rounded-[3px] bg-sale-bg pl-[7px] pr-[6px] text-[12px] font-semibold leading-[15px] text-sale-text">
+            {sale ? "Распродажа" : "Ваша скидка"}
           </span>
-        </div>
-        <div className="flex flex-col items-start tnum md:items-end">
-          <span className="text-lg font-semibold">{money(item.line_total)}</span>
-          {discounted ? (
-            <>
-              <span className="text-xs text-muted line-through">{money(item.price.list * item.qty)}</span>
-              <span className="text-xs font-medium text-sale">скидка {Math.round(item.price.discount_pct)}%</span>
-            </>
-          ) : null}
-          {item.line_cashback > 0 ? <span className="mt-1 rounded-[4px] bg-brand-light px-1.5 py-0.5 text-[11px] font-semibold">Кешбэк {money(item.line_cashback)}</span> : null}
-        </div>
-        {error ? (
-          <p className="flex items-center gap-1.5 text-sm text-sale md:col-span-3" role="alert">
-            <AlertCircle className="size-4" />
-            В наличии только {fmtQty(error.available)} {p.unit}. Уменьшите количество, чтобы оформить заказ.
-          </p>
         ) : null}
+
+        <div className={cn("grid grid-cols-2 items-center gap-y-[14px] leading-[12px] sm:h-[12px] sm:grid-cols-[minmax(0,1fr)_106px_133px] sm:grid-rows-[12px] sm:gap-y-0", discounted ? "mt-[16px]" : "mt-[14px]")}>
+          <p className="col-span-2 text-[14px] leading-[18px] tnum sm:col-span-1 sm:whitespace-nowrap sm:leading-[12px]">
+            {discounted ? (
+              <>
+                <span className="whitespace-nowrap text-muted line-through">
+                  {money(item.price.list)} {p.price_unit_label}
+                </span>
+                <span className="ml-[13px] font-medium text-[#0FB500] sm:whitespace-nowrap">
+                  {money(item.price.price)} {p.price_unit_label}
+                </span>
+              </>
+            ) : (
+              <span className="text-sub">
+                {money(item.price.price)} {p.price_unit_label}
+              </span>
+            )}
+          </p>
+
+          <div className="relative">
+            {readOnly ? (
+              <span className="block w-[106px] text-center text-[14px] font-medium leading-[12px] text-sub tnum">
+                {fmtQty(item.qty)} {p.unit}
+              </span>
+            ) : (
+              <QtyStepper value={item.qty} onChange={onQty} label={`Количество ${p.name}`} />
+            )}
+            {error ? (
+              <span role="alert" className="absolute left-0 top-[19px] w-[106px] whitespace-nowrap text-center text-[12px] leading-[12px] text-sale tnum">
+                В наличии ({fmtQty(error.available)}
+                {p.unit})
+              </span>
+            ) : null}
+          </div>
+
+          <div className="relative flex flex-col items-end gap-[6px] text-right sm:block">
+            {discounted ? (
+              <>
+                <span className="flex h-[20px] items-center sm:absolute sm:bottom-[43px] sm:right-0 rounded-[3px] bg-[#0FB500] pl-[4px] pr-[5px] text-[12px] font-extrabold leading-[12px] text-white tnum">
+                  -{pct}%
+                </span>
+                <span className="whitespace-nowrap sm:absolute sm:bottom-[22px] sm:right-0 text-[14px] leading-[12px] text-muted line-through tnum">
+                  {money(item.price.list * item.qty)}
+                </span>
+              </>
+            ) : null}
+            <span className="whitespace-nowrap text-[16px] font-semibold leading-[12px] text-black tnum">{money(item.line_total)}</span>
+          </div>
+        </div>
+
+        {!readOnly ? (
+          <div className="mt-[11px] flex items-center">
+            {onAccessories !== undefined ? (
+              <button
+                type="button"
+                onClick={onAccessories}
+                className="h-[32px] min-w-[144px] rounded-[5px] bg-btn px-[16px] text-[14px] font-medium leading-[12px] text-g333 transition-colors hover:bg-btn-hover hover:text-black"
+              >
+                Комплектующие
+              </button>
+            ) : null}
+            <button type="button" onClick={onRemove} className="link-hover ml-[19px] flex items-center gap-[3px] text-[14px] leading-[12px] text-sub">
+              <IconTrash className="-mt-[1px] shrink-0" />
+              Удалить
+            </button>
+          </div>
+        ) : null}
+
+        <CartFavorite product={p} className="absolute right-0 top-0" />
       </div>
     </li>
   );

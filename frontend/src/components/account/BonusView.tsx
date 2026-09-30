@@ -1,25 +1,30 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Download, Gift } from "lucide-react";
+import { Download } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { BonusEntry, BonusStatement } from "@/lib/types";
 import { client, downloadFile } from "@/lib/client";
-import { date, money } from "@/lib/format";
+import { date, money, moneyBare } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { useAuth } from "@/store/auth";
 import { toast } from "@/store/toast";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { DataTable, type Column } from "./DataTable";
+import { DataTable, cellPad, type Column } from "./DataTable";
 import { PeriodFilter, periodFromParams, periodKey, type Period } from "./PeriodFilter";
-import { ErrorLine, PageTitle, errorMessage } from "./shared";
+import { Card, CardTitle, ErrorLine, errorMessage } from "./shared";
 
 type Entry = BonusEntry & { kind_label?: string };
 type Statement = BonusStatement & { entries: Entry[]; accrued?: number; spent?: number; period?: { from: string; to: string } };
 
 const KIND_LABEL: Record<BonusEntry["kind"], string> = { accrual: "Начисление", spend: "Списание", adjust: "Корректировка" };
 
+/**
+ * «Бонусная карта» (макета нет — в стиле карточек ЛК): бонусный счёт и детализация по каждому заказу
+ * за выбранный период — «подобие акта сверки» (ТЗ), с выгрузкой в Excel.
+ */
 export function BonusView() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -67,96 +72,109 @@ export function BonusView() {
   };
 
   const columns: Column<Entry>[] = [
-    { key: "date", header: "Дата", cell: (r) => <span className="tnum">{date(r.date)}</span> },
-    { key: "order", header: "Заказ", cell: (r) => (r.order_number ? <span className="font-medium tnum">{r.order_number}</span> : <span className="text-sub">—</span>) },
+    { key: "date", header: "Дата", className: "w-[110px]", cell: (r) => <span className="tnum">{date(r.date)}</span> },
+    {
+      key: "order",
+      header: "Заказ",
+      className: "w-[130px]",
+      cell: (r) =>
+        r.order_number ? (
+          <Link href={`/account/orders/${r.order_number}`} className="font-medium tnum text-black underline decoration-line-3 underline-offset-[3px] hover:decoration-black">
+            {r.order_number}
+          </Link>
+        ) : (
+          <span className="text-muted">—</span>
+        ),
+    },
     {
       key: "kind",
       header: "Операция",
       cell: (r) => (
         <span>
           {r.kind_label ?? KIND_LABEL[r.kind]}
-          {r.note ? <span className="block text-xs text-sub">{r.note}</span> : null}
+          {r.note ? <span className="block text-[13px] leading-[17px] text-sub">{r.note}</span> : null}
         </span>
       ),
     },
     {
       key: "amount",
-      header: "Сумма",
+      header: "Сумма, с.",
       align: "right",
-      cell: (r) => <span className={cn("font-semibold tnum", r.amount >= 0 ? "text-success" : "text-sale")}>{r.amount >= 0 ? `+ ${money(r.amount)}` : `− ${money(Math.abs(r.amount))}`}</span>,
+      className: "w-[130px]",
+      cell: (r) => <span className={cn("font-medium tnum", r.amount >= 0 ? "text-[#00A000]" : "text-[#D13B3E]")}>{r.amount >= 0 ? `+${moneyBare(r.amount)}` : `−${moneyBare(Math.abs(r.amount))}`}</span>,
     },
-    { key: "balance", header: "Баланс", align: "right", cell: (r) => <span className="tnum">{money(r.balance)}</span> },
+    { key: "balance", header: "Баланс, с.", align: "right", className: "w-[130px]", cell: (r) => <span className="tnum">{moneyBare(r.balance)}</span> },
   ];
 
   const balance = data?.balance ?? user?.bonus_balance ?? 0;
+  const accrued = data ? (data.accrued ?? data.entries.filter((e) => e.amount > 0).reduce((s, e) => s + e.amount, 0)) : 0;
+  const spent = data ? (data.spent ?? Math.abs(data.entries.filter((e) => e.amount < 0).reduce((s, e) => s + e.amount, 0))) : 0;
 
   return (
-    <div className="flex flex-col gap-5">
-      <PageTitle>Бонусная карта</PageTitle>
-
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-        <div className="flex items-center gap-5 rounded-[8px] bg-ink p-6 text-white">
-          <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-brand text-ink">
-            <Gift className="size-7" strokeWidth={1.75} aria-hidden />
-          </span>
-          <div className="min-w-0">
-            <p className="text-sm text-white/70">Бонусный счёт</p>
-            <p className="text-4xl font-semibold text-brand tnum">{money(balance)}</p>
-            {user ? <p className="mt-1 text-sm text-white/70">Кешбэк {user.cashback_pct}% с каждого оплаченного заказа</p> : null}
+    <div className="flex flex-col gap-[16px] lg:gap-[27px]">
+      <Card>
+        <CardTitle>Бонусная карта</CardTitle>
+        <div className="mt-[21px] flex flex-col gap-[20px] sm:flex-row sm:items-stretch sm:gap-[27px]">
+          <div className="flex w-full shrink-0 flex-col justify-between rounded-[10px] bg-brand px-[22px] pb-[18px] pt-[18px] sm:w-[304px]" aria-label="Бонусный счёт">
+            <span className="text-[14px] font-medium leading-[20px] text-black">Бонусный счёт ТЭК</span>
+            <span className="mt-[18px] text-[28px] font-bold leading-[32px] text-black tnum">{money(balance)}</span>
+            <span className="mt-[10px] text-[13px] leading-[17px] text-g333">
+              {user ? `${user.first_name} ${user.last_name}`.trim() : ""}
+              {user ? ` · кешбэк ${user.cashback_pct}%` : ""}
+            </span>
+          </div>
+          <div className="flex flex-col justify-center gap-[8px] text-[14px] leading-[20px] text-sub">
+            <p className="text-black">Кешбэк начисляется на бонусный счёт после оплаты заказа и доступен для оплаты следующих заказов.</p>
+            {data ? (
+              <p className="tnum">
+                За период: начислено <span className="font-medium text-[#00A000]">{money(accrued)}</span>, списано <span className="font-medium text-black">{money(spent)}</span>
+              </p>
+            ) : null}
           </div>
         </div>
-        <div className="flex flex-col justify-center gap-2 rounded-[8px] border border-line bg-white p-6 text-base">
-          <p>Кешбэк начисляется после оплаты заказа и доступен для оплаты следующих заказов.</p>
-          {data ? (
-            <p className="text-sm text-sub tnum">
-              За период: начислено {money(data.accrued ?? data.entries.filter((e) => e.amount > 0).reduce((s, e) => s + e.amount, 0))}, списано{" "}
-              {money(data.spent ?? Math.abs(data.entries.filter((e) => e.amount < 0).reduce((s, e) => s + e.amount, 0)))}
-            </p>
+      </Card>
+
+      <Card>
+        <CardTitle
+          right={
+            <Button variant="secondary" icon={<Download className="size-4" aria-hidden />} loading={downloading} onClick={download} disabled={!data}>
+              Скачать в Excel
+            </Button>
+          }
+        >
+          Детализация бонусов
+        </CardTitle>
+        <PeriodFilter key={key} value={period} onApply={apply} busy={busy && result !== null} className="mt-[22px]" />
+        <ErrorLine error={error} className="mt-[20px]" />
+        <div className="mt-[37px]">
+          {data === null && !error ? (
+            <Skeleton className="h-[200px] rounded-[10px]" />
+          ) : data ? (
+            <DataTable
+              columns={columns}
+              rows={data.entries}
+              rowKey={(r, i) => `${r.date}-${i}`}
+              empty="За выбранный период операций по бонусному счёту нет"
+              prepend={
+                <tr className="border-b border-line bg-surface-2">
+                  <td colSpan={4} className={cn(cellPad, "text-sub")}>
+                    Баланс на {date(data.period?.from ?? period.from)}
+                  </td>
+                  <td className={cn(cellPad, "text-right font-medium tnum")}>{moneyBare(data.opening)}</td>
+                </tr>
+              }
+              footer={
+                <tr className="bg-surface-2 font-semibold">
+                  <td colSpan={4} className={cellPad}>
+                    Баланс на {date(data.period?.to ?? period.to)}
+                  </td>
+                  <td className={cn(cellPad, "text-right tnum")}>{moneyBare(data.closing)}</td>
+                </tr>
+              }
+            />
           ) : null}
         </div>
-      </section>
-
-      <PeriodFilter
-        key={key}
-        value={period}
-        onApply={apply}
-        busy={busy}
-        right={
-          <Button variant="secondary" icon={<Download className="size-4" />} loading={downloading} onClick={download} disabled={!data}>
-            Скачать
-          </Button>
-        }
-      />
-      <ErrorLine error={error} />
-
-      {data === null && !error ? (
-        <Skeleton className="h-64" />
-      ) : data ? (
-        <DataTable
-          columns={columns}
-          rows={data.entries}
-          rowKey={(r, i) => `${r.date}-${i}`}
-          empty="За выбранный период операций по бонусному счёту нет"
-          prepend={
-            <tr className="bg-surface-2 text-sm">
-              <td colSpan={4} className="px-4 py-2.5 text-sub">
-                Баланс на {date(data.period?.from ?? period.from)}
-              </td>
-              <td className="px-4 py-2.5 text-right font-medium tnum">{money(data.opening)}</td>
-            </tr>
-          }
-          footer={
-            <>
-              <tr className="border-t border-line bg-surface font-semibold">
-                <td colSpan={4} className="px-4 py-3">
-                  Баланс на {date(data.period?.to ?? period.to)}
-                </td>
-                <td className="px-4 py-3 text-right tnum">{money(data.closing)}</td>
-              </tr>
-            </>
-          }
-        />
-      ) : null}
+      </Card>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { passwordValid } from "@/lib/password";
@@ -10,6 +10,7 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Input";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { PasswordRules } from "./PasswordRules";
+import { AuthAlert } from "./AuthShell";
 
 const TYPES: { value: "retail" | "electrician" | "purchaser"; label: string; hint: string }[] = [
   { value: "retail", label: "Физическое лицо", hint: "Розница" },
@@ -109,13 +110,13 @@ export function RegisterForm() {
 
   if (done) {
     return (
-      <div className="flex flex-col items-center py-6 text-center">
-        <CheckCircle2 className="size-14 text-success" strokeWidth={1.5} />
-        <h2 className="mt-4">Заявка отправлена на одобрение</h2>
-        <p className="mt-2 max-w-sm text-sub">
-          Регистрация новых аккаунтов проходит через одобрение компании. Как только доступ будет открыт, мы сообщим на <span className="font-medium text-ink">{s.email}</span>.
+      <div className="flex flex-col items-center py-[12px] text-center">
+        <CheckCircle2 className="size-[56px] text-[#00BA00]" strokeWidth={1.5} aria-hidden />
+        <h2 className="mt-[16px] text-[20px] font-semibold leading-[24px]">Заявка отправлена на одобрение</h2>
+        <p className="mt-[8px] max-w-[420px] text-[14px] leading-[20px] text-sub">
+          Регистрация новых аккаунтов проходит через одобрение компании. Как только доступ будет открыт, мы сообщим на <span className="font-medium text-black">{s.email}</span>.
         </p>
-        <ButtonLink href="/" className="mt-6">
+        <ButtonLink href="/" className="mt-[24px]">
           На главную
         </ButtonLink>
       </div>
@@ -125,33 +126,35 @@ export function RegisterForm() {
   const needCompany = s.withCompany || s.customer_type === "purchaser";
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-5">
-      {serverError ? (
-        <div role="alert" className="rounded-[6px] border border-sale/30 bg-sale/5 px-4 py-3 text-sm font-medium text-sale">
-          {serverError}
-        </div>
-      ) : null}
+    <form onSubmit={submit} noValidate className="flex flex-col gap-[20px]">
+      {serverError ? <AuthAlert title={serverError} /> : null}
 
       <div>
-        <p className="mb-2 text-sm text-sub">Тип клиента</p>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" role="radiogroup" aria-label="Тип клиента">
-          {TYPES.map((t) => (
-            <button
-              key={t.value}
-              type="button"
-              role="radio"
-              aria-checked={s.customer_type === t.value}
-              onClick={() => set("customer_type", t.value)}
-              className={cn("flex flex-col items-start rounded-[6px] border px-3 py-2.5 text-left transition-colors", s.customer_type === t.value ? "border-brand bg-brand-light/50" : "border-line hover:border-ink")}
-            >
-              <span className="text-base font-medium">{t.label}</span>
-              <span className="text-xs text-sub">{t.hint}</span>
-            </button>
-          ))}
+        <p className="mb-[8px] text-[14px] leading-[18px] text-sub">Тип клиента</p>
+        <div className="grid grid-cols-1 gap-[9px] sm:grid-cols-3" role="radiogroup" aria-label="Тип клиента">
+          {TYPES.map((t) => {
+            const active = s.customer_type === t.value;
+            return (
+              <button
+                key={t.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => set("customer_type", t.value)}
+                className={cn(
+                  "flex min-h-[56px] flex-col items-start justify-center rounded-[7px] border px-[14px] py-[8px] text-left transition-colors",
+                  active ? "border-brand bg-brand-light/50" : "border-transparent bg-btn hover:bg-btn-hover",
+                )}
+              >
+                <span className="text-[14px] font-medium leading-[18px] text-black">{t.label}</span>
+                <span className="mt-[2px] text-[12px] leading-[15px] text-g333">{t.hint}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-x-[12px] gap-y-[14px] sm:grid-cols-2">
         <Field label="Имя" htmlFor="rg-first" required error={errors.first_name}>
           <Input id="rg-first" value={s.first_name} onChange={(e) => set("first_name", e.target.value)} invalid={Boolean(errors.first_name)} autoComplete="given-name" />
         </Field>
@@ -164,7 +167,7 @@ export function RegisterForm() {
         <Field label="Номер телефона" htmlFor="rg-phone" required error={errors.phone}>
           <Input id="rg-phone" type="tel" value={s.phone} onChange={(e) => set("phone", e.target.value)} invalid={Boolean(errors.phone)} placeholder="+992" autoComplete="tel" />
         </Field>
-        <Field label="Пароль" htmlFor="rg-pass" required error={errors.password} className="sm:col-span-2">
+        <Field label="Пароль" htmlFor="rg-pass" required error={errors.password}>
           <Input
             id="rg-pass"
             type={show ? "text" : "password"}
@@ -173,33 +176,32 @@ export function RegisterForm() {
             invalid={Boolean(errors.password)}
             autoComplete="new-password"
             right={
-              <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? "Скрыть пароль" : "Показать пароль"} className="hover:text-ink">
+              <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? "Скрыть пароль" : "Показать пароль"} className="transition-colors hover:text-black">
                 {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
             }
           />
-          <PasswordRules password={s.password} userName={s.email} />
         </Field>
-        <Field label="Подтверждение пароля" htmlFor="rg-pass2" required error={errors.password2} className="sm:col-span-2">
+        <Field label="Подтверждение пароля" htmlFor="rg-pass2" required error={errors.password2}>
           <Input id="rg-pass2" type={show ? "text" : "password"} value={s.password2} onChange={(e) => set("password2", e.target.value)} invalid={Boolean(errors.password2)} autoComplete="new-password" />
         </Field>
+        <PasswordRules password={s.password} userName={s.email} className="-mt-[8px] sm:col-span-2" />
       </div>
 
-      <div className="rounded-[8px] border border-line bg-surface-2 p-4">
+      <div className="rounded-[10px] bg-surface-2 px-[16px] py-[14px]">
         <Checkbox
           checked={needCompany}
           disabled={s.customer_type === "purchaser"}
           onChange={(e) => set("withCompany", e.target.checked)}
           label={
-            <span className="flex items-center gap-2 font-medium">
-              <Building2 className="size-4 text-sub" />
+            <span className="font-medium text-black">
               Данные компании
-              {s.customer_type === "purchaser" ? <span className="text-xs font-normal text-sub">(обязательно для закупщиков)</span> : null}
+              {s.customer_type === "purchaser" ? <span className="ml-[6px] text-[13px] font-normal text-sub">(обязательно для закупщиков)</span> : null}
             </span>
           }
         />
         {needCompany ? (
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="mt-[14px] grid grid-cols-1 gap-x-[12px] gap-y-[14px] sm:grid-cols-2">
             <Field label="Наименование" htmlFor="rg-company" required error={errors.company_name} className="sm:col-span-2">
               <Input id="rg-company" value={s.company_name} onChange={(e) => set("company_name", e.target.value)} invalid={Boolean(errors.company_name)} placeholder="ООО «Компания»" autoComplete="organization" />
             </Field>
@@ -213,15 +215,17 @@ export function RegisterForm() {
         ) : null}
       </div>
 
-      <Checkbox checked={s.agree} onChange={(e) => set("agree", e.target.checked)} label={<span className="text-sm text-sub">Я согласен(а) на обработку персональных данных и с условиями обслуживания</span>} />
-      {errors.agree ? <p className="-mt-3 text-sm text-sale">{errors.agree}</p> : null}
+      <div>
+        <Checkbox checked={s.agree} onChange={(e) => set("agree", e.target.checked)} className="items-start" label={<span className="text-[13px] leading-[18px] text-sub">Я согласен(а) на обработку персональных данных и с условиями обслуживания</span>} />
+        {errors.agree ? <p className="mt-[4px] text-[13px] leading-[17px] text-sale">{errors.agree}</p> : null}
+      </div>
 
-      <Button type="submit" size="lg" full loading={busy}>
+      <Button type="submit" full loading={busy}>
         Отправить заявку
       </Button>
-      <p className="text-center text-sm text-sub">
+      <p className="-mt-[4px] text-center text-[14px] leading-[20px] text-sub">
         Уже зарегистрированы?{" "}
-        <Link href="/login" className="font-medium text-info hover:underline">
+        <Link href="/login" className="font-medium text-black underline decoration-line-3 underline-offset-[3px] transition-colors hover:decoration-black">
           Войти
         </Link>
       </p>

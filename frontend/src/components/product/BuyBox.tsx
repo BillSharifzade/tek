@@ -1,176 +1,142 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Check, Info, Package, ShoppingCart } from "lucide-react";
-import { useMemo, useState } from "react";
 import type { Product } from "@/lib/types";
-import { money, qty as fmtQty, unitLabel } from "@/lib/format";
+import { money, qty as fmtQty } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { useCart } from "@/store/cart";
 import { inCity, useCity } from "@/store/city";
 import { useAuth } from "@/store/auth";
 import { useHydrated } from "@/lib/hooks";
-import { Button } from "@/components/ui/Button";
 import { Stepper } from "@/components/ui/Stepper";
-import { Badge } from "@/components/ui/Badge";
-import { Cashback } from "@/components/ui/Price";
 import { FavoriteButton } from "./FavoriteButton";
+import { priceLabel } from "./ProductCard";
+import { useBuy } from "./BuyContext";
+import { IconCheckCircle, IconClock, IconDelivery, IconFire } from "./icons";
 
+/** «90,00 с.» → «90 с.» (как в макете «выгода 90 с.») */
+export function moneyShort(v: number): string {
+  return money(v).replace(/,00 с\.$/, " с.");
+}
+
+/** Остаток и срок доставки в выбранном городе. */
+export function cityStock(product: Product, city: string) {
+  const here = product.stock.filter((s) => s.city === city);
+  const qty = here.reduce((sum, s) => sum + s.qty, 0);
+  const hint = (here.find((s) => s.qty > 0) ?? product.stock.find((s) => s.qty > 0))?.delivery_hint ?? null;
+  return { qty, hint };
+}
+
+/** Плашка «Бесплатная пуско-наладка и расчет специалиста» (Figma 8612:248): 292×57, #FFEAB5, r10. */
+export function PromoPlaque({ className }: { className?: string }) {
+  return (
+    <div className={cn("relative h-[57px] rounded-[10px] bg-[#FFEAB5]", className)}>
+      <IconFire className="absolute left-[16px] top-[12px]" />
+      <p className="absolute left-[62px] top-[10px] text-[13px] leading-[19px] text-g333">
+        <span className="block font-bold text-black">Бесплатная пуско-наладка</span>
+        <span className="block">и расчет специалиста</span>
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Блок цены (Figma «Инфа о товаре»): 292 шириной, белая карточка r10 с тенью.
+ * Состояния: обычное (8612:219), распродажа (10725:4529 — красная рамка, заголовок и цена),
+ * нет в наличии (10725:4590 — прочерк, серые иконки/кнопка), в корзине (10329:332 — жёлтая обводка).
+ */
 export function BuyBox({ product }: { product: Product }) {
-  const router = useRouter();
   const hydrated = useHydrated();
-  const add = useCart((s) => s.add);
-  const inCart = useCart((s) => s.cart?.items.find((i) => i.product.id === product.id) ?? null);
   const city = useCity((s) => s.city);
   const user = useAuth((s) => s.user);
+  const { qty, setQty, step, busy, addToCart, inCartQty } = useBuy();
 
-  const step = product.pack?.qty && product.pack.qty > 0 ? product.pack.qty : 1;
-  const [qty, setQty] = useState(step);
-  const [busy, setBusy] = useState<"cart" | "checkout" | null>(null);
-
-  const total = useMemo(() => Math.round(qty * product.price.price * 100) / 100, [qty, product.price.price]);
-  const cashback = useMemo(() => Math.round(qty * product.price.cashback * 100) / 100, [qty, product.price.cashback]);
-  const unitPriceLabel = unitLabel(product.unit);
-  const priceTitle = product.unit === "м" ? "Цена за метр" : "Цена за штуку";
-  const stockHere = product.stock.find((s) => s.city === (hydrated ? city : "Душанбе"));
-  const others = product.stock.filter((s) => s !== stockHere);
-
-  const addToCart = async () => {
-    setBusy("cart");
-    try {
-      await add(product.id, qty);
-    } catch {
-      /* toast from store */
-    } finally {
-      setBusy(null);
-    }
-  };
-  const buyNow = async () => {
-    setBusy("checkout");
-    try {
-      await add(product.id, qty, { silent: true });
-      router.push("/checkout");
-    } catch {
-      setBusy(null);
-    }
-  };
-
-  const discounted = product.price.price < product.price.list - 0.004;
+  const oos = !product.in_stock;
+  const sale = product.price.sale && !oos;
+  const discounted = !oos && product.price.price < product.price.list - 0.004;
+  const here = cityStock(product, hydrated ? city : "Душанбе");
+  const hereCity = hydrated ? city : "Душанбе";
+  const max = product.stock_total > 0 ? Math.max(product.stock_total, step) : undefined;
+  const showCashback = hydrated && !!user && product.price.cashback > 0;
 
   return (
-    <div className="rounded-[8px] border border-line bg-white p-6">
-      {product.short_description ? <p className="mb-4 text-base text-sub">{product.short_description}</p> : null}
+    <div
+      className={cn(
+        "relative rounded-[10px] bg-white px-[22px] pb-[23px]",
+        sale ? "pt-[21px] shadow-[inset_0_0_0_1px_#DF3128,0_2px_7px_2px_rgba(0,0,0,0.08)]" : "pt-[20px] shadow-pop",
+      )}
+    >
+      <FavoriteButton product={product} box={31} glyph={15} className={cn("absolute right-[23px]", sale ? "top-[23px]" : "top-[20px]")} />
 
-      {product.group && product.group.siblings.length > 0 ? (
-        <div className="mb-5">
-          <p className="mb-2 text-sm text-sub">
-            {product.group.param_name}: <span className="font-semibold text-ink">{product.group.siblings.find((s) => s.slug === product.slug)?.param_value ?? ""}</span>
-          </p>
-          <ul className="flex flex-wrap gap-2" aria-label={product.group.param_name}>
-            {product.group.siblings.map((s) => {
-              const active = s.slug === product.slug;
-              return (
-                <li key={s.slug}>
-                  <Link
-                    href={`/product/${s.slug}`}
-                    prefetch
-                    aria-current={active ? "page" : undefined}
-                    aria-disabled={!s.in_stock}
-                    className={cn(
-                      "inline-flex h-9 min-w-[52px] items-center justify-center rounded-[6px] border px-3 text-base font-medium transition-colors",
-                      active ? "border-brand bg-brand text-ink" : "border-line bg-white hover:border-ink",
-                      !s.in_stock && !active && "border-dashed text-muted hover:border-line",
-                    )}
-                    title={s.in_stock ? `Код: ${s.code}` : "Нет в наличии"}
-                  >
-                    {s.param_value}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
-
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-sm text-sub">{priceTitle}</p>
-          <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1 tnum">
-            <span className="text-4xl font-bold leading-none">{money(product.price.price)}</span>
-            {discounted ? (
-              <>
-                <span className="text-base text-muted line-through">{money(product.price.list)}</span>
-                {product.price.savings > 0 ? <span className="text-base font-semibold text-sale">выгода {money(product.price.savings)}</span> : null}
-              </>
-            ) : null}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {product.price.sale ? <Badge kind="sale" /> : null}
-            {hydrated && user && product.price.discount_pct > 0 ? (
-              <span className="inline-flex h-6 items-center rounded-[4px] bg-brand-light px-2 text-xs font-semibold">Ваша скидка {Math.round(product.price.discount_pct)}%</span>
-            ) : null}
-            {hydrated && user ? <Cashback amount={product.price.cashback} /> : null}
-          </div>
-        </div>
-        <FavoriteButton product={product} withLabel />
-      </div>
-
-      <div className="mt-5 flex flex-wrap items-center gap-4">
-        <Stepper value={qty} onChange={setQty} min={step} step={step} max={product.stock_total > 0 ? Math.max(product.stock_total, step) : undefined} size="lg" disabled={!product.in_stock} />
-        <span className="text-base text-sub tnum">
-          {money(product.price.price)} {unitPriceLabel}
-        </span>
-        <span className="ml-auto text-2xl font-bold tnum">{money(total)}</span>
-      </div>
-      {product.pack ? (
-        <p className="mt-2 flex items-center gap-1.5 text-sm text-sub">
-          <Package className="size-4" />
-          Кратность упаковки: {product.pack.label}
+      {sale ? <p className="mb-[15px] text-[20px] font-bold leading-[20px] text-sale">Распродажа</p> : null}
+      <p className="text-[14px] leading-[15px] text-muted">{priceLabel(product)}</p>
+      <p className={cn("mt-[8px] whitespace-nowrap text-[28px] font-bold leading-[28px] tnum", sale ? "text-sale" : "text-black")}>
+        {oos ? "–" : money(product.price.price)}
+      </p>
+      {discounted ? (
+        <p className="mt-[7px] flex items-baseline whitespace-nowrap leading-[16px] tnum">
+          <span className="text-[16px] text-sub line-through">{money(product.price.list)}</span>
+          {product.price.savings > 0 ? <span className="ml-[13px] text-[14px] text-sale">выгода {moneyShort(product.price.savings)}</span> : null}
         </p>
       ) : null}
-      {hydrated && user && cashback > 0 ? <p className="mt-1 text-sm text-sub">Кешбэк на бонусный счёт: {money(cashback)}</p> : null}
+      {hydrated && user && product.price.discount_pct > 0 && !sale ? (
+        <p className="mt-[6px] text-[13px] leading-[15px] text-sub">Ваша скидка {Math.round(product.price.discount_pct)}%</p>
+      ) : null}
 
-      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {hydrated && inCart ? (
-          <Link href="/cart" className="inline-flex h-12 items-center justify-center gap-2 rounded-[6px] border border-success/40 bg-success/10 text-md font-semibold text-success hover:bg-success/15">
-            <Check className="size-5" strokeWidth={2.5} />В корзине ({fmtQty(inCart.qty)} {product.unit})
-          </Link>
-        ) : (
-          <Button size="lg" onClick={addToCart} loading={busy === "cart"} disabled={!product.in_stock || busy !== null} icon={<ShoppingCart className="size-5" />}>
-            В корзину
-          </Button>
-        )}
-        <Button size="lg" variant="dark" onClick={buyNow} loading={busy === "checkout"} disabled={!product.in_stock || busy !== null}>
-          Оформить заказ
-        </Button>
-      </div>
-
-      <ul className="mt-5 flex flex-col gap-1.5 border-t border-line pt-4 text-base">
-        {stockHere ? (
-          <li className="flex flex-wrap gap-x-2">
-            <span className={stockHere.qty > 0 ? "text-ink" : "text-sale"}>
-              {inCity(stockHere.city)}: {stockHere.qty > 0 ? `${fmtQty(stockHere.qty)} ${product.unit}` : "нет в наличии"}
-            </span>
-            {stockHere.qty > 0 ? <span className="text-sub">Доставка: {stockHere.delivery_hint}</span> : null}
+      <ul className={cn("flex flex-col gap-[9px] text-[14px] leading-[15px] text-g333", discounted ? "mt-[28px]" : "mt-[24px]")}>
+        <li className="flex items-start">
+          <span className="relative size-[15px] shrink-0">
+            {here.qty > 0 ? <IconCheckCircle /> : <IconClock className="absolute left-[-1px] top-[-1px]" />}
+          </span>
+          <span className="relative top-[-1px] ml-[9px]">
+            {inCity(hereCity)}: {fmtQty(here.qty)} {product.unit}
+          </span>
+        </li>
+        <li className="flex items-start">
+          <IconDelivery className="ml-px shrink-0" />
+          <span className="relative top-[-1px] ml-[8px]">Доставка: {oos ? "" : (here.hint ?? "по запросу")}</span>
+        </li>
+        {showCashback ? (
+          <li className="pl-[24px] text-sub">
+            Кешбэк: <span className="text-black">{money(Math.round(qty * product.price.cashback * 100) / 100)}</span>
           </li>
         ) : null}
-        {others.map((s) => (
-          <li key={s.store_id} className="flex flex-wrap gap-x-2 text-sm text-sub">
-            <span>
-              {s.city === stockHere?.city ? s.name : inCity(s.city)}: {s.qty > 0 ? `${fmtQty(s.qty)} ${product.unit}` : "нет в наличии"}
-            </span>
-            {s.qty > 0 ? <span>Доставка: {s.delivery_hint}</span> : null}
-          </li>
-        ))}
       </ul>
 
-      <p className="mt-4 flex items-start gap-2 rounded-[6px] bg-brand-light px-3 py-2.5 text-sm">
-        <Info className="mt-0.5 size-4 shrink-0" />
-        <span>
-          <span className="font-semibold">Бесплатная пуско-наладка</span> и расчет специалиста
-        </span>
-      </p>
+      <Stepper
+        variant="figma"
+        className="mt-[22px]"
+        value={qty}
+        onChange={setQty}
+        min={step}
+        step={step}
+        max={max}
+        disabled={oos}
+        blank={oos}
+      />
+
+      {oos ? (
+        <button type="button" disabled className="mt-[11px] flex h-[42px] w-full items-center justify-center rounded-[7px] bg-surface text-[14px] font-medium leading-[24px] text-black">
+          Нет в наличии
+        </button>
+      ) : inCartQty > 0 ? (
+        <Link
+          href="/cart"
+          className="mt-[11px] flex h-[42px] w-full items-center justify-center rounded-[7px] text-[15px] font-medium leading-[24px] text-brand shadow-[inset_0_0_0_2px_#FFCC33] transition-colors hover:bg-brand hover:text-black"
+          title={`В корзине ${fmtQty(inCartQty)} ${product.unit}`}
+        >
+          В корзине
+        </Link>
+      ) : (
+        <button
+          type="button"
+          onClick={addToCart}
+          disabled={busy}
+          aria-busy={busy}
+          className="mt-[11px] flex h-[42px] w-full items-center justify-center rounded-[7px] bg-brand text-[14px] font-medium leading-[24px] text-black transition-colors hover:bg-brand-hover disabled:opacity-70"
+        >
+          В корзину
+        </button>
+      )}
     </div>
   );
 }

@@ -2,60 +2,154 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
-import type { Suggest } from "@/lib/types";
 import { money } from "@/lib/format";
-import { useClickOutside, useDebounced } from "@/lib/hooks";
+import { useClickOutside, useDebounced, useEscape } from "@/lib/hooks";
+import { useCart } from "@/store/cart";
 import { ImageBox } from "@/components/ui/ImageBox";
-import { cn } from "@/lib/cn";
 
-const EMPTY: Suggest = { products: [], categories: [], brands: [] };
+export interface SuggestProduct {
+  id: string;
+  slug: string;
+  name: string;
+  code: string;
+  image: string | null;
+  price: number;
+  unit: string;
+  in_stock: boolean;
+}
+export interface SuggestCategory {
+  slug: string;
+  name: string;
+  image: string | null;
+}
+interface SuggestData {
+  products: SuggestProduct[];
+  categories: SuggestCategory[];
+}
 
-export function SearchBox({ compact, initial = "" }: { compact?: boolean; initial?: string }) {
-  const router = useRouter();
-  const [q, setQ] = useState(initial);
-  const [open, setOpen] = useState(false);
-  const [data, setData] = useState<Suggest>(EMPTY);
-  const debounced = useDebounced(q.trim(), 250);
-  const ref = useRef<HTMLFormElement>(null);
-  useClickOutside(ref, () => setOpen(false), open);
+const EMPTY: SuggestData = { products: [], categories: [] };
 
+/** Подсказки поиска по товарам. Как у Петровича, но одной колонкой: 5 товаров, ниже — категории (ТЗ). */
+export function useProductSuggest(q: string) {
+  const [data, setData] = useState<SuggestData>(EMPTY);
+  const debounced = useDebounced(q.trim(), 200);
   useEffect(() => {
     const ctrl = new AbortController();
-    const q = debounced;
     const run = async () => {
-      if (q.length < 2) {
+      if (debounced.length < 2) {
         setData(EMPTY);
         return;
       }
       try {
-        const r = await api<Suggest>("/catalog/suggest", { query: { q }, revalidate: false, signal: ctrl.signal });
-        if (!ctrl.signal.aborted) setData(r);
+        const r = await api<SuggestData>("/catalog/suggest", { query: { q: debounced }, revalidate: false, signal: ctrl.signal });
+        if (!ctrl.signal.aborted) setData({ products: r.products.slice(0, 5), categories: r.categories });
       } catch {
-        /* aborted or network error */
+        /* aborted / network */
       }
     };
     void run();
     return () => ctrl.abort();
   }, [debounced]);
+  return { data, term: debounced };
+}
 
-  const hasResults = data.products.length + data.categories.length + data.brands.length > 0;
+export function SuggestProductRow({
+  p,
+  onNavigate,
+  action,
+}: {
+  p: SuggestProduct;
+  onNavigate?: () => void;
+  /** custom action (cart page uses «Добавить») */
+  action?: React.ReactNode;
+}) {
+  const add = useCart((s) => s.add);
+  const [busy, setBusy] = useState(false);
+  return (
+    <li className="group relative flex gap-[16px] rounded-[6px] px-[12px] py-[10px] transition-colors hover:bg-page">
+      <Link href={`/product/${p.slug}`} onClick={onNavigate} className="absolute inset-0" aria-label={p.name} />
+      <ImageBox src={p.image} alt="" className="size-[56px] shrink-0 bg-white" sizes="56px" rounded="rounded-[4px]" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] leading-[17px] text-muted">
+          Код: <span className="text-g333">{p.code}</span>
+        </p>
+        <p className="mt-[3px] line-clamp-2 text-[14px] leading-[18px] text-g333">{p.name}</p>
+        <div className="mt-[4px] flex items-center justify-between gap-3">
+          <span className="text-[16px] font-bold leading-[20px] tnum">{money(p.price)}</span>
+          {action ??
+            (p.in_stock ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={async () => {
+                  setBusy(true);
+                  try {
+                    await add(p.id, 1);
+                  } catch {
+                    /* toast from store */
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+                className="relative z-[1] h-[28px] rounded-[6px] bg-brand px-[18px] text-[14px] font-medium leading-[15px] opacity-0 transition-[opacity,background-color] hover:bg-brand-hover focus-visible:opacity-100 group-hover:opacity-100 disabled:opacity-60"
+              >
+                В корзину
+              </button>
+            ) : null)}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+export function SuggestCategories({ items, onNavigate }: { items: SuggestCategory[]; onNavigate?: () => void }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="border-t border-line px-[12px] pb-[8px] pt-[16px]">
+      <p className="mb-[8px] text-[13px] font-bold uppercase leading-[16px] tracking-[1px] text-black">Перейти в категорию:</p>
+      <ul>
+        {items.map((c) => (
+          <li key={c.slug}>
+            <Link
+              href={`/catalog/${c.slug}`}
+              onClick={onNavigate}
+              className="flex items-center gap-[16px] rounded-[6px] py-[8px] text-[15px] leading-[20px] text-g333 transition-colors hover:text-black"
+            >
+              <ImageBox src={c.image} alt="" className="size-[48px] shrink-0 bg-white" sizes="48px" rounded="rounded-[4px]" />
+              {c.name}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+export function SearchBox({ initial = "" }: { initial?: string }) {
+  const router = useRouter();
+  const [q, setQ] = useState(initial);
+  const [open, setOpen] = useState(false);
+  const { data, term } = useProductSuggest(q);
+  const ref = useRef<HTMLFormElement>(null);
+  useClickOutside(ref, () => setOpen(false), open);
+  useEscape(() => setOpen(false), open);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    const term = q.trim();
-    if (!term) return;
+    const t = q.trim();
+    if (!t) return;
     setOpen(false);
-    router.push(`/search?q=${encodeURIComponent(term)}`);
+    router.push(`/search?q=${encodeURIComponent(t)}`);
   };
-
-  const h = compact ? "h-10" : "h-11";
+  const close = () => setOpen(false);
+  const show = open && term.length >= 2;
 
   return (
-    <form ref={ref} onSubmit={submit} role="search" className="relative flex w-full min-w-0">
-      <div className={cn("flex w-full min-w-0 overflow-hidden rounded-[6px] border border-line bg-white transition-colors focus-within:border-ink", h)}>
+    <form ref={ref} onSubmit={submit} role="search" className="relative w-full">
+      {/* Figma: Rectangle 27 (440×44, 2px #FFCC33, r5) + Rectangle 28 (74×44, #FFCC33, r 0 5 5 0) */}
+      <div className="flex h-[44px] w-full">
         <input
           type="search"
           value={q}
@@ -65,73 +159,29 @@ export function SearchBox({ compact, initial = "" }: { compact?: boolean; initia
           }}
           onFocus={() => setOpen(true)}
           placeholder="Код, наименование или бренд"
-          aria-label="Поиск по каталогу"
+          aria-label="Поиск по товарам"
           autoComplete="off"
-          className="min-w-0 flex-1 bg-transparent px-4 text-base outline-none placeholder:text-muted"
+          className="h-full min-w-0 flex-1 rounded-l-[5px] border-2 border-r-0 border-brand bg-white pl-[11px] pr-2 text-[14px] leading-[12px] text-black outline-none placeholder:text-muted [&::-webkit-search-cancel-button]:hidden"
         />
-        <button type="submit" className="flex shrink-0 items-center gap-2 bg-ink px-5 text-base font-semibold text-white transition-colors hover:bg-ink-hover">
-          <Search className="size-4 md:hidden" />
-          <span className="hidden md:inline">Найти</span>
+        <button type="submit" className="h-full w-[74px] shrink-0 rounded-r-[5px] bg-brand text-[14px] font-medium leading-[12px] text-black transition-colors hover:bg-brand-hover">
+          Найти
         </button>
       </div>
-      {open && debounced.length >= 2 ? (
-        <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-[8px] border border-line bg-white shadow-pop animate-fade-in">
-          {hasResults ? (
-            <div className="grid grid-cols-1 md:grid-cols-[1fr_220px]">
-              <ul className="py-2">
-                {data.products.map((p) => (
-                  <li key={p.slug}>
-                    <Link href={`/product/${p.slug}`} onClick={() => setOpen(false)} className="flex items-center gap-3 px-4 py-2 hover:bg-surface">
-                      <ImageBox src={p.image} alt={p.name} className="size-10 shrink-0" sizes="40px" rounded="rounded-[4px]" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-base">{p.name}</span>
-                        <span className="block text-xs text-sub">Код: {p.code}</span>
-                      </span>
-                      <span className="shrink-0 text-base font-semibold tnum">{money(p.price)}</span>
-                    </Link>
-                  </li>
-                ))}
-                <li>
-                  <button type="submit" className="block w-full px-4 py-2.5 text-left text-sm font-medium text-info hover:bg-surface">
-                    Все результаты по запросу «{debounced}»
-                  </button>
-                </li>
-              </ul>
-              {data.categories.length + data.brands.length > 0 ? (
-                <div className="border-t border-line bg-surface-2 p-4 md:border-l md:border-t-0">
-                  {data.categories.length > 0 ? (
-                    <div className="mb-4">
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-sub">Категории</p>
-                      <ul className="flex flex-col gap-1.5">
-                        {data.categories.map((c) => (
-                          <li key={c.slug}>
-                            <Link href={`/catalog/${c.slug}`} onClick={() => setOpen(false)} className="text-sm hover:text-brand-hover">
-                              {c.name}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                  {data.brands.length > 0 ? (
-                    <div>
-                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-sub">Бренды</p>
-                      <ul className="flex flex-col gap-1.5">
-                        {data.brands.map((b) => (
-                          <li key={b.slug}>
-                            <Link href={`/brands/${b.slug}`} onClick={() => setOpen(false)} className="text-sm hover:text-brand-hover">
-                              {b.name}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : null}
-                </div>
+      {show ? (
+        <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-[90] max-h-[calc(100vh-140px)] overflow-y-auto rounded-[6px] bg-white p-[8px] shadow-pop animate-fade-in">
+          {data.products.length + data.categories.length > 0 ? (
+            <>
+              {data.products.length > 0 ? (
+                <ul className="pb-[8px]">
+                  {data.products.map((p) => (
+                    <SuggestProductRow key={p.slug} p={p} onNavigate={close} />
+                  ))}
+                </ul>
               ) : null}
-            </div>
+              <SuggestCategories items={data.categories} onNavigate={close} />
+            </>
           ) : (
-            <p className="px-4 py-3 text-sm text-sub">Ничего не найдено по запросу «{debounced}»</p>
+            <p className="px-[12px] py-[10px] text-[14px] leading-[20px] text-sub">Ничего не найдено по запросу «{term}»</p>
           )}
         </div>
       ) : null}

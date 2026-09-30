@@ -69,6 +69,7 @@ struct NewsMini {
     excerpt: String,
     #[sqlx(rename = "image_url")]
     image: Option<String>,
+    tags: Vec<String>,
 }
 
 #[derive(Serialize, sqlx::FromRow)]
@@ -117,7 +118,7 @@ async fn build(state: &AppState, ctx: &PriceCtx) -> AppResult<HomePayload> {
     )
     .fetch_all(pool)
     .await?;
-    let news = sqlx::query_as::<_, NewsMini>("SELECT slug, title, published_at, excerpt, image_url FROM news ORDER BY published_at DESC, id LIMIT 4")
+    let news = sqlx::query_as::<_, NewsMini>("SELECT slug, title, published_at, excerpt, image_url, tags FROM news ORDER BY published_at DESC, id LIMIT 4")
         .fetch_all(pool)
         .await?;
     let usp = sqlx::query_as::<_, Usp>("SELECT title, text, icon FROM usp ORDER BY sort, id").fetch_all(pool).await?;

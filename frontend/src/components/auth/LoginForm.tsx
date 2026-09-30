@@ -9,6 +9,7 @@ import { useAuth } from "@/store/auth";
 import { toast } from "@/store/toast";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Input";
+import { AuthAlert } from "./AuthShell";
 
 function safeNext(next: string | null): string {
   if (!next || !next.startsWith("/") || next.startsWith("//")) return "/account";
@@ -51,17 +52,12 @@ export function LoginForm() {
   };
 
   return (
-    <form onSubmit={submit} noValidate className="flex flex-col gap-4">
-      {error ? (
-        <div role="alert" className="rounded-[6px] border border-sale/30 bg-sale/5 px-4 py-3 text-sm">
-          <p className="font-semibold text-sale">{error.title}</p>
-          {error.text ? <p className="mt-1 text-ink/80">{error.text}</p> : null}
-        </div>
-      ) : null}
-      <Field label="E-mail или телефон" htmlFor="login-id" required>
+    <form onSubmit={submit} noValidate className="flex flex-col gap-[16px]">
+      {error ? <AuthAlert title={error.title} text={error.text} /> : null}
+      <Field label="E-mail или телефон" htmlFor="login-id">
         <Input id="login-id" value={loginValue} onChange={(e) => setLoginValue(e.target.value)} autoComplete="username" placeholder="client@tec.tj" autoFocus />
       </Field>
-      <Field label="Пароль" htmlFor="login-pass" required>
+      <Field label="Пароль" htmlFor="login-pass">
         <Input
           id="login-pass"
           type={show ? "text" : "password"}
@@ -69,18 +65,18 @@ export function LoginForm() {
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"
           right={
-            <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? "Скрыть пароль" : "Показать пароль"} className="hover:text-ink">
+            <button type="button" onClick={() => setShow((v) => !v)} aria-label={show ? "Скрыть пароль" : "Показать пароль"} className="transition-colors hover:text-black">
               {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           }
         />
       </Field>
-      <Button type="submit" size="lg" full loading={busy}>
+      <Button type="submit" full loading={busy} className="mt-[8px]">
         Войти
       </Button>
-      <p className="text-center text-sm text-sub">
+      <p className="text-center text-[14px] leading-[20px] text-sub">
         Нет аккаунта?{" "}
-        <Link href="/register" className="font-medium text-info hover:underline">
+        <Link href="/register" className="font-medium text-black underline decoration-line-3 underline-offset-[3px] transition-colors hover:decoration-black">
           Зарегистрироваться
         </Link>
       </p>

@@ -7,23 +7,27 @@ export interface CrumbItem {
   label: string;
 }
 
+/**
+ * Хлебные крошки как в макете: «Главная   >   Раздел», 14/15 #808080, разделитель «>» с тремя пробелами.
+ * (В Figma — TT Commons Pro Trial; trial-шрифт нельзя использовать на сайте, поэтому Roboto того же кегля.)
+ */
 export function Breadcrumbs({ items, separator = ">", className }: { items: CrumbItem[]; separator?: ">" | "/"; className?: string }) {
   const all: CrumbItem[] = [{ href: "/", label: "Главная" }, ...items];
   return (
-    <nav aria-label="Хлебные крошки" className={cn("py-4 text-sm text-sub", className)}>
-      <ol className="flex flex-wrap items-center gap-x-3 gap-y-1">
+    <nav aria-label="Хлебные крошки" className={cn("text-[14px] leading-[15px] text-muted", className)}>
+      <ol className="flex flex-wrap items-center gap-y-1">
         {all.map((c, i) => {
           const last = i === all.length - 1;
           return (
             <Fragment key={`${c.label}-${i}`}>
               {i > 0 ? (
-                <li aria-hidden className="text-muted">
+                <li aria-hidden className="px-[11px]">
                   {separator}
                 </li>
               ) : null}
-              <li className={cn(last && "text-ink")}>
+              <li>
                 {c.href && !last ? (
-                  <Link href={c.href} className="hover:text-ink transition-colors">
+                  <Link href={c.href} className="link-hover">
                     {c.label}
                   </Link>
                 ) : (

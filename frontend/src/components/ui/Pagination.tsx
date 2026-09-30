@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 export interface PaginationProps {
@@ -24,42 +23,55 @@ function range(page: number, pages: number): (number | "…")[] {
   return out;
 }
 
+function Arrow({ dir }: { dir: "prev" | "next" }) {
+  return (
+    <svg width={7} height={12} viewBox="0 0 7 12" fill="none" aria-hidden className={dir === "prev" ? "rotate-180" : undefined}>
+      <path d="M1 1L6 6L1 11" stroke="currentColor" strokeWidth={1.3} strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/**
+ * Пагинация в языке макета (как сегмент-кнопки сортировки каталога): h=32, r=5, Regular 13,
+ * серые #F0F2F4 (hover #D9DDE3), текущая — жёлтая #FFCC33.
+ */
 export function Pagination({ page, pages, hrefFor, className }: PaginationProps) {
   if (pages <= 1) return null;
-  const item = "inline-flex h-10 min-w-10 items-center justify-center rounded-[6px] border px-3 text-base transition-colors";
+  const item = "inline-flex h-[32px] min-w-[32px] items-center justify-center rounded-[5px] px-[10px] text-[13px] leading-[12px] text-black transition-colors tnum";
+  const idle = "bg-field hover:bg-btn-hover";
   return (
-    <nav aria-label="Пагинация" className={cn("flex flex-wrap items-center justify-center gap-1.5", className)}>
+    <nav aria-label="Пагинация" className={cn("flex flex-wrap items-center justify-center gap-[4px]", className)}>
       {page > 1 ? (
-        <Link href={hrefFor(page - 1)} className={cn(item, "border-line bg-white hover:border-muted")} aria-label="Предыдущая страница">
-          <ChevronLeft className="size-4" />
+        <Link href={hrefFor(page - 1)} className={cn(item, idle)} aria-label="Предыдущая страница">
+          <Arrow dir="prev" />
         </Link>
       ) : (
-        <span className={cn(item, "border-line text-muted")}>
-          <ChevronLeft className="size-4" />
+        <span className={cn(item, "bg-field text-muted opacity-60")} aria-hidden>
+          <Arrow dir="prev" />
         </span>
       )}
       {range(page, pages).map((p, i) =>
         p === "…" ? (
-          <span key={`e${i}`} className="px-1 text-sub">
+          <span key={`e${i}`} className="px-[6px] text-[13px] text-muted">
             …
           </span>
         ) : p === page ? (
-          <span key={p} aria-current="page" className={cn(item, "border-brand bg-brand font-semibold")}>
+          <span key={p} aria-current="page" className={cn(item, "bg-brand font-medium")}>
             {p}
           </span>
         ) : (
-          <Link key={p} href={hrefFor(p)} className={cn(item, "border-line bg-white hover:border-muted")}>
+          <Link key={p} href={hrefFor(p)} className={cn(item, idle)}>
             {p}
           </Link>
         ),
       )}
       {page < pages ? (
-        <Link href={hrefFor(page + 1)} className={cn(item, "border-line bg-white hover:border-muted")} aria-label="Следующая страница">
-          <ChevronRight className="size-4" />
+        <Link href={hrefFor(page + 1)} className={cn(item, idle)} aria-label="Следующая страница">
+          <Arrow dir="next" />
         </Link>
       ) : (
-        <span className={cn(item, "border-line text-muted")}>
-          <ChevronRight className="size-4" />
+        <span className={cn(item, "bg-field text-muted opacity-60")} aria-hidden>
+          <Arrow dir="next" />
         </span>
       )}
     </nav>

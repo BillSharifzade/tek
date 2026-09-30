@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { Calculator, Info } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Field, Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { qty as fmtQty } from "@/lib/format";
 
@@ -46,65 +45,96 @@ export function TrayCalculator() {
     ];
   }, [v]);
 
+  const field =
+    "h-[36px] w-full rounded-[7px] border border-line bg-white px-[13px] text-[14px] leading-[20px] text-black transition-colors hover:border-outline focus:border-outline-hover focus:outline-none tnum";
+  const label = "mb-[6px] block text-[14px] leading-[18px] text-sub";
+
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[380px_minmax(0,1fr)]">
-      <form className="flex flex-col gap-4 rounded-[8px] border border-line bg-white p-6" onSubmit={(e) => e.preventDefault()}>
-        <div className="flex items-center gap-2">
-          <Calculator className="size-5 text-brand-hover" />
-          <h3>Параметры трассы</h3>
+    <div className="grid grid-cols-1 gap-[24px] lg:grid-cols-[417px_minmax(0,1fr)] lg:gap-[34px]">
+      {/* Параметры — белая карта с тенью, как прайс-карта «Сервис центр ДГУ» */}
+      <form className="self-start rounded-[10px] bg-white px-[24px] py-[26px] shadow-card md:px-[34px] md:py-[32px]" onSubmit={(e) => e.preventDefault()}>
+        <div className="flex items-center gap-[10px]">
+          <span className="flex size-[36px] items-center justify-center rounded-full bg-brand">
+            <Calculator className="size-[18px]" aria-hidden />
+          </span>
+          <h2 className="text-[18px] font-bold leading-[22px]">Параметры трассы</h2>
         </div>
-        <Field label="Длина трассы, м" htmlFor="tc-len">
-          <Input id="tc-len" type="number" inputMode="decimal" min={0} step="0.5" value={v.length} onChange={(e) => set("length", e.target.value)} />
-        </Field>
-        <Field label="Ширина лотка, мм" htmlFor="tc-width">
-          <Select id="tc-width" value={v.width} onChange={(e) => set("width", e.target.value)} options={WIDTHS.map((w) => ({ value: w, label: w }))} />
-        </Field>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Количество поворотов" htmlFor="tc-turns">
-            <Input id="tc-turns" type="number" inputMode="numeric" min={0} step={1} value={v.turns} onChange={(e) => set("turns", e.target.value)} />
-          </Field>
-          <Field label="Количество ответвлений" htmlFor="tc-branches">
-            <Input id="tc-branches" type="number" inputMode="numeric" min={0} step={1} value={v.branches} onChange={(e) => set("branches", e.target.value)} />
-          </Field>
+        <div className="mt-[24px] flex flex-col gap-[16px]">
+          <div>
+            <label htmlFor="tc-len" className={label}>
+              Длина трассы, м
+            </label>
+            <input id="tc-len" className={field} type="number" inputMode="decimal" min={0} step="0.5" value={v.length} onChange={(e) => set("length", e.target.value)} />
+          </div>
+          <div>
+            <label htmlFor="tc-width" className={label}>
+              Ширина лотка, мм
+            </label>
+            <Select id="tc-width" value={v.width} onChange={(e) => set("width", e.target.value)} options={WIDTHS.map((w) => ({ value: w, label: `${w} мм` }))} className="[&>select]:rounded-[7px] [&>select]:border-line" />
+          </div>
+          <div className="grid grid-cols-2 gap-[13px]">
+            <div>
+              <label htmlFor="tc-turns" className={label}>
+                Повороты, шт
+              </label>
+              <input id="tc-turns" className={field} type="number" inputMode="numeric" min={0} step={1} value={v.turns} onChange={(e) => set("turns", e.target.value)} />
+            </div>
+            <div>
+              <label htmlFor="tc-branches" className={label}>
+                Ответвления, шт
+              </label>
+              <input id="tc-branches" className={field} type="number" inputMode="numeric" min={0} step={1} value={v.branches} onChange={(e) => set("branches", e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="tc-step" className={label}>
+              Шаг консолей, м
+            </label>
+            <input id="tc-step" className={field} type="number" inputMode="decimal" min={0.5} step="0.5" value={v.step} onChange={(e) => set("step", e.target.value)} />
+            <p className="mt-[6px] text-[13px] leading-[18px] text-muted">Рекомендуемый шаг опор — 1,5 м</p>
+          </div>
         </div>
-        <Field label="Шаг консолей, м" htmlFor="tc-step" hint="Рекомендуемый шаг опор — 1,5 м">
-          <Input id="tc-step" type="number" inputMode="decimal" min={0.5} step="0.5" value={v.step} onChange={(e) => set("step", e.target.value)} />
-        </Field>
       </form>
 
-      <div className="rounded-[8px] border border-line bg-white">
-        <div className="flex items-center justify-between gap-3 border-b border-line px-6 py-4">
-          <h3>Расчёт комплектации</h3>
-          <span className="text-sm text-sub tnum">Лоток {v.width} мм · {fmtQty(num(v.length))} м</span>
+      {/* Результат — таблица в стиле «Периодичность ТО генераторов» (шапка #E4EAF0, зебра #F5F7F9) */}
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-1">
+          <h2 className="text-[22px] font-bold leading-[28px] md:text-[26px] md:leading-[30px]">Расчёт комплектации</h2>
+          <span className="text-[14px] leading-[20px] text-sub tnum">
+            Лоток {v.width} мм · {fmtQty(num(v.length))} м
+          </span>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-base">
+        <div className="-mx-4 mt-[18px] overflow-x-auto sm:mx-0">
+          <table className="w-full border-collapse text-[14px] leading-[19px] sm:text-[15px] sm:leading-[20px]">
             <thead>
-              <tr className="text-left text-xs uppercase tracking-wide text-sub">
-                <th className="px-6 py-3 font-medium">Элемент</th>
-                <th className="px-4 py-3 text-right font-medium">Кол-во</th>
-                <th className="px-6 py-3 font-medium">Примечание</th>
+              <tr className="bg-[#E4EAF0] text-left">
+                <th className="px-[14px] py-[14px] font-bold text-g333">Элемент</th>
+                <th className="px-[14px] py-[14px] text-right font-bold text-g333">Кол-во</th>
+                <th className="hidden px-[14px] py-[14px] font-bold text-g333 sm:table-cell">Примечание</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-line">
+            <tbody>
               {rows.map((r) => (
-                <tr key={r.name}>
-                  <td className="px-6 py-3 font-medium">{r.name}</td>
-                  <td className="px-4 py-3 text-right tnum">
+                <tr key={r.name} className="border-b border-[#E4E8EC] even:bg-[#F5F7F9]">
+                  <td className="px-[12px] py-[12px] text-g333 sm:px-[14px] sm:py-[14px]">
+                    {r.name}
+                    <span className="mt-[2px] block text-[13px] leading-[17px] text-muted sm:hidden">{r.note}</span>
+                  </td>
+                  <td className="whitespace-nowrap px-[12px] py-[12px] text-right align-top font-semibold tnum sm:px-[14px] sm:py-[14px] sm:align-middle">
                     {fmtQty(r.qty)} {r.unit}
                   </td>
-                  <td className="px-6 py-3 text-sm text-sub">{r.note}</td>
+                  <td className="hidden px-[14px] py-[14px] text-[14px] text-sub sm:table-cell">{r.note}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div className="flex flex-col gap-3 border-t border-line px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
-          <p className="flex items-start gap-2 text-sm text-sub">
-            <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
-            Подбор артикулов — в следующей версии
+        <div className="mt-[20px] flex flex-col gap-[14px] sm:flex-row sm:items-center sm:justify-between">
+          <p className="flex items-start gap-[8px] text-[14px] leading-[20px] text-sub">
+            <Info className="mt-[2px] size-[16px] shrink-0" aria-hidden />
+            Подбор артикулов и добавление в корзину — в следующей версии
           </p>
-          <Button disabled title="Подбор артикулов — в следующей версии">
+          <Button disabled title="Подбор артикулов — в следующей версии" className="px-[24px]">
             Добавить в корзину
           </Button>
         </div>

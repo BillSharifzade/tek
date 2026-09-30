@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { isoDate } from "@/lib/format";
-import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { useRef, useState } from "react";
+import { dateSlash, isoDate } from "@/lib/format";
+import { cn } from "@/lib/cn";
 
 export interface Period {
   from: string;
@@ -27,44 +26,85 @@ export function periodFromParams(sp: URLSearchParams | null, days = 30): Period 
   return { from: from && /^\d{4}-\d{2}-\d{2}$/.test(from) ? from : d.from, to: to && /^\d{4}-\d{2}-\d{2}$/.test(to) ? to : d.to };
 }
 
-export function PeriodFilter({
+const plausible = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v) && Number(v.slice(0, 4)) >= 2000;
+
+/**
+ * Поле даты из макета «Заказы» (9097:650): 98×36, рамка #D9DDE4, радиус 5, значение «05/10/2024» по центру.
+ * Под ним — нативный <input type="date"> (прозрачный), клик открывает системный календарь.
+ */
+export function DateField({
   value,
-  onApply,
-  busy,
-  right,
+  onChange,
+  min,
+  max,
+  label,
+  invalid,
+  className,
 }: {
-  value: Period;
-  onApply: (p: Period) => void;
-  busy?: boolean;
-  right?: React.ReactNode;
+  value: string;
+  onChange: (v: string) => void;
+  min?: string;
+  max?: string;
+  label: string;
+  invalid?: boolean;
+  className?: string;
 }) {
-  // Parents pass `key={periodKey(value)}` so the inputs reset when the applied period changes.
+  const ref = useRef<HTMLInputElement>(null);
+  return (
+    <span
+      className={cn(
+        "relative inline-flex h-[36px] w-[98px] shrink-0 items-center justify-center rounded-[5px] border bg-white text-[14px] leading-[20px] text-muted tnum transition-colors hover:border-outline focus-within:border-outline-hover",
+        invalid ? "border-sale" : "border-line-3",
+        className,
+      )}
+    >
+      <span aria-hidden>{value ? dateSlash(value) : "дд/мм/гггг"}</span>
+      <input
+        ref={ref}
+        type="date"
+        value={value}
+        min={min}
+        max={max}
+        aria-label={label}
+        aria-invalid={invalid || undefined}
+        onChange={(e) => onChange(e.target.value)}
+        onClick={() => {
+          try {
+            ref.current?.showPicker?.();
+          } catch {
+            /* showPicker is not allowed in some contexts — the native field still works */
+          }
+        }}
+        className="absolute inset-0 size-full cursor-pointer opacity-0"
+      />
+    </span>
+  );
+}
+
+/**
+ * «Период с [дата] по [дата]» (Figma 9097:650). Период применяется сразу при выборе даты.
+ * Родитель передаёт `key={periodKey(value)}`, чтобы поля сбрасывались при смене применённого периода.
+ */
+export function PeriodFilter({ value, onApply, busy, className }: { value: Period; onApply: (p: Period) => void; busy?: boolean; className?: string }) {
   const [from, setFrom] = useState(value.from);
   const [to, setTo] = useState(value.to);
-
   const invalid = Boolean(from && to && from > to);
 
+  const change = (next: Period) => {
+    setFrom(next.from);
+    setTo(next.to);
+    if (plausible(next.from) && plausible(next.to) && next.from <= next.to && periodKey(next) !== periodKey(value)) onApply(next);
+  };
+
   return (
-    <form
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!invalid) onApply({ from, to });
-      }}
-      className="flex flex-wrap items-end gap-3 rounded-[8px] border border-line bg-white p-4"
-    >
-      <span className="pb-2.5 text-base font-medium">Период</span>
-      <label className="flex items-center gap-2 text-sm text-sub">
-        с
-        <Input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="w-[160px] tnum" aria-label="Начало периода" invalid={invalid} />
-      </label>
-      <label className="flex items-center gap-2 text-sm text-sub">
-        по
-        <Input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="w-[160px] tnum" aria-label="Конец периода" invalid={invalid} />
-      </label>
-      <Button type="submit" variant="dark" loading={busy} disabled={invalid}>
-        Показать
-      </Button>
-      {right ? <div className="ml-auto flex items-center gap-2">{right}</div> : null}
-    </form>
+    <div className={cn("flex flex-wrap items-center gap-y-2 text-[14px] leading-[20px] text-sub", className)} role="group" aria-label="Период" aria-busy={busy || undefined}>
+      <span className="mr-[17px]">Период</span>
+      <span className="mr-[9px]">с</span>
+      <DateField label="Начало периода" value={from} max={to || undefined} invalid={invalid} onChange={(v) => change({ from: v, to })} />
+      <span className="ml-[18px] mr-[11px]">по</span>
+      <DateField label="Конец периода" value={to} min={from || undefined} invalid={invalid} onChange={(v) => change({ from, to: v })} />
+      {invalid ? <span className="ml-[16px] text-[13px] text-sale-text">Дата начала позже даты окончания</span> : null}
+      {busy ? <span className="ml-[16px] size-4 animate-spin rounded-full border-2 border-line-3 border-t-outline-hover" aria-label="Загрузка" /> : null}
+    </div>
   );
 }

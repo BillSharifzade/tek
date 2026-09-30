@@ -28,14 +28,9 @@ export function AccountGuard({ children }: { children: React.ReactNode }) {
 
 export function AccountSkeleton() {
   return (
-    <div className="flex flex-col gap-4" aria-busy>
-      <Skeleton className="h-7 w-1/3" />
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} className="h-24" />
-        ))}
-      </div>
-      <Skeleton className="h-40" />
+    <div className="flex flex-col gap-[16px] lg:flex-row lg:items-start lg:gap-[28px]" aria-busy>
+      <Skeleton className="h-[48px] rounded-[10px] lg:h-[505px] lg:w-[246px] lg:shrink-0" />
+      <Skeleton className="h-[347px] flex-1 rounded-[10px]" />
     </div>
   );
 }

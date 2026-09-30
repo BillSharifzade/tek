@@ -1,17 +1,22 @@
 import { ButtonLink } from "@/components/ui/Button";
+import { StatusScreen } from "@/components/content/StatusScreen";
 
 export default function NotFound() {
   return (
-    <div className="container-page flex flex-col items-center py-24 text-center">
-      <span className="text-[96px] font-bold leading-none text-brand">404</span>
-      <h1 className="mt-4">Страница не найдена</h1>
-      <p className="mt-2 max-w-md text-sub">Возможно, товар был перемещён или ссылка устарела. Воспользуйтесь поиском или перейдите в каталог.</p>
-      <div className="mt-8 flex gap-3">
-        <ButtonLink href="/">На главную</ButtonLink>
-        <ButtonLink href="/catalog" variant="secondary">
-          В каталог
-        </ButtonLink>
-      </div>
-    </div>
+    <StatusScreen
+      code="404"
+      title="Страница не найдена"
+      text="Возможно, товар перемещён или ссылка устарела. Воспользуйтесь поиском по коду, наименованию или бренду либо перейдите в каталог."
+      actions={
+        <>
+          <ButtonLink href="/catalog" size="lg" className="px-[24px]">
+            Перейти в каталог
+          </ButtonLink>
+          <ButtonLink href="/" size="lg" variant="secondary" className="px-[24px]">
+            На главную
+          </ButtonLink>
+        </>
+      }
+    />
   );
 }

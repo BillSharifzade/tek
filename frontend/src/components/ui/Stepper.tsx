@@ -14,6 +14,10 @@ export interface StepperProps {
   disabled?: boolean;
   className?: string;
   ariaLabel?: string;
+  /** "figma" — степпер блока цены из макета: 247×42, поле #F6F7F8, кнопки 51×42 #EEF0F2, r7 */
+  variant?: "default" | "figma";
+  /** не показывать число (товара нет в наличии) */
+  blank?: boolean;
 }
 
 function snap(v: number, step: number, min: number, max: number | undefined): number {
@@ -25,7 +29,7 @@ function snap(v: number, step: number, min: number, max: number | undefined): nu
   return n;
 }
 
-export function Stepper({ value, onChange, min = 1, max, step = 1, size = "md", disabled, className, ariaLabel = "Количество" }: StepperProps) {
+export function Stepper({ value, onChange, min = 1, max, step = 1, size = "md", disabled, className, ariaLabel = "Количество", variant = "default", blank }: StepperProps) {
   const [text, setText] = useState(String(value));
   const [lastValue, setLastValue] = useState(value);
   if (lastValue !== value) {
@@ -47,6 +51,44 @@ export function Stepper({ value, onChange, min = 1, max, step = 1, size = "md", 
 
   const dec = () => onChange(snap(value - step, step, min, max));
   const inc = () => onChange(snap(value + step, step, min, max));
+
+  const keys = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") commit((e.target as HTMLInputElement).value);
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      inc();
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      dec();
+    }
+  };
+
+  if (variant === "figma") {
+    const btnCls =
+      "flex w-[51px] shrink-0 items-center justify-center rounded-[7px] bg-btn text-[20px] font-light leading-[20px] text-sub transition-colors hover:bg-btn-hover disabled:hover:bg-btn";
+    return (
+      <div className={cn("flex h-[42px] items-stretch rounded-[7px] bg-surface", className)} role="group" aria-label={ariaLabel}>
+        <button type="button" onClick={dec} disabled={disabled || value <= min} aria-label="Уменьшить" className={btnCls}>
+          <span className="relative top-[-0.5px]">–</span>
+        </button>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={blank ? "" : text}
+          disabled={disabled}
+          aria-label={ariaLabel}
+          onChange={(e) => setText(e.target.value)}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={keys}
+          className="min-w-0 flex-1 bg-transparent text-center text-[16px] font-medium leading-[12px] text-black tnum outline-none"
+        />
+        <button type="button" onClick={inc} disabled={disabled || (max !== undefined && value >= max)} aria-label="Увеличить" className={btnCls}>
+          <span className="relative top-[-0.5px]">+</span>
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div

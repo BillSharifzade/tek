@@ -3,25 +3,32 @@ import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-export type ButtonVariant = "primary" | "dark" | "secondary" | "ghost" | "danger" | "link";
+/**
+ * Кнопки по ТЗ/макету:
+ *  primary   — жёлтая заливка #FFCC33 → hover #FED75B
+ *  secondary — серая заливка #EEF0F2 → hover #D9DDE3
+ *  outline   — серая обводка #B3BAC7 → hover #4F5A6D
+ */
+export type ButtonVariant = "primary" | "secondary" | "outline" | "ghost" | "danger" | "dark" | "link";
 export type ButtonSize = "sm" | "md" | "lg";
 
 const base =
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap font-semibold rounded-[6px] transition-colors select-none disabled:opacity-50 disabled:pointer-events-none";
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium text-[14px] rounded-[6px] transition-colors select-none disabled:opacity-50 disabled:pointer-events-none";
 
 const variants: Record<ButtonVariant, string> = {
-  primary: "bg-brand text-ink hover:bg-brand-hover active:bg-[#dcab22]",
-  dark: "bg-ink text-white hover:bg-ink-hover",
-  secondary: "bg-white text-ink border border-line hover:border-muted hover:bg-surface-2",
-  ghost: "bg-transparent text-ink hover:bg-surface",
-  danger: "bg-sale text-white hover:bg-[#c0100b]",
-  link: "bg-transparent text-info hover:underline px-0 h-auto font-medium",
+  primary: "bg-brand text-black hover:bg-brand-hover",
+  secondary: "bg-btn text-black hover:bg-btn-hover",
+  outline: "border border-outline bg-white text-g333 hover:border-outline-hover hover:text-black",
+  ghost: "bg-transparent text-g333 hover:bg-surface hover:text-black",
+  danger: "bg-sale-bg text-sale-text hover:bg-[#f7d3d3]",
+  dark: "bg-black text-white hover:bg-g333",
+  link: "bg-transparent text-info hover:text-black px-0 h-auto",
 };
 
 const sizes: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-sm",
-  md: "h-10 px-5 text-base",
-  lg: "h-12 px-6 text-md",
+  sm: "h-[32px] px-[16px] leading-[15px]",
+  md: "h-[44px] px-[24px] leading-[15px]",
+  lg: "h-[54px] px-[24px] text-[16px] leading-[20px] rounded-[7px]",
 };
 
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

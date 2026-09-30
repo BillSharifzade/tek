@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Download, FileSpreadsheet, RotateCcw, Trash2 } from "lucide-react";
+import { Download, FileSpreadsheet } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AccountDocument, Estimate } from "@/lib/types";
 import { client, downloadFile } from "@/lib/client";
@@ -11,12 +11,13 @@ import { useCart } from "@/store/cart";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { DataTable, type Column } from "./DataTable";
-import { EmptyState, ErrorLine, PageTitle, apiPath, errorMessage } from "./shared";
+import { Card, CardTitle, EmptyState, ErrorLine, apiPath, errorMessage } from "./shared";
 
 type Doc = AccountDocument & { id: string | number; kind_label?: string; note?: string | null; url: string | null; order_number?: string | null };
 
 const KIND_LABEL: Record<string, string> = { invoice: "Счёт", act: "Акт", contract: "Договор", payment: "Оплата", credit_note: "Корректировка" };
 
+/** «Документы» (макета нет — в стиле ЛК): счета/акты/договоры для скачивания + сохранённые сметы (восстановить в корзину). */
 export function DocumentsView() {
   const router = useRouter();
   const loadCart = useCart((s) => s.load);
@@ -76,78 +77,85 @@ export function DocumentsView() {
   };
 
   const columns: Column<Doc>[] = [
-    { key: "kind", header: "Тип", cell: (d) => <span className="font-medium">{d.kind_label ?? KIND_LABEL[d.kind] ?? d.kind}</span> },
+    { key: "kind", header: "Тип", className: "w-[130px]", cell: (d) => <span className="font-medium">{d.kind_label ?? KIND_LABEL[d.kind] ?? d.kind}</span> },
     {
       key: "title",
       header: "Название",
       cell: (d) => (
         <span>
           {d.title ?? d.note ?? (d.order_number ? `Заказ ${d.order_number}` : "—")}
-          {d.title && d.note ? <span className="block text-xs text-sub">{d.note}</span> : null}
+          {d.title && d.note ? <span className="block text-[13px] leading-[17px] text-sub">{d.note}</span> : null}
         </span>
       ),
     },
-    { key: "number", header: "№", cell: (d) => <span className="tnum">{d.number}</span> },
-    { key: "date", header: "Дата", cell: (d) => <span className="tnum">{date(d.date)}</span> },
+    { key: "number", header: "№", className: "w-[130px]", cell: (d) => <span className="tnum">{d.number}</span> },
+    { key: "date", header: "Дата", className: "w-[110px]", cell: (d) => <span className="tnum">{date(d.date)}</span> },
     {
       key: "dl",
       header: "",
       align: "right",
+      className: "w-[120px]",
       cell: (d) =>
         d.url ? (
           <button
             type="button"
             onClick={() => download(d)}
             disabled={downloadingId === String(d.id)}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-info hover:underline disabled:opacity-50"
+            className="inline-flex items-center gap-[6px] text-[14px] leading-[20px] text-sub transition-colors hover:text-black disabled:opacity-50"
           >
             <Download className="size-4" aria-hidden />
             {downloadingId === String(d.id) ? "Загрузка…" : "Скачать"}
           </button>
         ) : (
-          <span className="text-sm text-muted">—</span>
+          <span className="text-muted">—</span>
         ),
     },
   ];
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageTitle>Документы</PageTitle>
-      <ErrorLine error={error} />
-      {docs === null && !error ? <Skeleton className="h-64" /> : docs ? <DataTable columns={columns} rows={docs} rowKey={(d) => String(d.id)} empty="Документов пока нет" /> : null}
+    <div className="flex flex-col gap-[16px] lg:gap-[27px]">
+      <Card>
+        <CardTitle>Документы</CardTitle>
+        <ErrorLine error={error} className="mt-[20px]" />
+        <div className="mt-[28px]">
+          {docs === null && !error ? <Skeleton className="h-[200px] rounded-[10px]" /> : docs ? <DataTable columns={columns} rows={docs} rowKey={(d) => String(d.id)} empty="Документов пока нет" /> : null}
+        </div>
+      </Card>
 
-      <section>
-        <h3 className="mb-3">Сохранённые сметы</h3>
-        {estimates === null ? (
-          <Skeleton className="h-32" />
-        ) : estimates.length === 0 ? (
-          <EmptyState>Сохраняйте корзину как смету кнопкой «Сохранить смету» — она появится здесь.</EmptyState>
-        ) : (
-          <ul className="flex flex-col gap-3">
-            {estimates.map((e) => (
-              <li key={e.id} className="flex flex-wrap items-center gap-4 rounded-[8px] border border-line bg-white p-4">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-[8px] bg-surface text-ink">
-                  <FileSpreadsheet className="size-5" strokeWidth={1.75} aria-hidden />
-                </span>
-                <span className="min-w-[200px] flex-1">
-                  <span className="block text-base font-semibold">{e.name}</span>
-                  <span className="block text-sm text-sub tnum">
-                    {date(e.created_at)} · позиций: {e.items_count} · {money(e.total)}
+      <Card id="estimates" className="scroll-mt-[130px]">
+        <CardTitle>Сохранённые сметы</CardTitle>
+        <div className="mt-[21px]">
+          {estimates === null ? (
+            error ? null : <Skeleton className="h-[120px] rounded-[10px]" />
+          ) : estimates.length === 0 ? (
+            <EmptyState>Сохраняйте корзину как смету кнопкой «Сохранить смету» — она появится здесь.</EmptyState>
+          ) : (
+            <ul className="flex flex-col divide-y divide-line border-y border-line">
+              {estimates.map((e) => (
+                <li key={e.id} className="flex flex-wrap items-center gap-x-[16px] gap-y-[12px] py-[14px]">
+                  <span className="flex size-[44px] shrink-0 items-center justify-center rounded-[6px] bg-surface-2 text-black">
+                    <FileSpreadsheet className="size-[22px]" strokeWidth={1.6} aria-hidden />
                   </span>
-                </span>
-                <div className="flex gap-2">
-                  <Button variant="secondary" size="sm" icon={<RotateCcw className="size-4" />} loading={busyId === e.id} onClick={() => restore(e)}>
-                    Восстановить в корзину
-                  </Button>
-                  <Button variant="ghost" size="sm" icon={<Trash2 className="size-4" />} disabled={busyId === e.id} onClick={() => remove(e)} aria-label={`Удалить смету ${e.name}`}>
-                    Удалить
-                  </Button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                  <span className="min-w-[200px] flex-1">
+                    <span className="block text-[14px] font-medium leading-[20px]">{e.name}</span>
+                    <span className="block text-[13px] leading-[18px] text-sub tnum">
+                      {date(e.created_at)} · позиций: {e.items_count} · {money(e.total)}
+                    </span>
+                  </span>
+                  <div className="flex gap-[10px]">
+                    <Button variant="secondary" loading={busyId === e.id} onClick={() => restore(e)}>
+                      Восстановить в корзину
+                    </Button>
+                    <Button variant="outline" disabled={busyId === e.id} onClick={() => remove(e)} aria-label={`Удалить смету ${e.name}`}>
+                      Удалить
+                    </Button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </Card>
     </div>
   );
 }

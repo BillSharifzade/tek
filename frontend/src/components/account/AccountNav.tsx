@@ -2,25 +2,62 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
-import { ACCOUNT_NAV } from "@/lib/site";
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/cn";
 import { useAuth } from "@/store/auth";
 import { toast } from "@/store/toast";
 
+/**
+ * Меню ЛК (Figma 9063:200, «Group 72»): карточка 246px, пункты по 56px, разделители #E5E5E5,
+ * активный пункт — фон #FBFCFD и чёрный текст, остальные — #808080 (→ #000 при наведении).
+ * Пункты из макета + недостающие разделы по ТЗ (Баланс, Документы, Избранное).
+ */
+export const ACCOUNT_MENU: { href: string; label: string; exact?: boolean }[] = [
+  { href: "/account", label: "Основная информация", exact: true },
+  { href: "/account/personal", label: "Личные данные" },
+  { href: "/account/company", label: "Данные компании" },
+  { href: "/account/orders", label: "Заказы" },
+  { href: "/account/balance", label: "Баланс" },
+  { href: "/account/bonus", label: "Бонусная карта" },
+  { href: "/account/reviews", label: "Отзывы и вопросы" },
+  { href: "/account/documents", label: "Документы" },
+  { href: "/account/favorites", label: "Избранное" },
+];
+
 function isActive(pathname: string, href: string, exact?: boolean): boolean {
-  // anchor links (e.g. "Настройка уведомлений" → /account/personal#notifications) never own the active state
-  if (href.includes("#")) return false;
-  const base = href;
-  if (exact) return pathname === base;
-  return pathname === base || pathname.startsWith(`${base}/`);
+  if (exact) return pathname === href;
+  return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+/** Page heading for the current account route (h1 above the menu). */
+export function accountTitle(pathname: string): string {
+  const order = pathname.match(/^\/account\/orders\/([^/]+)/);
+  if (order) return `Заказ №${decodeURIComponent(order[1])}`;
+  if (pathname === "/account" || pathname === "/account/") return "Личный кабинет пользователя";
+  const item = ACCOUNT_MENU.find((i) => !i.exact && isActive(pathname, i.href));
+  return item?.label ?? "Личный кабинет пользователя";
+}
+
+export function AccountHeading() {
+  const pathname = usePathname() ?? "/account";
+  return <h1 className="mt-[16px] text-[22px] font-bold leading-[26px] sm:text-[26px] sm:leading-[19px]">{accountTitle(pathname)}</h1>;
+}
+
+const row = "flex h-[48px] shrink-0 items-center whitespace-nowrap px-[20px] text-[15px] leading-[20px] transition-colors lg:h-[55px] lg:px-[28px]";
+
 export function AccountNav() {
-  const pathname = usePathname();
+  const pathname = usePathname() ?? "/account";
   const router = useRouter();
-  const user = useAuth((s) => s.user);
   const logout = useAuth((s) => s.logout);
+  const listRef = useRef<HTMLUListElement>(null);
+
+  // on narrow screens the menu is a horizontal strip — keep the active item in view (without scrolling the page)
+  useEffect(() => {
+    const ul = listRef.current;
+    const active = ul?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!ul || !active || ul.scrollWidth <= ul.clientWidth) return;
+    ul.scrollLeft = Math.max(0, active.parentElement!.offsetLeft - 16);
+  }, [pathname]);
 
   const onLogout = async () => {
     await logout();
@@ -30,45 +67,29 @@ export function AccountNav() {
   };
 
   return (
-    <aside className="lg:w-[240px] lg:shrink-0">
-      <nav aria-label="Личный кабинет" className="rounded-[8px] border border-line bg-white">
-        {user ? (
-          <div className="border-b border-line px-5 py-4">
-            <p className="truncate text-base font-semibold">
-              {user.first_name} {user.last_name}
-            </p>
-            <p className="truncate text-sm text-sub">{user.email}</p>
-          </div>
-        ) : null}
-        <ul className="flex flex-row gap-1 overflow-x-auto p-2 scrollbar-none lg:flex-col lg:overflow-visible">
-          {ACCOUNT_NAV.map((item) => {
+    <aside className="min-w-0 lg:w-[246px] lg:shrink-0">
+      <nav aria-label="Личный кабинет" className="overflow-hidden rounded-[10px] border border-line bg-white">
+        <ul ref={listRef} className="relative flex overflow-x-auto scrollbar-none lg:flex-col lg:overflow-visible">
+          {ACCOUNT_MENU.map((item) => {
             const active = isActive(pathname, item.href, item.exact);
             return (
-              <li key={item.href} className="shrink-0">
+              <li key={item.href} className="shrink-0 border-r border-line lg:border-b lg:border-r-0">
                 <Link
                   href={item.href}
                   aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "flex h-10 items-center rounded-[6px] border-l-[3px] px-3 text-base transition-colors",
-                    active ? "border-brand bg-brand-light font-semibold text-ink" : "border-transparent text-ink hover:bg-surface",
-                  )}
+                  className={cn(row, active ? "bg-[#FBFCFD] font-medium text-black" : "text-muted hover:text-black")}
                 >
                   {item.label}
                 </Link>
               </li>
             );
           })}
+          <li className="shrink-0">
+            <button type="button" onClick={onLogout} className={cn(row, "w-full text-muted hover:text-black lg:h-[56px]")}>
+              Выйти
+            </button>
+          </li>
         </ul>
-        <div className="border-t border-line p-2">
-          <button
-            type="button"
-            onClick={onLogout}
-            className="flex h-10 w-full items-center gap-2 rounded-[6px] px-3 text-base text-sub transition-colors hover:bg-surface hover:text-sale"
-          >
-            <LogOut className="size-4" aria-hidden />
-            Выход
-          </button>
-        </div>
       </nav>
     </aside>
   );

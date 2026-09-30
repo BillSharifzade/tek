@@ -7,8 +7,9 @@ import { countLabel } from "@/lib/format";
 import { useFavorites } from "@/store/favorites";
 import { ProductGrid } from "@/components/product/ProductGrid";
 import { GridSkeleton } from "@/components/ui/Skeleton";
-import { EmptyState, ErrorLine, PageTitle, errorMessage } from "./shared";
+import { Card, CardTitle, EmptyState, ErrorLine, errorMessage } from "./shared";
 
+/** «Избранное» (макета нет): белая карточка ЛК с сеткой карточек товара (4 × 226px). */
 export function FavoritesView() {
   const ids = useFavorites((s) => s.ids);
   const hydrate = useFavorites((s) => s.hydrate);
@@ -37,21 +38,25 @@ export function FavoritesView() {
   const visible = items?.filter((p) => ids.includes(p.id)) ?? null;
 
   return (
-    <div className="flex flex-col gap-5">
-      <PageTitle right={visible ? <span className="text-sm text-sub">{countLabel(visible.length, ["товар", "товара", "товаров"])}</span> : null}>Избранное</PageTitle>
-      <ErrorLine error={error} />
+    <Card className="xl:px-[20px]">
+      <CardTitle className="xl:px-[10px]" right={visible ? <span className="text-[14px] leading-[20px] text-sub">{countLabel(visible.length, ["товар", "товара", "товаров"])}</span> : null}>
+        Избранное
+      </CardTitle>
+      <ErrorLine error={error} className="mt-[20px]" />
       {visible === null && !error ? (
-        <GridSkeleton count={6} cols={4} />
+        <div className="mt-[24px]">
+          <GridSkeleton count={4} cols={4} />
+        </div>
       ) : visible && visible.length === 0 ? (
-        <EmptyState>
+        <EmptyState className="mt-[21px]">
           В избранном пока пусто. Нажимайте на сердечко в карточке товара, чтобы сохранить его.{" "}
-          <Link href="/catalog" className="text-info hover:underline">
+          <Link href="/catalog" className="text-black underline underline-offset-[3px]">
             Перейти в каталог
           </Link>
         </EmptyState>
       ) : visible ? (
-        <ProductGrid products={visible} cols={4} />
+        <ProductGrid products={visible} cols={4} className="mt-[24px]" />
       ) : null}
-    </div>
+    </Card>
   );
 }

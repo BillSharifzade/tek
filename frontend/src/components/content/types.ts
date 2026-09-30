@@ -37,6 +37,7 @@ export interface NewsEntry {
   image?: string | null;
   image_url?: string | null;
   body?: string | null;
+  tags?: string[] | null;
 }
 
 export interface CmsPage {

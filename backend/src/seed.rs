@@ -111,7 +111,8 @@ struct P {
     price: Decimal,
     sale: Option<Decimal>,
     code: Option<String>,
-    group: Option<(i32, String)>,
+    /// (группа торговых предложений, значения товара по её осям)
+    group: Option<(i32, Value)>,
     pack: Option<(Decimal, String)>,
     attrs: Vec<(String, String)>,
     short: String,
@@ -210,7 +211,7 @@ async fn insert_product(tx: &mut Tx<'_>, ctx: &mut Ctx, p: P) -> anyhow::Result<
         None => (None, None),
     };
     let id: Uuid = sqlx::query_scalar(
-        r#"INSERT INTO products (code, slug, name, brand_id, category_id, group_id, param_value, unit, list_price, sale_price, is_hit, is_new,
+        r#"INSERT INTO products (code, slug, name, brand_id, category_id, group_id, variant, unit, list_price, sale_price, is_hit, is_new,
              pack_qty, pack_label, configurator_id, attributes, images, description, short_description, features, popularity, created_at)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'{}',$17,$18,$19,$20,$21) RETURNING id"#,
     )
@@ -220,7 +221,7 @@ async fn insert_product(tx: &mut Tx<'_>, ctx: &mut Ctx, p: P) -> anyhow::Result<
     .bind(brand_id)
     .bind(cat_id)
     .bind(p.group.as_ref().map(|g| g.0))
-    .bind(p.group.as_ref().map(|g| g.1.clone()))
+    .bind(p.group.as_ref().map(|g| g.1.clone()).unwrap_or_else(|| json!({})))
     .bind(p.unit)
     .bind(p.price)
     .bind(p.sale)
@@ -396,7 +397,7 @@ pub async fn run(pool: &PgPool) -> anyhow::Result<bool> {
     let mut all: Vec<(Uuid, &'static str)> = Vec::new(); // (id, cat)
 
     // trays group (Petrovich-style trade offers)
-    let group_id: i32 = sqlx::query_scalar("INSERT INTO product_groups (name, param_name) VALUES ('Лоток перфорированный 50х3000 ДКС', 'Ширина, мм') RETURNING id").fetch_one(&mut *tx).await?;
+    let group_id: i32 = sqlx::query_scalar("INSERT INTO product_groups (name, axes) VALUES ('Лоток перфорированный 50х3000 ДКС', ARRAY['Ширина, мм']) RETURNING id").fetch_one(&mut *tx).await?;
     let tray_desc = "Перфорированный лоток ДКС имеет все необходимые конструктивные решения для быстрого и современного монтажа.\n\nМеталлический лоток серии «Стандарт» — это комплексная система, предназначенная для прокладки электрических силовых кабельных трасс, систем связи, пожарной и охранной сигнализации внутри и снаружи помещений. Лотки соответствуют основным техническим требованиям ГОСТ 20783-81 на «Лотки для металлических электропроводок».";
     let tray_features = json!([
         { "title": "Соединение мама-папа", "text": "Одна часть лотка вставляется в другую, образуя гладкий стык поверхности лотков без дополнительных соединителей." },
@@ -413,7 +414,7 @@ pub async fn run(pool: &PgPool) -> anyhow::Result<bool> {
         let mut p = P::basic(format!("Лоток перфорированный {w}х50х3000 ДКС"), "dks", "kabelnye-lotki-dks", "м", price);
         p.sale = sale;
         p.code = Some(code.to_string());
-        p.group = Some((group_id, w.to_string()));
+        p.group = Some((group_id, json!({ "Ширина, мм": w.to_string() })));
         p.pack = Some((dec!(3), "лоток 3 м".into()));
         p.attrs = vec![
             ("Тип".into(), "Лоток перфорированный".into()),
@@ -799,6 +800,14 @@ pub async fn run(pool: &PgPool) -> anyhow::Result<bool> {
         .execute(&mut *tx)
         .await?;
 
+    // photos exported from the Figma mockup (frontend /public/figma): cable trays and cable categories
+    sqlx::query("UPDATE products p SET images = ARRAY['/figma/tray.webp'] FROM categories c WHERE c.id = p.category_id AND c.slug = 'kabelnye-lotki-dks' AND cardinality(p.images) = 0")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("UPDATE categories SET image_url = '/figma/cable-reel.webp' WHERE slug IN ('kabeli-i-provoda', 'silovye-kabeli', 'kontrolnye-kabeli', 'provoda-montazhnye')")
+        .execute(&mut *tx)
+        .await?;
+
     // product illustrations by leaf category (static SVGs served by the frontend from /public/products)
     sqlx::query("UPDATE products p SET images = ARRAY['/products/' || c.slug || '.svg'] FROM categories c WHERE c.id = p.category_id AND cardinality(p.images) = 0")
         .execute(&mut *tx)
@@ -836,7 +845,11 @@ pub async fn run(pool: &PgPool) -> anyhow::Result<bool> {
         sqlx::query("INSERT INTO services (slug, title, short, body, image_url, sort) VALUES ($1,$2,$3,$4,$5,$6)")
             .bind(slug).bind(title).bind(short)
             .bind(format!("<p>{short}</p><p>Свяжитесь с нами по телефону <a href=\"tel:+992446206060\">+992 (44) 620 60 60</a> или оставьте заявку — мы подготовим коммерческое предложение в течение одного рабочего дня.</p>"))
-            .bind(format!("/services/{slug}.svg")).bind(i as i32)
+            .bind(match *slug {
+                "obsluzhivanie-dgu-ibp" | "solnechnye-elektrostantsii" => "/figma/service-hero.webp".to_string(),
+                _ => format!("/services/{slug}.svg"),
+            })
+            .bind(i as i32)
             .execute(&mut *tx).await?;
     }
     let projects: &[(&str, &str, &str, &str, &str)] = &[
@@ -869,7 +882,7 @@ pub async fn run(pool: &PgPool) -> anyhow::Result<bool> {
     for (i, (title, year, date, object, service)) in projects.iter().enumerate() {
         sqlx::query("INSERT INTO projects (slug, title, year, project_date, object, service, image_url, excerpt, body, sort) VALUES ($1,$2,$3,$4::date,$5,$6,$7,$8,$9,$10)")
             .bind(ctx.unique_slug(&slugify(title))).bind(title).bind(year).bind(date).bind(object).bind(service)
-            .bind(format!("/projects/{}.svg", (i % 6) + 1))
+            .bind(format!("/figma/project-{}.webp", (i % 6) + 1))
             .bind(format!("Объект: {object}. Услуга: {service}."))
             .bind(format!("<p>ООО «Точикэлектрокомплект» выполнило работы на объекте «{object}» ({year}). Состав работ: {service}.</p><p>Поставлено оборудование ведущих брендов — Schneider Electric, ДКС, Legrand, AKSA. Все работы выполнены в срок с гарантией.</p>"))
             .bind(i as i32)
@@ -1009,4 +1022,253 @@ pub async fn run(pool: &PgPool) -> anyhow::Result<bool> {
 
     tx.commit().await?;
     Ok(true)
+}
+
+/// Идемпотентно дозаполняет данные, появившиеся после первой версии схемы (миграция 0002):
+/// теги новостей, фото/бренды/продукты проектов. Выполняется при каждом старте и трогает только пустые поля,
+/// поэтому работает и на свежей, и на уже засеянной базе.
+pub async fn enrich(pool: &PgPool) -> anyhow::Result<()> {
+    let mut tx = pool.begin().await?;
+    // теги новостей по ключевым словам заголовка
+    for (re, tags) in [
+        ("семинар|презентац|тренинг|обучен", &["семинар", "тренинг"][..]),
+        ("электроснабжен|дгу|генератор|aksa", &["проекты", "ДГУ"][..]),
+        ("конфигуратор|combitech", &["сервис", "конфигураторы"][..]),
+        ("дистрибьют|договор|партн", &["партнёры", "дистрибуция"][..]),
+        ("склад|филиал", &["компания", "доставка"][..]),
+        ("кешб|бонус|скидк|акци", &["акции", "кешбэк"][..]),
+    ] {
+        sqlx::query("UPDATE news SET tags = $2 WHERE cardinality(tags) = 0 AND title ~* $1")
+            .bind(re)
+            .bind(tags)
+            .execute(&mut *tx)
+            .await?;
+    }
+    sqlx::query("UPDATE news SET tags = ARRAY['новости'] WHERE cardinality(tags) = 0").execute(&mut *tx).await?;
+
+    // фото с объекта: главное фото + два соседних из выгрузки макета
+    sqlx::query(
+        r#"UPDATE projects SET photos = ARRAY[
+             '/figma/project-' || ((sort % 6) + 1) || '.webp',
+             '/figma/project-' || (((sort + 1) % 6) + 1) || '.webp',
+             '/figma/project-' || (((sort + 2) % 6) + 1) || '.webp']
+           WHERE cardinality(photos) = 0"#,
+    )
+    .execute(&mut *tx)
+    .await?;
+
+    // бренды проектов по характеру работ
+    let has_brands: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM project_brands)").fetch_one(&mut *tx).await?;
+    if !has_brands {
+        for (re, brands) in [
+            ("электроснабжен|кВт|ДГУ|генератор", &["aksa", "schneider-electric"][..]),
+            ("освещени|Исмоилит|Кушониён", &["philips-lighting", "legrand"][..]),
+            ("ВЛ |ошиновк|ПС |КНС|ГЭС", &["prysmian", "abb", "schneider-electric"][..]),
+            ("ЦОД|парковк|Отель|автосалон", &["schneider-electric", "legrand", "dks"][..]),
+            ("дорог", &["philips-lighting", "prysmian"][..]),
+        ] {
+            sqlx::query(
+                r#"INSERT INTO project_brands (project_id, brand_id)
+                   SELECT p.id, b.id FROM projects p JOIN brands b ON b.slug = ANY($2)
+                   WHERE (p.title || ' ' || p.object) ~* $1 ON CONFLICT DO NOTHING"#,
+            )
+            .bind(re)
+            .bind(brands)
+            .execute(&mut *tx)
+            .await?;
+        }
+        sqlx::query(
+            r#"INSERT INTO project_brands (project_id, brand_id)
+               SELECT p.id, b.id FROM projects p JOIN brands b ON b.slug IN ('schneider-electric', 'dks')
+               WHERE NOT EXISTS (SELECT 1 FROM project_brands x WHERE x.project_id = p.id) ON CONFLICT DO NOTHING"#,
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    // применённые продукты: 4 самых популярных товара брендов проекта
+    let has_products: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM project_products)").fetch_one(&mut *tx).await?;
+    if !has_products {
+        sqlx::query(
+            r#"INSERT INTO project_products (project_id, product_id, sort)
+               SELECT project_id, id, rn FROM (
+                 SELECT pb.project_id, pr.id, row_number() OVER (PARTITION BY pb.project_id ORDER BY pr.popularity DESC, pr.id) AS rn
+                 FROM project_brands pb JOIN products pr ON pr.brand_id = pb.brand_id
+               ) t WHERE rn <= 4 ON CONFLICT DO NOTHING"#,
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    group_variants(&mut tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+// ---------- торговые предложения ----------
+
+/// Семейства товаров сида, которые на деле — один товар в разных исполнениях (как балка №16/№20 у Петровича).
+/// (категория, атрибуты-ключ семейства, оси: (название оси, из каких атрибутов собрано значение — через «х»)).
+type Family = (&'static str, &'static [&'static str], &'static [(&'static str, &'static [&'static str])]);
+const FAMILIES: &[Family] = &[
+    ("kabelnye-lotki-dks", &["Бренд", "Тип"], &[("Ширина, мм", &["Ширина, мм"]), ("Высота, мм", &["Высота, мм"])]),
+    ("kryshki", &["Бренд", "Тип"], &[("Ширина лотка", &["Подходит для лотка шириной"])]),
+    ("ugly", &["Бренд", "Тип"], &[("Ширина лотка", &["Подходит для лотка шириной"])]),
+    ("otvetviteli", &["Бренд", "Тип"], &[("Ширина лотка", &["Подходит для лотка шириной"])]),
+    ("konsoli", &["Бренд", "Тип"], &[("Ширина лотка", &["Подходит для лотка шириной"])]),
+    ("silovye-kabeli", &["Тип"], &[("Число жил", &["Число жил"]), ("Сечение, мм²", &["Сечение, мм²"])]),
+    ("kontrolnye-kabeli", &["Тип"], &[("Число жил", &["Число жил"]), ("Сечение, мм²", &["Сечение, мм²"])]),
+    ("provoda-montazhnye", &["Тип"], &[("Сечение, мм²", &["Сечение, мм²"]), ("Цвет", &["Цвет"])]),
+    ("kabel-kanaly-i-aksessuary", &["Бренд", "Тип"], &[("Размер, мм", &["Ширина, мм", "Высота, мм"])]),
+    ("kabelnye-truby-i-aksessuary", &["Бренд", "Тип"], &[("Диаметр, мм", &["Диаметр, мм"])]),
+    ("lampy", &["Бренд", "Тип"], &[("Цоколь", &["Цоколь"]), ("Цветовая температура", &["Цветовая температура"]), ("Мощность, Вт", &["Мощность, Вт"])]),
+    ("svetilniki", &["Серия"], &[("Мощность, Вт", &["Мощность, Вт"])]),
+    ("prozhektory", &["Бренд"], &[("Мощность, Вт", &["Мощность, Вт"])]),
+    ("portativnye-generatory", &["Топливо"], &[("Мощность, кВт", &["Мощность, кВт"])]),
+    ("statsionarnye-generatory", &["Бренд"], &[("Мощность, кВА", &["Мощность, кВА"])]),
+    ("molniepriemniki", &["Тип"], &[("Длина", &["Длина"])]),
+    ("komplekty-zazemleniya", &["Бренд"], &[("Общая длина", &["Общая длина"])]),
+    ("maslyanye-transformatory", &["Тип"], &[("Мощность, кВА", &["Мощность, кВА"])]),
+    ("sukhie-transformatory", &["Тип"], &[("Мощность, кВА", &["Мощность, кВА"])]),
+    ("rozetki", &["Серия", "Тип"], &[("Цвет", &["Цвет"])]),
+    ("vyklyuchateli", &["Серия"], &[("Исполнение", &["Тип"])]),
+    ("avtomaticheskie-vyklyuchateli", &["Серия"], &[("Число полюсов", &["Число полюсов"]), ("Номинальный ток, А", &["Номинальный ток, А"])]),
+    ("kontaktory", &["Серия"], &[("Номинальный ток, А", &["Номинальный ток, А"])]),
+    ("raspredelitelnye-shchity", &["Тип"], &[("Число модулей", &["Число модулей"])]),
+    ("telekommunikatsionnye-shkafy", &["Тип"], &[("Высота, U", &["Высота, U"])]),
+    ("komplektuyushchie-schetchikov", &["Тип"], &[("Первичный ток, А", &["Первичный ток, А"])]),
+];
+
+/// Процентное кодирование сегмента URL (кириллица, пробелы, запятые в подписях картинок).
+fn enc(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() * 3);
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b"-_.~".contains(&b) {
+            out.push(b as char);
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+/// Короткая подпись значения оси с единицей: «20 Вт», «3P», «16х16 мм», «42 U».
+fn short_value(axis: &str, value: &str) -> String {
+    match axis {
+        "Число полюсов" => return format!("{value}P"),
+        "Число модулей" => return format!("{value} мод."),
+        _ => {}
+    }
+    match axis.split_once(", ") {
+        Some((_, unit)) if value.chars().all(|c| c.is_ascii_digit() || matches!(c, '.' | ',' | 'х')) => format!("{value} {unit}"),
+        _ => value.to_string(),
+    }
+}
+
+/// Фото исполнения: иллюстрация `/art/...` (рисует фронтенд, см. app/art) + «шильдик» с параметрами.
+/// Для автоматов, кабелей, проводов и ламп картинка отражает исполнение (полюса, жилы, цвет, цоколь и свечение).
+fn variant_images(cat: &str, values: &[(&str, String)]) -> Vec<String> {
+    let get = |k: &str| values.iter().find(|(a, _)| *a == k).map(|(_, v)| enc(v)).unwrap_or_default();
+    let label: Vec<String> = values.iter().map(|(a, v)| short_value(a, v)).collect();
+    let main = match cat {
+        "avtomaticheskie-vyklyuchateli" => format!("/art/breaker/{}/C{}.svg", get("Число полюсов"), get("Номинальный ток, А")),
+        "silovye-kabeli" | "kontrolnye-kabeli" => format!("/art/cable/{}/{}.svg", get("Число жил"), get("Сечение, мм²")),
+        "provoda-montazhnye" => format!("/art/wire/{}/{}.svg", get("Цвет"), get("Сечение, мм²")),
+        "lampy" => format!("/art/lamp/{}/{}/{}.svg", get("Цоколь"), get("Цветовая температура"), get("Мощность, Вт")),
+        _ => format!("/art/label/{cat}/{}.svg", enc(&label.join(" · "))),
+    };
+    let tag: Vec<String> = values.iter().map(|(a, v)| format!("{a}: {v}")).collect();
+    vec![main, format!("/art/tag/{cat}/{}.svg", enc(&tag.join("|")))]
+}
+
+/// Собирает семейства из [`FAMILIES`] в группы торговых предложений (`auto:*`). Идемпотентно: запускается
+/// при каждом старте, трогает только товары без группы или из auto-групп — ручные группы и выгрузку 1С не меняет.
+async fn group_variants(tx: &mut Tx<'_>) -> anyhow::Result<()> {
+    #[derive(sqlx::FromRow)]
+    struct Row {
+        id: Uuid,
+        category: String,
+        attributes: Value,
+        images: Vec<String>,
+    }
+    let rows = sqlx::query_as::<_, Row>(
+        r#"SELECT p.id, c.slug AS category, p.attributes, p.images
+           FROM products p JOIN categories c ON c.id = p.category_id LEFT JOIN product_groups g ON g.id = p.group_id
+           WHERE p.group_id IS NULL OR g.name LIKE 'auto:%'
+           ORDER BY p.code"#,
+    )
+    .fetch_all(&mut **tx)
+    .await?;
+
+    let (mut ids, mut gids, mut vars, mut imgs) = (Vec::<Uuid>::new(), Vec::<i32>::new(), Vec::<Value>::new(), Vec::<Value>::new());
+    for (cat, by, axes) in FAMILIES {
+        // семейство → [(товар, значения по осям, фото)], порядок — по коду товара
+        let mut families: Vec<(Vec<String>, Vec<(&Row, Vec<(&str, String)>)>)> = Vec::new();
+        for r in rows.iter().filter(|r| r.category == *cat) {
+            let attr = |name: &str| -> Option<String> {
+                r.attributes.as_array()?.iter().find(|a| a["name"] == name).and_then(|a| a["value"].as_str()).map(str::to_string)
+            };
+            let Some(key) = by.iter().map(|k| attr(k)).collect::<Option<Vec<_>>>() else { continue };
+            let Some(values) = axes
+                .iter()
+                .map(|(name, from)| from.iter().map(|k| attr(k)).collect::<Option<Vec<_>>>().map(|v| (*name, v.join("х"))))
+                .collect::<Option<Vec<_>>>()
+            else {
+                continue;
+            };
+            match families.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, members)) if members.iter().any(|(_, v)| *v == values) => {} // дубль исполнения — оставляем вне группы
+                Some((_, members)) => members.push((r, values)),
+                None => families.push((key, vec![(r, values)])),
+            }
+        }
+        for (key, members) in families.into_iter().filter(|(_, m)| m.len() >= 2) {
+            let axis_names: Vec<&str> = axes.iter().map(|(n, _)| *n).collect();
+            let gid: i32 = sqlx::query_scalar(
+                "INSERT INTO product_groups (name, axes) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET axes = EXCLUDED.axes RETURNING id",
+            )
+            .bind(format!("auto:{cat}:{}", key.join(" / ")))
+            .bind(&axis_names)
+            .fetch_one(&mut **tx)
+            .await?;
+            for (r, values) in members {
+                let default_image = format!("/products/{cat}.svg");
+                let images = if r.images.is_empty() || r.images == [default_image] || r.images[0].starts_with("/art/") {
+                    variant_images(cat, &values)
+                } else {
+                    r.images.clone()
+                };
+                ids.push(r.id);
+                gids.push(gid);
+                vars.push(Value::Object(values.into_iter().map(|(a, v)| (a.to_string(), Value::String(v))).collect()));
+                imgs.push(json!(images));
+            }
+        }
+    }
+
+    // одним запросом и только там, где что-то поменялось
+    sqlx::query(
+        r#"UPDATE products p
+              SET group_id = x.gid, variant = x.v, images = ARRAY(SELECT jsonb_array_elements_text(x.imgs))
+             FROM unnest($1::uuid[], $2::int[], $3::jsonb[], $4::jsonb[]) AS x(id, gid, v, imgs)
+            WHERE p.id = x.id AND (p.group_id IS DISTINCT FROM x.gid OR p.variant <> x.v OR to_jsonb(p.images) <> x.imgs)"#,
+    )
+    .bind(&ids)
+    .bind(&gids)
+    .bind(&vars)
+    .bind(&imgs)
+    .execute(&mut **tx)
+    .await?;
+    // товары, выпавшие из семейств (удалены соседи, поменялись атрибуты), и опустевшие auto-группы
+    sqlx::query(
+        r#"UPDATE products SET group_id = NULL, variant = '{}'::jsonb
+            WHERE group_id IN (SELECT id FROM product_groups WHERE name LIKE 'auto:%') AND NOT (id = ANY($1))"#,
+    )
+    .bind(&ids)
+    .execute(&mut **tx)
+    .await?;
+    sqlx::query("DELETE FROM product_groups g WHERE g.name LIKE 'auto:%' AND NOT EXISTS (SELECT 1 FROM products p WHERE p.group_id = g.id)")
+        .execute(&mut **tx)
+        .await?;
+    Ok(())
 }

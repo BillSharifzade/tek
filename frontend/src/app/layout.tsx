@@ -1,18 +1,21 @@
+import { Suspense } from "react";
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Roboto } from "next/font/google";
 import "./globals.css";
 import type { CategoryNode } from "@/lib/types";
 import { publicGet, safe } from "@/lib/server";
 import { AppInit } from "@/components/layout/AppInit";
-import { TopBar } from "@/components/layout/TopBar";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { Toaster } from "@/components/ui/Toaster";
+import { NavProgress } from "@/components/layout/NavProgress";
 
-const inter = Inter({
-  variable: "--font-inter",
+// Figma tec.tj набран в Roboto (300/400/500/600/700/800) — variable font покрывает все начертания
+const roboto = Roboto({
+  variable: "--font-roboto",
   subsets: ["latin", "cyrillic"],
+  weight: "variable",
   display: "swap",
 });
 
@@ -27,7 +30,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#f4c241",
+  themeColor: "#ffcc33",
   width: "device-width",
   initialScale: 1,
 };
@@ -35,10 +38,12 @@ export const viewport: Viewport = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const categories = await safe(publicGet<CategoryNode[]>("/catalog/tree", undefined, 120), []);
   return (
-    <html lang="ru" data-scroll-behavior="smooth" className={`${inter.variable} h-full antialiased`}>
+    <html lang="ru" data-scroll-behavior="smooth" className={`${roboto.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col pb-16 md:pb-0">
         <AppInit />
-        <TopBar />
+        <Suspense fallback={null}>
+          <NavProgress />
+        </Suspense>
         <Header categories={categories} />
         <main className="flex-1">{children}</main>
         <Footer categories={categories} />

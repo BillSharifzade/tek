@@ -44,11 +44,27 @@ export interface StoreStock {
   delivery_hint: string;
 }
 
-export interface Sibling {
+/** Ось торговых предложений: «Число полюсов», «Сечение, мм²»… Значения уже отсортированы бэкендом. */
+export interface VariantAxis {
+  name: string;
+  values: string[];
+}
+
+/** Исполнение товара в группе — отдельный товар со своим URL, кодом, ценой и фото. */
+export interface VariantItem {
   slug: string;
   code: string;
-  param_value: string;
+  name: string;
+  values: Record<string, string>;
   in_stock: boolean;
+  price: number;
+  unit: string;
+  image: string | null;
+}
+
+export interface Variants {
+  axes: VariantAxis[];
+  items: VariantItem[];
 }
 
 export interface Attribute {
@@ -84,7 +100,7 @@ export interface Product extends ProductCard {
   attributes: Attribute[];
   pack: { qty: number; label: string } | null;
   stock: StoreStock[];
-  group: { param_name: string; siblings: Sibling[] } | null;
+  variants: Variants | null;
   documents: ProductDocument[];
   accessories: Accessory[];
   configurator: { name: string; url: string } | null;
@@ -341,6 +357,10 @@ export interface HomeNews {
   slug: string;
   title: string;
   date: string;
+  excerpt?: string;
+  image?: string | null;
+  /** без «#», например ["проекты", "ДГУ"] */
+  tags?: string[];
 }
 
 export interface Usp {
@@ -371,6 +391,10 @@ export interface Project {
   image: string | null;
   excerpt?: string;
   body?: string;
+  brands?: { slug: string; name: string; logo?: string | null }[];
+  photos?: string[];
+  video_url?: string | null;
+  products?: ProductCard[];
 }
 
 export interface NewsItem {
@@ -380,6 +404,7 @@ export interface NewsItem {
   excerpt: string;
   image: string | null;
   body?: string;
+  tags?: string[];
 }
 
 export interface Service {

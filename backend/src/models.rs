@@ -80,7 +80,7 @@ pub struct UserJson {
 pub const PRODUCT_SELECT: &str = r#"
 SELECT p.id, p.code, p.slug, p.name, p.brand_id, b.slug AS brand_slug, b.name AS brand_name,
        p.category_id, c.path AS category_path, c.slug AS category_slug, c.name AS category_name,
-       p.group_id, p.param_value, p.unit, p.list_price, p.sale_price, p.is_hit, p.is_new,
+       p.group_id, p.variant, p.unit, p.list_price, p.sale_price, p.is_hit, p.is_new,
        p.pack_qty, p.pack_label, p.configurator_id, p.attributes, p.images, p.description,
        p.short_description, p.features, p.rating, p.reviews_count, p.questions_count, p.popularity,
        p.created_at,
@@ -104,7 +104,8 @@ pub struct ProductRow {
     pub category_slug: String,
     pub category_name: String,
     pub group_id: Option<i32>,
-    pub param_value: Option<String>,
+    /// значения товара по осям его группы торговых предложений: { "Число полюсов": "3", ... }
+    pub variant: Value,
     pub unit: String,
     pub list_price: Decimal,
     pub sale_price: Option<Decimal>,
@@ -168,14 +169,6 @@ pub struct StoreStock {
     pub name: String,
     pub qty: Decimal,
     pub delivery_hint: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct Sibling {
-    pub slug: String,
-    pub code: String,
-    pub param_value: String,
-    pub in_stock: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -1,21 +1,28 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { OrderListItem } from "@/lib/types";
 import { client } from "@/lib/client";
-import { date, money } from "@/lib/format";
+import { date, moneyBare } from "@/lib/format";
+import { cn } from "@/lib/cn";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { StatusBadge } from "./OrderStatus";
 import { DataTable, type Column } from "./DataTable";
 import { PeriodFilter, periodFromParams, periodKey, type Period } from "./PeriodFilter";
-import { ErrorLine, PageTitle, errorMessage } from "./shared";
+import { Card, CardTitle, ErrorLine, errorMessage } from "./shared";
 
 interface OrdersResponse {
   items: OrderListItem[];
   total: number;
 }
 
+/**
+ * «Заказы» (Figma 9097:650): карточка с заголовком, период «с … по …» и таблица
+ * №/Дата/Сумма/Оплачено/Остаток/Срок оплаты (+ статус заказа). По умолчанию — последние 30 дней (ТЗ).
+ * Строка кликабельна → состав заказа и статус доставки.
+ */
 export function OrdersView() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -50,42 +57,56 @@ export function OrdersView() {
   };
 
   const columns: Column<OrderListItem>[] = [
-    { key: "number", header: "№", cell: (o) => <span className="font-semibold tnum">{o.number}</span> },
-    { key: "date", header: "Дата", cell: (o) => <span className="tnum">{date(o.date)}</span> },
-    { key: "total", header: "Сумма, с.", align: "right", cell: (o) => <span className="font-semibold tnum">{money(o.total)}</span> },
-    { key: "paid", header: "Оплачено, с.", align: "right", hideBelow: "md", cell: (o) => <span className="tnum">{money(o.paid_amount)}</span> },
+    {
+      key: "number",
+      header: "№",
+      className: "w-[128px]",
+      cell: (o) => (
+        <Link href={`/account/orders/${o.number}`} onClick={(e) => e.stopPropagation()} className="font-medium tnum text-black underline decoration-line-3 underline-offset-[3px] hover:decoration-black">
+          {o.number}
+        </Link>
+      ),
+    },
+    { key: "date", header: "Дата", className: "w-[118px]", cell: (o) => <span className="tnum">{date(o.date)}</span> },
+    { key: "total", header: "Сумма, с.", className: "w-[140px]", cell: (o) => <span className="font-medium tnum">{moneyBare(o.total)}</span> },
+    { key: "paid", header: "Оплачено, с.", hideBelow: "md", className: "w-[140px]", cell: (o) => <span className="tnum">{moneyBare(o.paid_amount)}</span> },
     {
       key: "remaining",
       header: "Остаток, с.",
-      align: "right",
       hideBelow: "md",
-      cell: (o) => <span className={o.remaining > 0 && o.status !== "cancelled" ? "font-medium text-sale tnum" : "tnum"}>{money(o.status === "cancelled" ? 0 : o.remaining)}</span>,
+      className: "w-[140px]",
+      cell: (o) => {
+        const rest = o.status === "cancelled" ? 0 : o.remaining;
+        return <span className={cn("tnum", rest > 0 && "text-[#D13B3E]")}>{moneyBare(rest)}</span>;
+      },
     },
-    { key: "due", header: "Срок оплаты", hideBelow: "lg", cell: (o) => <span className="tnum">{o.due_date ? date(o.due_date) : "—"}</span> },
+    { key: "due", header: "Срок оплаты", hideBelow: "lg", className: "w-[130px]", cell: (o) => <span className="tnum">{o.due_date && o.status !== "cancelled" ? date(o.due_date) : "—"}</span> },
     { key: "status", header: "Статус", cell: (o) => <StatusBadge status={o.status} label={o.status_label} /> },
   ];
 
   return (
-    <div className="flex flex-col gap-5">
-      <PageTitle>Заказы</PageTitle>
-      <PeriodFilter key={key} value={period} onApply={apply} busy={busy} />
-      <ErrorLine error={error} />
-      {data === null && !error ? (
-        <Skeleton className="h-64" />
-      ) : data ? (
-        <DataTable
-          columns={columns}
-          rows={data.items}
-          rowKey={(o) => o.id}
-          onRowClick={(o) => router.push(`/account/orders/${o.number}`)}
-          empty="За выбранный период заказов нет"
-        />
-      ) : null}
+    <Card className="min-h-[347px]">
+      <CardTitle>Заказы</CardTitle>
+      <PeriodFilter key={key} value={period} onApply={apply} busy={busy && result !== null} className="mt-[22px]" />
+      <ErrorLine error={error} className="mt-[20px]" />
+      <div className="mt-[37px]">
+        {data === null && !error ? (
+          <Skeleton className="h-[160px] rounded-[10px]" />
+        ) : data ? (
+          <DataTable
+            columns={columns}
+            rows={data.items}
+            rowKey={(o) => o.id}
+            onRowClick={(o) => router.push(`/account/orders/${o.number}`)}
+            empty="За выбранный период заказов нет"
+          />
+        ) : null}
+      </div>
       {data && data.items.length > 0 ? (
-        <p className="text-sm text-sub">
-          Показаны заказы с {date(period.from)} по {date(period.to)}. Нажмите на строку, чтобы открыть состав заказа и статус доставки.
+        <p className="mt-[16px] text-[13px] leading-[18px] text-sub">
+          Заказы с {date(period.from)} по {date(period.to)}. Нажмите на заказ, чтобы увидеть состав и статус доставки; недоставленные заказы можно изменить или отменить.
         </p>
       ) : null}
-    </div>
+    </Card>
   );
 }

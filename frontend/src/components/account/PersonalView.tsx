@@ -4,13 +4,14 @@ import { useState } from "react";
 import type { User } from "@/lib/types";
 import { client } from "@/lib/client";
 import { passwordValid } from "@/lib/password";
+import { cn } from "@/lib/cn";
 import { useAuth } from "@/store/auth";
 import { toast } from "@/store/toast";
 import { Button } from "@/components/ui/Button";
-import { Toggle } from "@/components/ui/Checkbox";
-import { Field, Input } from "@/components/ui/Input";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { Input } from "@/components/ui/Input";
 import { PasswordRules } from "@/components/auth/PasswordRules";
-import { ErrorLine, PageTitle, errorMessage } from "./shared";
+import { Card, CardTitle, ErrorLine, errorMessage, fieldCls } from "./shared";
 
 interface ProfileForm {
   first_name: string;
@@ -19,6 +20,21 @@ interface ProfileForm {
   email: string;
 }
 
+type NotifyKey = "notify_marketing" | "notify_replies";
+
+const CUSTOMER_TYPE: Record<User["customer_type"], string> = { retail: "физическое лицо", electrician: "электрик", purchaser: "закупщик" };
+
+/** Жёлтая обводка из макета («СОХРАНИТЬ», 9085:409), размер/радиус — как у кнопок сайта (44px, r6). */
+export const saveBtnCls = "border border-brand bg-white uppercase tracking-[0.02em] text-black hover:border-brand-hover hover:bg-brand-hover";
+
+function field(invalid?: boolean) {
+  return cn(fieldCls, invalid && "border-sale hover:border-sale focus:border-sale");
+}
+
+/**
+ * «Личные данные» (Figma 9085:409): одна карточка — Личные данные (4 поля), Смена пароля (с правилами),
+ * Настройка уведомлений (чекбоксы) и общая кнопка «СОХРАНИТЬ».
+ */
 export function PersonalView() {
   const user = useAuth((s) => s.user);
   const setUser = useAuth((s) => s.setUser);
@@ -30,156 +46,130 @@ export function PersonalView() {
     phone: user?.phone ?? "",
     email: user?.email ?? "",
   }));
-  const [profileBusy, setProfileBusy] = useState(false);
-  const [profileError, setProfileError] = useState<string | null>(null);
-
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
-  const [pwBusy, setPwBusy] = useState(false);
-  const [pwError, setPwError] = useState<string | null>(null);
+  const [notify, setNotify] = useState<Record<NotifyKey, boolean>>(() => ({ notify_marketing: user?.notify_marketing ?? false, notify_replies: user?.notify_replies ?? true }));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [invalid, setInvalid] = useState<Partial<Record<keyof ProfileForm | "current" | "next" | "confirm", boolean>>>({});
 
-  const [notify, setNotify] = useState(() => ({ notify_marketing: user?.notify_marketing ?? false, notify_replies: user?.notify_replies ?? true }));
-  const [notifyBusy, setNotifyBusy] = useState<"notify_marketing" | "notify_replies" | null>(null);
+  const set = (k: keyof ProfileForm, v: string) => {
+    setForm((f) => ({ ...f, [k]: v }));
+    setInvalid((i) => ({ ...i, [k]: false }));
+  };
+  const setP = (k: "current" | "next" | "confirm", v: string) => {
+    setPw((p) => ({ ...p, [k]: v }));
+    setInvalid((i) => ({ ...i, [k]: false }));
+  };
 
-  const set = (k: keyof ProfileForm, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const wantPassword = Boolean(pw.next || pw.confirm || pw.current);
 
-  const saveProfile = async (e: React.FormEvent) => {
+  const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    setProfileError(null);
-    if (!form.first_name.trim() || !form.email.trim() || !form.phone.trim()) {
-      setProfileError("Заполните имя, телефон и e-mail");
+    setError(null);
+    const bad: typeof invalid = {};
+    if (!form.first_name.trim()) bad.first_name = true;
+    if (!form.phone.trim()) bad.phone = true;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) bad.email = true;
+    if (Object.keys(bad).length) {
+      setInvalid(bad);
+      setError("Заполните имя, телефон и корректный e-mail");
       return;
     }
-    setProfileBusy(true);
-    try {
-      const u = await client.put<User>("/account/profile", {
-        first_name: form.first_name.trim(),
-        last_name: form.last_name.trim(),
-        phone: form.phone.trim(),
-        email: form.email.trim(),
-      });
-      setUser(u);
-      toast.success("Личные данные сохранены");
-    } catch (err) {
-      setProfileError(errorMessage(err, "Не удалось сохранить данные"));
-    } finally {
-      setProfileBusy(false);
+    if (wantPassword) {
+      if (!passwordValid(pw.next, user?.email)) {
+        setInvalid({ next: true });
+        return setError("Новый пароль не соответствует требованиям");
+      }
+      if (pw.next !== pw.confirm) {
+        setInvalid({ confirm: true });
+        return setError("Пароли не совпадают");
+      }
+      if (!pw.current) {
+        setInvalid({ current: true });
+        return setError("Введите текущий пароль, чтобы сменить его");
+      }
     }
-  };
 
-  const nextValid = passwordValid(pw.next, user?.email);
-  const savePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPwError(null);
-    if (!pw.current) return setPwError("Введите текущий пароль");
-    if (!nextValid) return setPwError("Новый пароль не соответствует требованиям");
-    if (pw.next !== pw.confirm) return setPwError("Пароли не совпадают");
-    setPwBusy(true);
+    setBusy(true);
+    let latest = user;
     try {
-      await client.put("/account/password", { current_password: pw.current, new_password: pw.next });
-      setPw({ current: "", next: "", confirm: "" });
-      toast.success("Пароль изменён");
+      const profile = { first_name: form.first_name.trim(), last_name: form.last_name.trim(), phone: form.phone.trim(), email: form.email.trim() };
+      const profileChanged = !user || (Object.keys(profile) as (keyof ProfileForm)[]).some((k) => profile[k] !== (user[k] ?? ""));
+      if (profileChanged) {
+        latest = await client.put<User>("/account/profile", profile);
+        setUser(latest);
+      }
+      const notifyChanged = !latest || latest.notify_marketing !== notify.notify_marketing || latest.notify_replies !== notify.notify_replies;
+      if (notifyChanged) {
+        const u = await client.put<User>("/account/notifications", notify);
+        if (u && typeof u === "object" && "id" in u) latest = u;
+        else if (latest) latest = { ...latest, ...notify };
+        if (latest) setUser(latest);
+      }
+      if (wantPassword) {
+        await client.put("/account/password", { current_password: pw.current, new_password: pw.next });
+        setPw({ current: "", next: "", confirm: "" });
+      }
+      toast.success(profileChanged || notifyChanged || wantPassword ? (wantPassword ? "Данные сохранены, пароль изменён" : "Личные данные сохранены") : "Изменений нет");
     } catch (err) {
-      setPwError(errorMessage(err, "Не удалось изменить пароль"));
+      setError(errorMessage(err, "Не удалось сохранить изменения"));
     } finally {
-      setPwBusy(false);
-    }
-  };
-
-  const toggleNotify = async (key: "notify_marketing" | "notify_replies", value: boolean) => {
-    const prev = notify;
-    const next = { ...notify, [key]: value };
-    setNotify(next);
-    setNotifyBusy(key);
-    try {
-      const u = await client.put<User>("/account/notifications", next);
-      if (u && typeof u === "object" && "id" in u) setUser(u);
-      else if (user) setUser({ ...user, ...next });
-      toast.success("Настройки уведомлений сохранены");
-    } catch (err) {
-      setNotify(prev);
-      toast.error(errorMessage(err, "Не удалось сохранить настройки"));
-    } finally {
-      setNotifyBusy(null);
+      setBusy(false);
     }
   };
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageTitle>Личные данные</PageTitle>
-
-      <form onSubmit={saveProfile} noValidate className="rounded-[8px] border border-line bg-white p-6">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Имя" htmlFor="p-first" required>
-            <Input id="p-first" value={form.first_name} onChange={(e) => set("first_name", e.target.value)} autoComplete="given-name" />
-          </Field>
-          <Field label="Фамилия" htmlFor="p-last">
-            <Input id="p-last" value={form.last_name} onChange={(e) => set("last_name", e.target.value)} autoComplete="family-name" />
-          </Field>
-          <Field label="Номер телефона" htmlFor="p-phone" required>
-            <Input id="p-phone" type="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" placeholder="+992" />
-          </Field>
-          <Field label="E-mail" htmlFor="p-email" required>
-            <Input id="p-email" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} autoComplete="email" />
-          </Field>
+    <Card className="lg:min-h-[518px]">
+      <form onSubmit={save} noValidate>
+        <CardTitle right={user ? <span className="text-[14px] leading-[20px] text-sub">Тип клиента: {CUSTOMER_TYPE[user.customer_type] ?? "физическое лицо"}</span> : null}>Личные данные</CardTitle>
+        <div className="mt-[21px] grid grid-cols-1 gap-[12px] sm:grid-cols-2">
+          <Input aria-label="Имя" placeholder="Имя" value={form.first_name} onChange={(e) => set("first_name", e.target.value)} autoComplete="given-name" className={field(invalid.first_name)} aria-invalid={invalid.first_name || undefined} />
+          <Input aria-label="Фамилия" placeholder="Фамилия" value={form.last_name} onChange={(e) => set("last_name", e.target.value)} autoComplete="family-name" className={field()} />
+          <Input aria-label="Номер телефона" placeholder="Номер телефона" type="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} autoComplete="tel" className={field(invalid.phone)} aria-invalid={invalid.phone || undefined} />
+          <Input aria-label="E-mail" placeholder="E-mail" type="email" value={form.email} onChange={(e) => set("email", e.target.value)} autoComplete="email" className={field(invalid.email)} aria-invalid={invalid.email || undefined} />
         </div>
-        <ErrorLine error={profileError} className="mt-4" />
-        <div className="mt-5 flex items-center gap-4">
-          <Button type="submit" loading={profileBusy} className="uppercase tracking-wide">
-            Сохранить
-          </Button>
-          {user ? (
-            <span className="text-sm text-sub">
-              Тип клиента: {user.customer_type === "purchaser" ? "закупщик" : user.customer_type === "electrician" ? "электрик" : "физическое лицо"}
-            </span>
-          ) : null}
+
+        <CardTitle as="h3" className="mt-[30px]">
+          <span id="password">Смена пароля</span>
+        </CardTitle>
+        <div className="mt-[21px] grid grid-cols-1 gap-[12px] sm:grid-cols-2">
+          <div>
+            <Input aria-label="Новый пароль" placeholder="Новый пароль" type="password" value={pw.next} onChange={(e) => setP("next", e.target.value)} autoComplete="new-password" className={field(invalid.next)} />
+            <PasswordRules password={pw.next} userName={user?.email} className="mt-[2px]" />
+          </div>
+          <div className="flex flex-col gap-[12px]">
+            <Input aria-label="Подтверждение пароля" placeholder="Подтверждение пароля" type="password" value={pw.confirm} onChange={(e) => setP("confirm", e.target.value)} autoComplete="new-password" className={field(invalid.confirm || Boolean(pw.confirm && pw.confirm !== pw.next))} />
+            {wantPassword ? (
+              <Input aria-label="Текущий пароль" placeholder="Текущий пароль" type="password" value={pw.current} onChange={(e) => setP("current", e.target.value)} autoComplete="current-password" className={field(invalid.current)} />
+            ) : null}
+          </div>
         </div>
-      </form>
 
-      <section id="password" className="scroll-mt-24 rounded-[8px] border border-line bg-white p-6">
-        <h3 className="mb-4">Смена пароля</h3>
-        <form onSubmit={savePassword} noValidate className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Текущий пароль" htmlFor="pw-current" className="sm:col-span-2 sm:max-w-[calc(50%-8px)]">
-            <Input id="pw-current" type="password" value={pw.current} onChange={(e) => setPw((p) => ({ ...p, current: e.target.value }))} autoComplete="current-password" />
-          </Field>
-          <div className="flex flex-col gap-1.5">
-            <Field label="Новый пароль" htmlFor="pw-next">
-              <Input id="pw-next" type="password" value={pw.next} onChange={(e) => setPw((p) => ({ ...p, next: e.target.value }))} autoComplete="new-password" invalid={pw.next.length > 0 && !nextValid} />
-            </Field>
-            <PasswordRules password={pw.next} userName={user?.email} />
-          </div>
-          <Field label="Подтверждение пароля" htmlFor="pw-confirm" error={pw.confirm && pw.confirm !== pw.next ? "Пароли не совпадают" : undefined}>
-            <Input id="pw-confirm" type="password" value={pw.confirm} onChange={(e) => setPw((p) => ({ ...p, confirm: e.target.value }))} autoComplete="new-password" invalid={Boolean(pw.confirm) && pw.confirm !== pw.next} />
-          </Field>
-          <div className="sm:col-span-2">
-            <ErrorLine error={pwError} className="mb-4" />
-            <Button type="submit" loading={pwBusy} className="uppercase tracking-wide">
-              Сохранить
-            </Button>
-          </div>
-        </form>
-      </section>
-
-      <section id="notifications" className="scroll-mt-24 rounded-[8px] border border-line bg-white p-6">
-        <h3 className="mb-4">Настройка уведомлений</h3>
-        <div className="flex flex-col divide-y divide-line">
-          <Toggle
-            className="py-3"
-            label="Рекламные рассылки"
-            description="Акции, распродажи и новинки на e-mail"
+        <CardTitle as="h3" className="mt-[28px]">
+          <span id="notifications">Настройка уведомлений</span>
+        </CardTitle>
+        <div className="mt-[19px] flex flex-col items-start gap-[14px]">
+          <Checkbox
+            box={20}
+            className="gap-[10px]"
             checked={notify.notify_marketing}
-            disabled={notifyBusy === "notify_marketing"}
-            onChange={(v) => toggleNotify("notify_marketing", v)}
+            onChange={(e) => setNotify((n) => ({ ...n, notify_marketing: e.target.checked }))}
+            label={<span className="text-[14px] leading-[20px] text-sub">Рекламные рассылки</span>}
           />
-          <Toggle
-            className="py-3"
-            label="Ответы на отзывы и вопросы"
-            description="Уведомлять, когда специалист ТЭК ответил на ваш отзыв или вопрос"
+          <Checkbox
+            box={20}
+            className="gap-[10px]"
             checked={notify.notify_replies}
-            disabled={notifyBusy === "notify_replies"}
-            onChange={(v) => toggleNotify("notify_replies", v)}
+            onChange={(e) => setNotify((n) => ({ ...n, notify_replies: e.target.checked }))}
+            label={<span className="text-[14px] leading-[20px] text-sub">Ответы специалистов на мои отзывы и вопросы</span>}
           />
         </div>
-      </section>
-    </div>
+
+        <ErrorLine error={error} className="mt-[24px]" />
+        <Button type="submit" loading={busy} className={cn(saveBtnCls, "mt-[30px] w-[135px] px-0")}>
+          Сохранить
+        </Button>
+      </form>
+    </Card>
   );
 }

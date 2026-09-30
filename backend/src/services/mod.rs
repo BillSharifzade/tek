@@ -7,3 +7,4 @@ pub mod orders;
 pub mod outbox;
 pub mod pdf;
 pub mod pricing;
+pub mod variants;

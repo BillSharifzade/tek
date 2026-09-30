@@ -1,32 +1,41 @@
-import { Phone } from "lucide-react";
 import { ButtonLink } from "@/components/ui/Button";
 import { SITE } from "@/lib/site";
 import { cn } from "@/lib/cn";
 
+/**
+ * «Нужна консультация?» — серая плашка #F7F8F9 r11 (как блоки лендинга/ДГУ), заголовок 26 Bold,
+ * текст 16/26 #333, справа телефон и жёлтая кнопка 54px (как «Оставить заявку» в 10869:2975).
+ */
 export function CtaBand({
   title = "Нужна консультация?",
-  text = "Инженеры ТЭК помогут подобрать оборудование, рассчитать кабеленесущие системы и подготовить спецификацию.",
+  text = "Подробно расскажем об оборудовании и услугах, рассчитаем стоимость и подготовим индивидуальное предложение.",
+  cta = "Задать вопрос",
+  href = "/contacts#feedback",
   className,
 }: {
   title?: string;
   text?: string;
+  cta?: string;
+  href?: string;
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-col gap-6 rounded-[8px] bg-ink px-6 py-8 text-white md:flex-row md:items-center md:justify-between md:px-10", className)}>
-      <div className="max-w-xl">
-        <h2 className="text-white">{title}</h2>
-        <p className="mt-2 text-base text-white/70">{text}</p>
+    <section className={cn("flex flex-col gap-[24px] rounded-[11px] bg-surface-2 px-[24px] py-[28px] md:flex-row md:items-center md:justify-between md:px-[62px] md:py-[44px]", className)}>
+      <div className="max-w-[640px]">
+        <h2 className="text-[22px] font-bold leading-[28px] md:text-[26px] md:leading-[30px]">{title}</h2>
+        <p className="mt-[10px] text-[15px] leading-[24px] text-g333 md:text-[16px] md:leading-[26px]">{text}</p>
       </div>
-      <div className="flex flex-wrap items-center gap-4">
-        <a href={SITE.phoneHref} className="inline-flex items-center gap-2 text-xl font-semibold text-brand hover:text-brand-hover">
-          <Phone className="size-5" />
-          {SITE.phone}
-        </a>
-        <ButtonLink href="/contacts" size="lg">
-          Контакты
+      <div className="flex flex-col gap-[20px] sm:flex-row sm:items-center md:gap-[32px]">
+        <div className="flex flex-col">
+          <a href={SITE.phoneHref} className="link-hover text-[20px] font-bold leading-[24px] text-black tnum">
+            {SITE.phone}
+          </a>
+          <span className="mt-[4px] text-[13px] leading-[18px] text-muted">{SITE.hours}</span>
+        </div>
+        <ButtonLink href={href} size="lg" className="px-[24px]">
+          {cta}
         </ButtonLink>
       </div>
-    </div>
+    </section>
   );
 }

@@ -1,6 +1,4 @@
-"use client";
-
-import { ChevronDown } from "lucide-react";
+import { cn } from "@/lib/cn";
 
 export interface FaqItem {
   q: string;
@@ -34,16 +32,23 @@ export const FAQ: FaqItem[] = [
   },
 ];
 
-export function Faq({ items = FAQ }: { items?: FaqItem[] }) {
+/**
+ * Аккордеон «Часто задаваемые вопросы» из макета «Сервис центр ДГУ» (10888:3805):
+ * строки 49px r6, закрытая — #EEF0F2 (hover #D9DDE3), открытая — жёлтая #FFCC33 (hover #FED75B),
+ * вопрос Roboto 700 14/16, ответ 15/24 #333 с отступом 16px, зазор между строками 2px.
+ */
+export function Faq({ items = FAQ, openFirst = true, className }: { items?: FaqItem[]; openFirst?: boolean; className?: string }) {
   return (
-    <div className="divide-y divide-line rounded-[8px] border border-line bg-white">
+    <div className={cn("flex flex-col gap-[2px]", className)}>
       {items.map((it, i) => (
-        <details key={it.q} className="group" open={i === 0}>
-          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-5 py-4 text-base font-medium marker:content-none hover:text-brand-hover [&::-webkit-details-marker]:hidden">
+        <details key={it.q} className="group" open={openFirst && i === 0}>
+          <summary className="flex min-h-[49px] cursor-pointer list-none items-center justify-between gap-4 rounded-[6px] bg-btn px-[16px] py-[14px] text-[14px] font-bold leading-[16px] text-black transition-colors marker:content-none hover:bg-btn-hover group-open:bg-brand group-open:hover:bg-brand-hover [&::-webkit-details-marker]:hidden">
             <span>{it.q}</span>
-            <ChevronDown className="size-5 shrink-0 text-sub transition-transform group-open:rotate-180" aria-hidden />
+            <svg width="10" height="5" viewBox="0 0 10 5" aria-hidden className="mr-[8px] shrink-0 text-[#333] transition-transform group-open:rotate-180">
+              <path d="M0 0h10L5 5z" fill="currentColor" />
+            </svg>
           </summary>
-          <p className="px-5 pb-5 text-base text-sub">{it.a}</p>
+          <div className="px-[16px] pb-[23px] pt-[16px] text-[15px] leading-[24px] text-g333">{it.a}</div>
         </details>
       ))}
     </div>

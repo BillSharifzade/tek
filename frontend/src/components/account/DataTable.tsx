@@ -27,16 +27,22 @@ export interface DataTableProps<T> {
 const alignCls = { left: "text-left", right: "text-right", center: "text-center" } as const;
 const hideCls = { sm: "max-sm:hidden", md: "max-md:hidden", lg: "max-lg:hidden" } as const;
 
-/** Simple responsive table (horizontal scroll on narrow screens). */
+/** Cell paddings shared with custom prepend/footer rows. */
+export const cellPad = "px-[10px] py-[12px]";
+
+/**
+ * Таблица ЛК (Figma 9097:650): без рамки, внутри белой карточки; шапка — обычный текст #000,
+ * снизу линия #E5E5E5; строки разделены той же линией. На узких экранах — горизонтальный скролл.
+ */
 export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, prepend, footer, className, dense }: DataTableProps<T>) {
-  const pad = dense ? "px-3 py-2" : "px-4 py-3";
+  const pad = dense ? "px-[10px] py-[8px]" : cellPad;
   return (
-    <div className={cn("overflow-x-auto rounded-[8px] border border-line bg-white", className)}>
-      <table className="w-full min-w-[640px] border-collapse text-base">
+    <div className={cn("-mx-[20px] overflow-x-auto px-[20px] sm:mx-0 sm:px-0", className)}>
+      <table className="w-full min-w-[640px] border-collapse text-[14px] leading-[20px]">
         <thead>
-          <tr className="bg-surface text-sm text-sub">
+          <tr className="border-b border-line text-black">
             {columns.map((c) => (
-              <th key={c.key} scope="col" className={cn("whitespace-nowrap font-medium", pad, alignCls[c.align ?? "left"], c.hideBelow && hideCls[c.hideBelow], c.className)}>
+              <th key={c.key} scope="col" className={cn("whitespace-nowrap px-[10px] pb-[9px] pt-0 font-normal leading-[22px]", alignCls[c.align ?? "left"], c.hideBelow && hideCls[c.hideBelow], c.className)}>
                 {c.header}
               </th>
             ))}
@@ -46,7 +52,7 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, prepend
           {prepend}
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="px-4 py-10 text-center text-sub">
+              <td colSpan={columns.length} className="px-[10px] py-[40px] text-center text-sub">
                 {empty ?? "Нет данных"}
               </td>
             </tr>
@@ -55,7 +61,7 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, prepend
               <tr
                 key={rowKey(row, i)}
                 onClick={onRowClick ? () => onRowClick(row) : undefined}
-                className={cn("border-t border-line", onRowClick && "cursor-pointer transition-colors hover:bg-surface-2")}
+                className={cn("border-b border-line", onRowClick && "cursor-pointer transition-colors hover:bg-surface-2")}
               >
                 {columns.map((c) => (
                   <td key={c.key} className={cn("align-middle", pad, alignCls[c.align ?? "left"], c.hideBelow && hideCls[c.hideBelow], c.className)}>

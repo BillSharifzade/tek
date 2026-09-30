@@ -2,64 +2,100 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Heart, Package, ShoppingCart, User } from "lucide-react";
 import { useHydrated } from "@/lib/hooks";
 import { useCart, selectCartCount } from "@/store/cart";
-import { useFavorites } from "@/store/favorites";
 import { useAuth } from "@/store/auth";
+import { IconBasket, IconBox, IconHeart, IconProfile } from "@/components/icons/figma";
 import { cn } from "@/lib/cn";
 
+/**
+ * Иконки справа в шапке (Figma: Group 49–52). Ширины колонок и отступы — из макета:
+ * Избранное 72 · 22 · Заказы 50 · 26 · Профиль 60 · 23 · Корзина 56 → правый край на x=1386.
+ */
 function Action({
   href,
   label,
+  width,
+  className,
+  iconTop,
   icon,
-  count,
+  badge,
   active,
-  compact,
 }: {
   href: string;
   label: string;
+  width: number;
+  className?: string;
+  iconTop: number;
   icon: React.ReactNode;
-  count?: number;
+  badge?: number;
   active?: boolean;
-  compact?: boolean;
 }) {
   return (
     <Link
       href={href}
-      className={cn(
-        "relative flex flex-col items-center justify-center gap-1 rounded-[6px] px-2 text-ink transition-colors hover:text-brand-hover",
-        compact ? "h-10 min-w-[48px]" : "h-12 min-w-[64px]",
-        active && "text-brand-hover",
-      )}
-      aria-label={count ? `${label}: ${count}` : label}
+      aria-label={badge ? `${label}: ${badge}` : label}
+      style={{ width }}
+      className={cn("group relative block h-[46px] shrink-0 text-g333 transition-colors hover:text-black", active && "text-black", className)}
     >
-      <span className="relative">
+      <span className="absolute left-1/2 flex -translate-x-1/2 justify-center text-black" style={{ top: iconTop }}>
         {icon}
-        {count ? (
-          <span className="absolute -right-2.5 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brand px-1 text-[11px] font-bold leading-none text-ink">
-            {count > 99 ? "99+" : count}
-          </span>
-        ) : null}
       </span>
-      {!compact ? <span className="text-xs leading-none">{label}</span> : null}
+      <span className="absolute left-1/2 top-[34px] hidden -translate-x-1/2 whitespace-nowrap text-[14px] leading-[12px] lg:block">{label}</span>
+      {badge ? (
+        <span className="absolute left-[37.2px] top-0 flex h-[15.8px] min-w-[15.8px] items-center justify-center rounded-full bg-sale px-[3px] text-[11px] font-bold leading-[12px] text-white">
+          {badge > 99 ? "99+" : badge}
+        </span>
+      ) : null}
     </Link>
   );
 }
 
-export function HeaderActions({ compact }: { compact?: boolean }) {
+export function HeaderActions() {
   const hydrated = useHydrated();
   const cartCount = useCart(selectCartCount);
-  const favCount = useFavorites((s) => s.ids.length);
   const user = useAuth((s) => s.user);
   const pathname = usePathname();
 
   return (
-    <nav aria-label="Пользователь" className="flex items-center gap-1">
-      <Action href="/account/favorites" label="Избранное" icon={<Heart className="size-6" strokeWidth={1.75} />} count={hydrated ? favCount : 0} active={pathname === "/account/favorites"} compact={compact} />
-      <Action href={user ? "/account/orders" : "/login?next=/account/orders"} label="Заказы" icon={<Package className="size-6" strokeWidth={1.75} />} active={pathname.startsWith("/account/orders")} compact={compact} />
-      <Action href={user ? "/account" : "/login"} label={hydrated && user ? user.first_name || "Профиль" : "Профиль"} icon={<User className="size-6" strokeWidth={1.75} />} active={pathname === "/account"} compact={compact} />
-      <Action href="/cart" label="Корзина" icon={<ShoppingCart className="size-6" strokeWidth={1.75} />} count={hydrated ? cartCount : 0} active={pathname === "/cart"} compact={compact} />
+    <nav aria-label="Пользователь" className="flex items-start">
+      <Action
+        href="/account/favorites"
+        label="Избранное"
+        width={72}
+        iconTop={5}
+        icon={<IconHeart />}
+        active={pathname === "/account/favorites"}
+        className="hidden sm:block"
+      />
+      <Action
+        href={user ? "/account/orders" : "/login?next=/account/orders"}
+        label="Заказы"
+        width={50}
+        iconTop={5}
+        icon={<IconBox />}
+        active={pathname.startsWith("/account/orders")}
+        className="ml-[22px] hidden sm:block"
+      />
+      <Action
+        href={user ? "/account" : "/login"}
+        label="Профиль"
+        width={60}
+        iconTop={4}
+        icon={<IconProfile />}
+        active={pathname === "/account"}
+        className="ml-[26px]"
+      />
+      <Action
+        href="/cart"
+        label="Корзина"
+        width={56}
+        iconTop={6.5}
+        icon={<IconBasket />}
+        badge={hydrated ? cartCount : 0}
+        active={pathname === "/cart"}
+        className="ml-[23px]"
+      />
     </nav>
   );
 }

@@ -14,6 +14,7 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1", "localhost", "172.17.0.1"],
   output: "standalone",
   poweredByHeader: false,
+  devIndicators: false,
   reactStrictMode: true,
 };
 

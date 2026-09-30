@@ -1,10 +1,23 @@
 import type { Order, OrderStatus as Status } from "@/lib/types";
-import { ORDER_STATUS_COLORS } from "@/lib/site";
 import { cn } from "@/lib/cn";
 import { date } from "@/lib/format";
 
+/** Status plates in the palette of the product badges (Figma «Инфо поле»: r3, Roboto Medium). */
+const STATUS_CLS: Record<string, string> = {
+  new: "bg-hit-bg text-hit",
+  confirmed: "bg-brand-light text-black",
+  processing: "bg-brand-light text-black",
+  shipped: "bg-hit-bg text-hit",
+  delivered: "bg-new-bg text-new",
+  cancelled: "bg-sale-bg text-sale-text",
+};
+
 export function StatusBadge({ status, label, className }: { status: Status | string; label: string; className?: string }) {
-  return <span className={cn("inline-flex h-6 items-center whitespace-nowrap rounded-full px-2.5 text-xs font-semibold", ORDER_STATUS_COLORS[status] ?? "bg-surface text-sub", className)}>{label}</span>;
+  return (
+    <span className={cn("inline-flex h-[20px] items-center whitespace-nowrap rounded-[3px] px-[7px] text-[12px] font-medium leading-[12px]", STATUS_CLS[status] ?? "bg-btn text-g333", className)}>
+      {label}
+    </span>
+  );
 }
 
 const FLOW: { key: Status; label: string }[] = [
@@ -21,19 +34,19 @@ export function StatusTimeline({ order }: { order: Order }) {
   const idx = FLOW.findIndex((s) => s.key === order.status);
   const eventAt = (kind: string) => order.events.find((e) => e.kind === kind || e.kind === `status.${kind}`)?.at;
   return (
-    <ol className="grid grid-cols-5 gap-1" aria-label="Статус заказа">
+    <ol className="grid grid-cols-5 gap-[6px]" aria-label="Статус заказа">
       {FLOW.map((s, i) => {
         const done = !cancelled && i <= idx;
         const at = eventAt(s.key);
         return (
-          <li key={s.key} className="flex flex-col gap-2">
-            <span className={cn("h-1.5 rounded-full", cancelled ? "bg-sale/30" : done ? "bg-brand" : "bg-line")} />
-            <span className={cn("text-xs font-medium", done ? "text-ink" : "text-muted")}>{s.label}</span>
-            {at ? <span className="text-[11px] text-sub tnum">{date(at)}</span> : null}
+          <li key={s.key} className="flex min-w-0 flex-col gap-[8px]" aria-current={!cancelled && i === idx ? "step" : undefined}>
+            <span className={cn("h-[4px] rounded-full", cancelled ? "bg-sale-bg" : done ? "bg-brand" : "bg-btn")} />
+            <span className={cn("truncate text-[13px] leading-[16px]", done ? "font-medium text-black" : "text-muted")}>{s.label}</span>
+            {at ? <span className="-mt-[4px] text-[12px] leading-[14px] text-sub tnum">{date(at)}</span> : null}
           </li>
         );
       })}
-      {cancelled ? <li className="col-span-5 mt-1 text-sm font-semibold text-sale">Заказ отменён</li> : null}
+      {cancelled ? <li className="col-span-5 mt-[2px] text-[14px] font-medium leading-[20px] text-sale-text">Заказ отменён</li> : null}
     </ol>
   );
 }

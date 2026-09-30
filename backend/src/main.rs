@@ -53,6 +53,7 @@ async fn main() -> anyhow::Result<()> {
     if seeded {
         tracing::info!("database seeded");
     }
+    seed::enrich(&pool).await?;
 
     let state = AppState::new(pool, cfg.clone());
     services::outbox::spawn_worker(state.clone());

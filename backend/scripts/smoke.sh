@@ -26,6 +26,12 @@ req GET '/catalog/products?category=kabelnye-lotki-dks&sort=popular' >/dev/null
 SLUG=$(jqv "['items'][0]['slug']"); PID=$(jqv "['items'][0]['id']")
 check "GET /catalog/products/{slug}"      200 "$(req GET "/catalog/products/$SLUG")"
 check "GET /catalog/products/{slug} 404"  404 "$(req GET /catalog/products/nope)"
+# торговые предложения: у автомата две оси, текущее исполнение есть среди items, у каждого исполнения значения по всем осям
+req GET '/catalog/products?q=Easy9&per_page=1' >/dev/null
+VSLUG=$(jqv "['items'][0]['slug']")
+req GET "/catalog/products/$VSLUG" >/dev/null
+VOK=$(jqv ".get('variants') is not None and len(d['variants']['axes'])==2 and any(i['slug']=='$VSLUG' for i in d['variants']['items']) and all(len(i['values'])==2 for i in d['variants']['items'])")
+check "GET /catalog/products/{slug} variants" True "$VOK"
 check "GET /catalog/products/{slug}/reviews" 200 "$(req GET "/catalog/products/$SLUG/reviews")"
 check "GET /catalog/products/{slug}/questions" 200 "$(req GET "/catalog/products/$SLUG/questions")"
 check "GET /catalog/suggest"              200 "$(req GET '/catalog/suggest?q=%D0%BB%D0%BE%D1%82')"
@@ -37,6 +43,12 @@ check "GET /content/services"             200 "$(req GET /content/services)"
 check "GET /content/pages/about"          200 "$(req GET /content/pages/about)"
 check "GET /content/configurators"        200 "$(req GET /content/configurators)"
 check "GET /content/stores"               200 "$(req GET /content/stores)"
+check "GET /catalog/products?sort=rating"  200 "$(req GET '/catalog/products?sort=rating&per_page=3')"
+check "GET /catalog/products?sort=reviews" 200 "$(req GET '/catalog/products?sort=reviews&per_page=3')"
+req GET '/content/projects?per_page=1' >/dev/null; PSLUG=$(jqv "['items'][0]['slug']")
+check "GET /content/projects/{slug}"      200 "$(req GET "/content/projects/$PSLUG")"
+check "POST /leads invalid phone"         422 "$(req POST /leads '{"name":"Smoke","phone":"12"}')"
+check "POST /leads"                       201 "$(req POST /leads '{"kind":"feedback","name":"Smoke test","phone":"+992 900 000 000","note":"smoke"}')"
 check "GET /documents/1/download"         200 "$(req GET /documents/1/download)"
 check "GET /checkout/options"             200 "$(req GET /checkout/options)"
 
@@ -122,6 +134,9 @@ check "POST question"                     201 "$(req POST "/catalog/products/$SL
 QID=$(jqv "['id']")
 check "POST /admin/reviews/{id}/reply"    200 "$(req POST "/admin/reviews/$RID/reply" '{"text":"Спасибо!"}' -H "$ADMIN")"
 check "POST /admin/questions/{id}/answer" 200 "$(req POST "/admin/questions/$QID/answer" '{"text":"Да."}' -H "$ADMIN")"
+check "DELETE review (not author) -> 404" 404 "$(req DELETE "/catalog/products/$SLUG/reviews/$RID" '' -H "$ADMIN")"
+check "DELETE own review"                 204 "$(req DELETE "/catalog/products/$SLUG/reviews/$RID" '' -H "$AUTHV")"
+check "DELETE own question"               204 "$(req DELETE "/catalog/products/$SLUG/questions/$QID" '' -H "$AUTHV")"
 check "GET /admin/orders"                 200 "$(req GET /admin/orders '' -H "$ADMIN")"
 check "PUT /admin/orders/{n}/status"      200 "$(req PUT "/admin/orders/$GORDER/status" '{"status":"confirmed"}' -H "$ADMIN")"
 check "GET /admin/outbox"                 200 "$(req GET /admin/outbox '' -H "$ADMIN")"

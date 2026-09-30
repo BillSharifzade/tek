@@ -24,14 +24,16 @@ ProductCard  { id, slug, code, name, brand: {slug,name}, unit: "шт"|"м", imag
                price: Price, stock_total: number, in_stock: bool, badges: ["sale"|"hit"|"new"],
                rating: number, reviews_count: number, price_unit_label: "за шт"|"за метр" }
 StoreStock   { store_id, city, name, qty, delivery_hint }        // delivery_hint: "сегодня" | "завтра" | "2-3 дня"
-Sibling      { slug, code, param_value, in_stock }               // trade offers (Petrovich-style)
+Variants     { axes: [{ name, values: string[] }],                // trade offers (Petrovich-style), axes in display order,
+               items: VariantItem[] }                               // values sorted naturally (0.75 < 1 < 1.5, E14 < E27)
+VariantItem  { slug, code, name, values: { [axis]: value }, in_stock, price: number, unit, image: string|null }
 Attribute    { name, value }
 Document     { id, title, kind: "certificate"|"declaration"|"drawing"|"passport"|"catalog"|"other", url, size_kb }
 Accessory    { group: string, product: ProductCard }
 Product      { ...ProductCard, description, short_description, category: {slug,name}, breadcrumbs: [{slug,name}],
                brand: {slug, name, country_brand, country_origin, logo},
                attributes: Attribute[], pack: { qty: number, label: string } | null,
-               stock: StoreStock[], group: { param_name: string, siblings: Sibling[] } | null,
+               stock: StoreStock[], variants: Variants | null,
                documents: Document[], accessories: Accessory[], configurator: {name, url} | null,
                images: string[], questions_count, features: [{title, text}] }
 CartItem     { id, product: ProductCard, qty, selected: bool, price: Price, line_total: number, line_cashback: number,
@@ -62,18 +64,21 @@ Delivery methods: `courier` (Доставка, 30.00 с., Душанбе/Худ�
 | GET | `/home` | `{ banners:[{id,title,text,cta_text,cta_url,image}], popular_categories:[{slug,name,image,product_count}], popular_products: ProductCard[], new_products: ProductCard[], brands:[{slug,name,logo}], services:[{slug,title,short,image}], projects:[{slug,title,date,year}], news:[{slug,title,date}], usp:[{title,text,icon}] }` |
 | GET | `/catalog/tree` | `[{id,slug,name,image,product_count,children:[...]}]` (cached in memory) |
 | GET | `/catalog/categories/{slug}` | `{ category:{slug,name,description}, breadcrumbs, children:[{slug,name,product_count,image}], brands:[{slug,name,count}], filters:[{name, values:[{value,count}]}], price_range:{min,max} }` |
-| GET | `/catalog/products` | query: `category, brand, q, sort=popular|new|price_asc|price_desc, page=1, per_page=24, in_stock=1, sale=1, hit=1, new=1, price_min, price_max, attr.<Name>=<value>` → `{ items: ProductCard[], total, page, per_page, pages }` |
+| GET | `/catalog/products` | query: `category, brand, q, sort=popular|new|price_asc|price_desc|rating|reviews|name, page=1, per_page=24, in_stock=1, sale=1, hit=1, new=1, price_min, price_max, attr.<Name>=<value>` → `{ items: ProductCard[], total, page, per_page, pages }` |
 | GET | `/catalog/products/{slug}` | `Product` |
 | GET | `/catalog/products/{slug}/reviews` | `{ summary:{avg, count, distribution:{5:n,...}}, items:[{id, author, date, rating, pros, cons, text, reply:{author, date, text}|null}], page, pages }` |
 | POST | `/catalog/products/{slug}/reviews` | auth. `{rating, pros, cons, text}` → 201 review |
 | GET | `/catalog/products/{slug}/questions` | `{ items:[{id, author, date, text, answer:{author,date,text}|null}], total }` |
 | POST | `/catalog/products/{slug}/questions` | auth. `{text}` → 201 |
+| DELETE | `/catalog/products/{slug}/reviews/{id}` | auth, только автор → 204 (пересчитывает рейтинг товара) |
+| DELETE | `/catalog/products/{slug}/questions/{id}` | auth, только автор → 204 |
 | GET | `/catalog/suggest?q=` | `{ products:[{slug,name,code,image,price}], categories:[{slug,name}], brands:[{slug,name}] }` (max 5 each) |
 | GET | `/brands` | `[{slug,name,logo,country_brand,country_origin,product_count,is_featured}]` |
 | GET | `/brands/{slug}` | `{ brand:{...,description}, categories:[{slug,name,product_count}] }` (products via `/catalog/products?brand=`) |
-| GET | `/content/projects?page&per_page` | `{items:[{slug,title,year,date,object,service,image,excerpt}], total, pages}` |
-| GET | `/content/projects/{slug}` | `{slug,title,year,date,object,service,image,body}` |
-| GET | `/content/news?page` | `{items:[{slug,title,date,excerpt,image}], total}` ; `/content/news/{slug}` → `{..., body}` |
+| GET | `/content/projects?page&per_page` | `{items:[{slug,title,year,date,object,service,image,excerpt, brands:[{slug,name,logo}], categories:[{slug,name}]}], total, pages}` — `categories` = разделы каталога применённых продуктов (фильтр «Продукция») |
+| GET | `/content/projects/{slug}` | `{slug,title,year,date,object,service,image,excerpt,body, brands:[{slug,name,logo}], photos:string[], video_url:string|null, products: ProductCard[] (прайсовые цены)}` |
+| GET | `/content/news?page` | `{items:[{slug,title,date,excerpt,image,tags:string[]}], total}` ; `/content/news/{slug}` → `{..., body, tags}` |
+| POST | `/leads` | заявка с формы сайта, auth опционально. `{kind: service|feedback|question|project|consultation, name, phone, email?, note?, service?, page?}` → 201 `{id, created_at}`; 422 `name_required` / `phone_invalid`. Пишется в `leads` и ставится событие `lead.created` в outbox CRM (исполнитель — закреплённый менеджер клиента, иначе лид-менеджер) |
 | GET | `/content/services` | `[{slug,title,short,body,image}]` ; `/content/services/{slug}` |
 | GET | `/content/pages/{slug}` | `{slug,title,body_html}` for `about`, `contacts`, `support`, `help`, `delivery`, `payment` |
 | GET | `/content/configurators` | `[{slug,name,description,url,image}]` |

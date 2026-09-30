@@ -1,78 +1,183 @@
 import type { Metadata } from "next";
-import { Clock, MapPin, Phone } from "lucide-react";
 import { publicGet, safe } from "@/lib/server";
 import { SITE } from "@/lib/site";
 import { phoneHref } from "@/lib/format";
-import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
-import { Prose } from "@/components/content/Prose";
+import { IconPin } from "@/components/icons/figma";
+import { FacebookIcon, InstagramIcon, YoutubeIcon } from "@/components/ui/SocialIcons";
+import { PageHead, SectionTitle } from "@/components/content/PageHead";
 import { ContactForm } from "@/components/content/ContactForm";
+import { IconArrowSmall } from "@/components/content/icons";
+import { SALES_EMAIL, SOCIAL_LINKS } from "@/components/content/company";
 import type { CmsPage, StoreItem } from "@/components/content/types";
 
-export const metadata: Metadata = { title: "Контакты" };
+export const metadata: Metadata = {
+  title: "Контакты",
+  description: `Адреса, телефоны и режим работы ТЭК в Душанбе и Худжанде. ${SITE.phone}, ${SITE.email}.`,
+};
+
+/** Координаты точек (с карты tectj.com/contacts). Для прочих адресов — поиск по тексту на Яндекс.Картах. */
+const COORDS: { match: RegExp; lat: number; lon: number }[] = [
+  { match: /Адхамова/i, lat: 38.569233, lon: 68.803629 },
+  { match: /Шерози|Кушони/i, lat: 38.633192, lon: 68.766223 },
+];
+
+function mapLink(address: string): string {
+  const c = COORDS.find((x) => x.match.test(address));
+  return c ? `https://yandex.ru/maps/?pt=${c.lon},${c.lat}&z=16&l=map` : `https://yandex.ru/maps/?text=${encodeURIComponent(address)}`;
+}
+
+const MAP_SRC = `https://yandex.ru/map-widget/v1/?ll=68.785%2C38.601&z=12&pt=${COORDS.map((c, i) => `${c.lon}%2C${c.lat}%2Cpm2ywl${i + 1}`).join("~")}`;
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-[13px] leading-[18px] text-muted">{label}</p>
+      <div className="mt-[4px]">{children}</div>
+    </div>
+  );
+}
+
+const socials = [
+  { href: SOCIAL_LINKS.facebook, label: "Facebook", Icon: FacebookIcon },
+  { href: SOCIAL_LINKS.instagram, label: "Instagram", Icon: InstagramIcon },
+  { href: SOCIAL_LINKS.youtube, label: "YouTube", Icon: YoutubeIcon },
+];
 
 export default async function ContactsPage() {
   const [page, stores] = await Promise.all([
-    publicGet<CmsPage>("/content/pages/contacts", undefined, 300),
+    safe(publicGet<CmsPage>("/content/pages/contacts", undefined, 300), null),
     safe(publicGet<StoreItem[]>("/content/stores", undefined, 300), [] as StoreItem[]),
   ]);
 
   return (
-    <div className="container-page pb-14">
-      <Breadcrumbs items={[{ label: "Контакты" }]} />
-      <h1>{page.title}</h1>
+    <div className="container-page pb-[64px] md:pb-[100px]">
+      <PageHead crumbs={[{ label: "Контакты" }]} title={page?.title ?? "Контакты"} />
 
-      <div className="mt-6 grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,1fr)_440px]">
-        <div>
-          <Prose html={page.body_html} />
-          <div className="mt-10 rounded-[8px] border border-line bg-white p-6">
-            <h2 className="text-xl">Написать нам</h2>
-            <p className="mb-5 mt-1 text-sm text-sub">Перезвоним в рабочее время — {SITE.hours}</p>
-            <ContactForm />
-          </div>
-        </div>
+      {/* Главный офис + карта: серая плашка r11 и карта справа, как первый экран «Сервис центр ДГУ» */}
+      <section className="mt-[24px] grid overflow-hidden rounded-[11px] bg-surface-2 md:mt-[32px] lg:grid-cols-[440px_minmax(0,1fr)]">
+        <div className="flex flex-col px-[20px] py-[28px] md:px-[40px] md:py-[40px]">
+          <p className="text-[13px] leading-[18px] text-muted">Главный офис и склад</p>
+          <h2 className="mt-[6px] text-[20px] font-bold leading-[26px] md:text-[22px] md:leading-[28px]">{SITE.address1}</h2>
 
-        <aside className="flex flex-col gap-4">
-          <div className="flex aspect-[4/3] flex-col items-center justify-center gap-2 rounded-[8px] border border-line bg-surface text-sub">
-            <MapPin className="size-8 text-brand-hover" />
-            <span className="text-base font-medium text-ink">Карта проезда</span>
-            <span className="text-sm">{SITE.address1}</span>
+          <div className="mt-[28px] flex flex-col gap-[20px]">
+            <Row label="Телефоны">
+              <a href={SITE.phoneHref} className="link-hover block text-[20px] font-bold leading-[24px] tnum">
+                {SITE.phone}
+              </a>
+              <a href={SITE.phone2Href} className="link-hover mt-[4px] block text-[16px] leading-[22px] text-g333 tnum">
+                {SITE.phone2}
+              </a>
+            </Row>
+            <Row label="Электронная почта">
+              <p className="flex flex-wrap gap-x-[20px] gap-y-1 text-[16px] leading-[22px]">
+                <a href={`mailto:${SITE.email}`} className="text-g333 underline underline-offset-[3px] transition-colors hover:text-black">
+                  {SITE.email}
+                </a>
+                <a href={`mailto:${SALES_EMAIL}`} className="text-g333 underline underline-offset-[3px] transition-colors hover:text-black">
+                  {SALES_EMAIL}
+                </a>
+              </p>
+            </Row>
+            <Row label="Режим работы">
+              <p className="text-[16px] leading-[22px] text-g333">{SITE.hours.replace("–", " – ")}, Вс — выходной</p>
+            </Row>
           </div>
-          {stores.map((s) => (
-            <div key={s.id} className="rounded-[8px] border border-line bg-white p-5">
-              <p className="text-xs font-semibold uppercase tracking-wide text-sub">{s.city}</p>
-              <h3 className="mt-0.5">{s.name}</h3>
-              <ul className="mt-3 flex flex-col gap-2 text-base">
-                <li className="flex items-start gap-2">
-                  <MapPin className="mt-0.5 size-4 shrink-0 text-sub" aria-hidden />
-                  <span>{s.address}</span>
-                </li>
-                {s.phone ? (
-                  <li className="flex items-start gap-2">
-                    <Phone className="mt-0.5 size-4 shrink-0 text-sub" aria-hidden />
-                    <a href={phoneHref(s.phone)} className="font-medium hover:text-brand-hover">
-                      {s.phone}
-                    </a>
-                  </li>
-                ) : null}
-                {s.hours ? (
-                  <li className="flex items-start gap-2">
-                    <Clock className="mt-0.5 size-4 shrink-0 text-sub" aria-hidden />
-                    <span>{s.hours}</span>
-                  </li>
-                ) : null}
-              </ul>
-            </div>
-          ))}
-          <div className="rounded-[8px] bg-ink p-5 text-white">
-            <p className="text-xs font-semibold uppercase tracking-wide text-white/60">Режим работы</p>
-            <p className="mt-1 text-lg font-semibold">{SITE.hours}</p>
-            <a href={SITE.phoneHref} className="mt-3 inline-flex items-center gap-2 text-base font-medium text-brand hover:text-brand-hover">
-              <Phone className="size-4" />
-              {SITE.phone}
+
+          <div className="mt-[28px] flex items-center gap-[10px] lg:mt-auto lg:pt-[28px]">
+            {socials.map(({ href, label, Icon }) => (
+              <a key={label} href={href} target="_blank" rel="noopener noreferrer" aria-label={label} className="flex size-[40px] items-center justify-center rounded-full bg-white text-g333 transition-colors hover:bg-btn-hover hover:text-black">
+                <Icon className="size-[18px]" />
+              </a>
+            ))}
+            <a href="#feedback" className="ml-auto inline-flex h-[40px] items-center rounded-[7px] bg-brand px-[18px] text-[14px] font-medium text-black transition-colors hover:bg-brand-hover">
+              Написать нам
             </a>
           </div>
+        </div>
+        <div className="relative h-[320px] bg-surface md:h-[420px] lg:h-auto lg:min-h-[480px]">
+          <iframe title="ТЭК на карте Душанбе" src={MAP_SRC} loading="lazy" className="absolute inset-0 size-full border-0" allowFullScreen />
+        </div>
+      </section>
+
+      {/* Магазины и филиалы */}
+      {stores.length > 0 ? (
+        <section className="mt-[56px] md:mt-[90px]">
+          <SectionTitle>Магазины и филиалы</SectionTitle>
+          <p className="mt-[12px] max-w-[860px] text-[15px] leading-[24px] text-g333 md:text-[16px] md:leading-[26px]">
+            Обратитесь в ближайший офис для консультации, самовывоза заказа или оформления документов.
+          </p>
+          <ul className="mt-[24px] grid grid-cols-1 gap-[13px] md:mt-[28px] md:grid-cols-2 lg:grid-cols-3 lg:gap-[20px]">
+            {stores.map((s) => (
+              <li key={s.id} className="flex flex-col rounded-[11px] bg-surface-2 px-[24px] pb-[24px] pt-[22px] md:px-[28px]">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="inline-flex h-[24px] items-center rounded-[15px] bg-white px-[11px] text-[13px] leading-[18px] text-g333">{s.city}</span>
+                  {s.delivery_hint ? <span className="text-[13px] leading-[18px] text-success">Самовывоз {s.delivery_hint}</span> : null}
+                </div>
+                <h3 className="mt-[14px] text-[18px] font-bold leading-[24px]">{s.name}</h3>
+                <p className="mt-[8px] flex items-start gap-[6px] text-[14px] leading-[20px] text-sub">
+                  <IconPin className="mt-[2px] shrink-0 text-muted" />
+                  {s.address}
+                </p>
+                <dl className="mt-[16px] flex flex-col gap-[8px] border-t border-line-3 pt-[16px] text-[14px] leading-[20px]">
+                  {s.phone ? (
+                    <div className="flex items-baseline justify-between gap-3">
+                      <dt className="text-muted">Телефон</dt>
+                      <dd>
+                        <a href={phoneHref(s.phone)} className="link-hover font-medium tnum">
+                          {s.phone}
+                        </a>
+                      </dd>
+                    </div>
+                  ) : null}
+                  {s.hours ? (
+                    <div className="flex items-baseline justify-between gap-3">
+                      <dt className="text-muted">Режим работы</dt>
+                      <dd className="text-right text-g333">{s.hours}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+                <a href={mapLink(s.address)} target="_blank" rel="noopener noreferrer" className="mt-auto inline-flex items-center gap-[5px] self-start pt-[18px] text-[14px] leading-[20px] text-g333 underline underline-offset-[3px] transition-colors hover:text-black">
+                  Показать на карте
+                  <IconArrowSmall className="size-[11px]" />
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {/* Обратная связь — форма как «Оставьте заявку» (10972:2084) + карточка реквизитов как прайс-карта ДГУ */}
+      <section id="feedback" className="mt-[56px] grid scroll-mt-[130px] grid-cols-1 gap-[40px] md:mt-[90px] lg:grid-cols-[minmax(0,584px)_417px] lg:justify-between">
+        <div>
+          <h2 className="text-[26px] font-bold leading-[32px] md:text-[32px] md:leading-[36px]">Обратная связь</h2>
+          <p className="mt-[14px] text-[16px] leading-[24px] text-g333 md:text-[18px]">Оставьте вопрос, и наши специалисты свяжутся с вами в рабочее время.</p>
+          <ContactForm withEmail withConsent messagePlaceholder="Ваш вопрос" submitLabel="Отправить" className="mt-[25px]" />
+        </div>
+        <aside className="self-start rounded-[10px] bg-white px-[24px] py-[28px] shadow-card md:px-[34px] md:py-[34px]">
+          <h3 className="text-[16px] font-semibold leading-[20px] text-g333">Реквизиты</h3>
+          <dl className="mt-[10px] text-[15px] leading-[20px]">
+            {[
+              ["Компания", SITE.company],
+              ["Юр. адрес", SITE.address1.replace("г. ", "")],
+              ["Отдел продаж", SALES_EMAIL],
+              ["Общие вопросы", SITE.email],
+              ["Телефон", SITE.phone],
+            ].map(([k, v]) => (
+              <div key={k} className="flex items-start justify-between gap-4 border-b border-outline py-[10px]">
+                <dt className="shrink-0 text-sub">{k}</dt>
+                <dd className="text-right font-semibold text-g333">{v}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="mt-[18px] rounded-[7px] bg-[#F4EFFE] px-[20px] py-[14px] text-[14px] leading-[22px] text-[#313033]">
+            Для юридических лиц: счёт на оплату и закрывающие документы — в{" "}
+            <a href="/account/documents" className="font-semibold underline underline-offset-2 hover:text-black">
+              личном кабинете
+            </a>
+            .
+          </div>
         </aside>
-      </div>
+      </section>
     </div>
   );
 }

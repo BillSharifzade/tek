@@ -1,10 +1,10 @@
 "use client";
 
-import { ChevronDown, MapPin } from "lucide-react";
 import { useRef, useState } from "react";
 import { CITIES, useCity } from "@/store/city";
 import { useClickOutside, useHydrated } from "@/lib/hooks";
 import { cn } from "@/lib/cn";
+import { IconPin } from "@/components/icons/figma";
 
 export function CitySelect({ className }: { className?: string }) {
   const city = useCity((s) => s.city);
@@ -21,14 +21,13 @@ export function CitySelect({ className }: { className?: string }) {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="inline-flex items-center gap-1 font-medium transition-colors hover:text-sub"
+        className="flex items-start gap-[3px] text-[13px] leading-[12px] text-sub link-hover"
       >
-        <MapPin className="size-3.5 text-brand" />
-        {hydrated ? city : "Душанбе"}
-        <ChevronDown className={cn("size-3.5 transition-transform", open && "rotate-180")} />
+        <IconPin className="shrink-0" />
+        <span className="mt-px whitespace-nowrap">{hydrated ? city : "Душанбе"}</span>
       </button>
       {open ? (
-        <ul role="listbox" className="absolute right-0 top-full z-50 mt-2 min-w-[160px] overflow-hidden rounded-[8px] border border-line bg-white py-1 shadow-pop animate-fade-in">
+        <ul role="listbox" className="absolute right-0 top-full z-[90] mt-[10px] min-w-[160px] overflow-hidden rounded-[6px] bg-white py-[6px] shadow-pop animate-fade-in">
           {CITIES.map((c) => (
             <li key={c}>
               <button
@@ -39,7 +38,7 @@ export function CitySelect({ className }: { className?: string }) {
                   setCity(c);
                   setOpen(false);
                 }}
-                className={cn("block w-full px-4 py-2 text-left text-base hover:bg-surface", city === c && "font-semibold")}
+                className={cn("block w-full px-4 py-[8px] text-left text-[14px] leading-[18px] text-g333 hover:bg-surface hover:text-black", city === c && "font-medium text-black")}
               >
                 {c}
               </button>

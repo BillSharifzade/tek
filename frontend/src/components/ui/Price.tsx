@@ -44,3 +44,39 @@ export function Cashback({ amount, className }: { amount: number; className?: st
     </span>
   );
 }
+
+/** "1 029,00 с." → ["1 029", ",00 с."] */
+export function splitMoney(value: number): [string, string] {
+  const s = money(value);
+  const i = s.lastIndexOf(",");
+  return i < 0 ? [s, ""] : [s.slice(0, i), s.slice(i)];
+}
+
+/**
+ * Цена как в макете: целая часть крупно, копейки и «с.» мельче (Figma: 20/800 + 14/800 и т.п.).
+ */
+export function SplitPrice({
+  value,
+  big = 20,
+  small = 14,
+  weight = 800,
+  lh = 20,
+  strike,
+  className,
+}: {
+  value: number;
+  big?: number;
+  small?: number;
+  weight?: number;
+  lh?: number;
+  strike?: boolean;
+  className?: string;
+}) {
+  const [a, b] = splitMoney(value);
+  return (
+    <span className={cn("whitespace-nowrap tnum", strike && "line-through", className)} style={{ fontWeight: weight, lineHeight: `${lh}px` }}>
+      <span style={{ fontSize: big }}>{a}</span>
+      <span style={{ fontSize: small }}>{b}</span>
+    </span>
+  );
+}

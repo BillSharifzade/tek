@@ -1,20 +1,26 @@
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { ChevronRight, SlidersHorizontal } from "lucide-react";
 import type { Product, QuestionsResponse, ReviewsResponse } from "@/lib/types";
 import { optional, personalizedGet, publicGet, safe } from "@/lib/server";
-import { qty as fmtQty } from "@/lib/format";
-import { Breadcrumbs } from "@/components/ui/Breadcrumbs";
-import { RatingLine } from "@/components/ui/Rating";
+import { Stars, pluralReviews } from "@/components/ui/Rating";
+import { BuyProvider } from "@/components/product/BuyContext";
 import { Gallery } from "@/components/product/Gallery";
-import { BuyBox } from "@/components/product/BuyBox";
+import { BuyBox, PromoPlaque } from "@/components/product/BuyBox";
+import { Pickup } from "@/components/product/Pickup";
+import { OfferSelector } from "@/components/product/OfferSelector";
+import { OfferScope } from "@/components/product/OfferScope";
+import { SpecRows } from "@/components/product/Specs";
 import { ProductTabsBar } from "@/components/product/ProductTabsBar";
-import { Accessories } from "@/components/product/Accessories";
+import { Features } from "@/components/product/Features";
+import { BrandCard, ServicesCard } from "@/components/product/ProductAside";
 import { Documents } from "@/components/product/Documents";
+import { ProductAccessories } from "@/components/product/ProductAccessories";
 import { Reviews } from "@/components/product/Reviews";
 import { Questions } from "@/components/product/Questions";
-import { ImageBox } from "@/components/ui/ImageBox";
+import { IconChevronSmall, IconPack } from "@/components/product/icons";
+import { cn } from "@/lib/cn";
 
 interface Props {
   params: Promise<{ slug: string }>;
@@ -29,6 +35,16 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 const EMPTY_REVIEWS: ReviewsResponse = { summary: { avg: 0, count: 0, distribution: {} }, items: [], page: 1, pages: 1 };
 const EMPTY_QUESTIONS: QuestionsResponse = { items: [], total: 0 };
 
+/** Заголовок секции 25/21 600 (Figma «Комплектующие», «Отзывы», «Вопросы и ответы»). */
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return <h2 className="text-[25px] font-semibold leading-[21px] text-black">{children}</h2>;
+}
+
+/**
+ * Страница товара — 1:1 с фреймом Figma «Карта продукта» (8612:150), 1512 шириной.
+ * Верх: крошки, H1, преимущество; три колонки: галерея 530 / предложения + характеристики 334 / цена 292.
+ * Ниже — сегмент-табы (при прокрутке прилипают вместе с полосой товара, 10444:276) и секции.
+ */
 export default async function ProductRoute({ params }: Props) {
   const { slug } = await params;
   const [product, reviews, questions] = await Promise.all([
@@ -38,168 +54,158 @@ export default async function ProductRoute({ params }: Props) {
   ]);
   if (!product) notFound();
 
+  const reviewsCount = reviews.summary.count || product.reviews_count;
   const tabs = [
     { id: "specs", label: "Характеристики" },
     { id: "accessories", label: "Комплектующие" },
-    { id: "reviews", label: "Отзывы", count: reviews.summary.count || product.reviews_count },
+    { id: "reviews", label: "Отзывы", count: reviewsCount },
     { id: "questions", label: "Вопросы", count: questions.total || product.questions_count },
   ];
+  const images = product.images.length > 0 ? product.images : product.image ? [product.image] : [];
+  const shortSpecs = product.attributes.slice(0, 8);
+  const half = Math.ceil(product.attributes.length / 2);
+  const specCols = [product.attributes.slice(0, half), product.attributes.slice(half)].filter((c) => c.length > 0);
+  const paragraphs = product.description
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean);
 
   return (
-    <div className="container-page">
-      <Breadcrumbs items={[...product.breadcrumbs.map((c) => ({ href: `/catalog/${c.slug}`, label: c.name })), { label: product.name }]} />
-
-      <h1 className="max-w-4xl">{product.name}</h1>
-      <div className="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-sub">
-        <span>Код: {product.code}</span>
-        {product.reviews_count > 0 ? <RatingLine rating={product.rating} count={product.reviews_count} /> : null}
-        {product.in_stock ? (
-          <span className="font-medium text-success">
-            В наличии ({fmtQty(product.stock_total)} {product.unit})
-          </span>
-        ) : (
-          <span className="font-medium text-sale">Нет в наличии</span>
-        )}
-        <Link href={`/brands/${product.brand.slug}`} className="hover:text-ink">
-          Бренд: <span className="font-medium text-ink">{product.brand.name}</span>
-        </Link>
-      </div>
-
-      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_520px]">
-        <Gallery images={product.images} name={product.name} badges={product.badges} discountPct={product.price.sale ? undefined : product.price.discount_pct || undefined} />
-        <BuyBox product={product} />
-      </div>
-
-      <div className="mt-10">
-        <ProductTabsBar tabs={tabs} />
-      </div>
-
-      <div className="grid grid-cols-1 gap-10 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="min-w-0">
-          {product.description ? (
-            <section className="mt-8" id="description">
-              <h2 className="mb-4">Описание</h2>
-              <div className="prose-tek whitespace-pre-line">{product.description}</div>
-            </section>
-          ) : null}
-
-          <section className="mt-10" id="specs">
-            <h2 className="mb-4">Характеристики</h2>
-            {product.attributes.length > 0 ? (
-              <dl className="grid grid-cols-1 gap-x-10 md:grid-cols-2">
-                {product.attributes.map((a) => (
-                  <div key={a.name} className="flex items-baseline gap-2 border-b border-dashed border-line py-2.5 text-base">
-                    <dt className="shrink-0 text-sub">{a.name}</dt>
-                    <span className="flex-1" />
-                    <dd className="text-right font-medium">{a.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            ) : (
-              <p className="text-sub">Характеристики уточняйте у менеджера.</p>
-            )}
-          </section>
-
-          {product.features.length > 0 ? (
-            <section className="mt-10" aria-label="Особенности">
-              <ul className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {product.features.map((f) => (
-                  <li key={f.title} className="flex gap-4 rounded-[8px] border border-line bg-white p-5">
-                    <ImageBox src={null} alt="" label={f.title} className="size-20 shrink-0" />
-                    <div>
-                      <h3>{f.title}</h3>
-                      <p className="mt-1 text-sm text-sub">{f.text}</p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-
-          <section className="mt-10" id="documents">
-            <h2 className="mb-4">Документация</h2>
-            <Documents documents={product.documents} />
-          </section>
-
-          {product.configurator ? (
-            <section className="mt-10" id="configurator">
-              <Link
-                href={product.configurator.url}
-                className="group flex flex-col gap-4 rounded-[8px] bg-ink p-6 text-white transition-colors hover:bg-ink-hover sm:flex-row sm:items-center"
-              >
-                <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-brand text-ink">
-                  <SlidersHorizontal className="size-5" />
-                </span>
-                <span className="flex-1">
-                  <span className="block text-lg font-semibold">{product.configurator.name}</span>
-                  <span className="block text-sm text-white/70">Автоматический расчёт количества элементов кабеленесущей системы под ваш проект.</span>
-                </span>
-                <span className="inline-flex items-center gap-1 text-base font-semibold text-brand">
-                  Перейти на страницу
-                  <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-                </span>
+    <BuyProvider product={product}>
+      <div className="container-page pb-16 lg:pb-[186px]">
+        {/* крошки: 14/15 #808080, «>» с отступами 11px */}
+        <nav aria-label="Хлебные крошки" className="pt-6 text-[14px] leading-[15px] text-muted lg:pt-[43px] xl:pl-[2px]">
+          <ol className="flex flex-wrap items-center gap-y-1">
+            <li>
+              <Link href="/" className="link-hover">
+                Главная
               </Link>
-            </section>
-          ) : null}
-        </div>
+            </li>
+            {product.breadcrumbs.map((c) => (
+              <li key={c.slug} className="flex items-center">
+                <span aria-hidden className="px-[11px]">
+                  &gt;
+                </span>
+                <Link href={`/catalog/${c.slug}`} className="link-hover">
+                  {c.name}
+                </Link>
+              </li>
+            ))}
+          </ol>
+        </nav>
 
-        <aside className="hidden lg:block">
-          <div className="sticky top-[130px] mt-8 rounded-[8px] border border-line bg-white p-5">
-            <h3 className="mb-3">Кратко о товаре</h3>
-            <dl className="flex flex-col gap-2 text-sm">
-              <div className="flex justify-between gap-3">
-                <dt className="text-sub">Код</dt>
-                <dd className="font-medium">{product.code}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-sub">Бренд</dt>
-                <dd className="font-medium">{product.brand.name}</dd>
-              </div>
-              {product.brand.country_brand ? (
-                <div className="flex justify-between gap-3">
-                  <dt className="text-sub">Страна бренда</dt>
-                  <dd className="font-medium">{product.brand.country_brand}</dd>
-                </div>
-              ) : null}
-              {product.brand.country_origin ? (
-                <div className="flex justify-between gap-3">
-                  <dt className="text-sub">Страна производства</dt>
-                  <dd className="font-medium">{product.brand.country_origin}</dd>
-                </div>
-              ) : null}
-              {product.pack ? (
-                <div className="flex justify-between gap-3">
-                  <dt className="text-sub">Упаковка</dt>
-                  <dd className="font-medium">{product.pack.label}</dd>
-                </div>
-              ) : null}
-              <div className="flex justify-between gap-3">
-                <dt className="text-sub">Категория</dt>
-                <dd className="text-right font-medium">
-                  <Link href={`/catalog/${product.category.slug}`} className="hover:text-brand-hover">
-                    {product.category.name}
-                  </Link>
-                </dd>
-              </div>
-            </dl>
+        {/* всё, что меняется при выборе исполнения: переход между исполнениями — без перезагрузки и прокрутки */}
+        <OfferScope>
+        <h1 className="offer-dim mt-[12px] text-[22px] font-semibold leading-[28px] text-black lg:mb-[-6.5px] lg:mt-[10.5px] lg:text-[26px] lg:leading-[30px] xl:pl-[2px]">{product.name}</h1>
+
+        {product.short_description ? (
+          <p className="mt-[20px] flex items-start text-[14px] font-semibold leading-[15px] text-[#F9AD42] xl:pl-[1.2px]">
+            <Image src="/figma/star-2.png" alt="" width={20} height={20} className="relative top-[-1.3px] size-[20px] shrink-0" unoptimized />
+            <span className="relative top-[2.5px] ml-[7.8px]">{product.short_description}</span>
+          </p>
+        ) : null}
+
+        <div className="mt-[20px] grid grid-cols-1 gap-8 md:grid-cols-2 xl:grid-cols-[530px_334px_minmax(0,1fr)] xl:gap-x-[43px] xl:gap-y-0">
+          <div className="offer-dim min-w-0">
+            <Gallery images={images} name={product.name} badges={product.badges} />
           </div>
-        </aside>
+
+          <div className="min-w-0">
+            <div className="flex h-[15px] items-start xl:pl-px">
+              <Stars value={product.rating || 0} size={14.6} step={15.6} className="mt-[0.1px] flex" />
+              <a href="#reviews" className="ml-[7px] text-[14px] font-semibold leading-[15px] text-link link-hover">
+                {reviewsCount} {pluralReviews(reviewsCount)}
+              </a>
+              <span className="offer-dim ml-auto text-[14px] leading-[15px] text-sub">Код: {product.code}</span>
+            </div>
+
+            <OfferSelector product={product} className="mt-[23px]" />
+
+            {shortSpecs.length > 0 ? (
+              <section className={cn("offer-dim", product.variants ? "mt-[35px]" : "mt-[31px]")} aria-label="Основные характеристики">
+                <div className="flex items-start justify-between">
+                  <h2 className="mt-[2px] text-[20px] font-semibold leading-[20px] text-black xl:ml-[3px]">Характеристики</h2>
+                  <a
+                    href={paragraphs.length > 0 ? "#description" : "#specs"}
+                    className="flex h-[24px] w-[86px] items-start rounded-[5px] bg-btn pl-[8px] pt-[6px] text-[13px] font-medium leading-[12px] text-g333 transition-colors hover:bg-btn-hover"
+                  >
+                    Описание
+                    <IconChevronSmall className="ml-[3px] mt-[1.1px]" />
+                  </a>
+                </div>
+                <SpecRows items={shortSpecs} align="right" labelWidth={138} className="mt-[15px] xl:pl-[2px]" />
+              </section>
+            ) : null}
+
+            {product.pack ? (
+              <div className="mt-[31px] flex h-[55px] w-[201px] items-start rounded-[7px] border border-outline">
+                <IconPack className="ml-[16px] mt-[13px] shrink-0" />
+                <p className="ml-[14px] mt-[5px] text-[13px] leading-[19px] text-sub">
+                  Кратность упаковки:
+                  <br />
+                  <span className="text-black">{product.pack.label}</span>
+                </p>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="offer-dim min-w-0 md:col-span-2 xl:col-span-1 xl:ml-auto xl:w-[292px]">
+            <PromoPlaque />
+            <div className="mt-[14px]">
+              <BuyBox product={product} />
+            </div>
+            <Pickup product={product} className="mt-[39px]" />
+          </div>
+        </div>
+        </OfferScope>
+
+        {/* всё ниже в макете сдвинуто на 1px вправо (127…1387) */}
+        <div className="xl:-mr-px xl:ml-px">
+          <ProductTabsBar tabs={tabs} product={product} className="mt-10 lg:mt-[46px]" />
+
+          <section id="specs" className="mt-[25px] scroll-mt-[140px] lg:scroll-mt-[287px] grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,906px)_305px] lg:justify-between lg:gap-0">
+            <div className="min-w-0">
+              <Features product={product} />
+              {paragraphs.length > 0 ? (
+                <div id="description" className="mt-[38px] scroll-mt-[140px] lg:scroll-mt-[287px] flex flex-col gap-[6px] text-[15px] leading-[25px] text-black first:mt-0">
+                  {paragraphs.map((p, i) => (
+                    <p key={i} className="whitespace-pre-line">
+                      {p}
+                    </p>
+                  ))}
+                </div>
+              ) : null}
+              {specCols.length > 0 ? (
+                <div className="mt-[32px] grid grid-cols-1 gap-x-[48px] md:grid-cols-2 xl:grid-cols-[405px_405px] xl:gap-x-[48px]">
+                  {specCols.map((col, i) => (
+                    <SpecRows key={i} items={col} align="column" labelWidth={154} className={i > 0 ? "mt-[13px] md:mt-0" : undefined} />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+            <aside className="flex flex-col gap-[21px]">
+              <BrandCard product={product} />
+              <Documents documents={product.documents} />
+              <ServicesCard product={product} />
+            </aside>
+          </section>
+
+          <section id="accessories" className="mt-16 scroll-mt-[140px] lg:mt-[69px] lg:scroll-mt-[287px]">
+            <SectionTitle>Комплектующие</SectionTitle>
+            <ProductAccessories items={product.accessories} />
+          </section>
+
+          <section id="reviews" className="mt-16 scroll-mt-[140px] lg:mt-[63px] lg:scroll-mt-[287px]">
+            <SectionTitle>Отзывы</SectionTitle>
+            <Reviews slug={product.slug} initial={reviews} />
+          </section>
+
+          <section id="questions" className="mt-16 scroll-mt-[140px] lg:mt-[55px] lg:scroll-mt-[287px]">
+            <SectionTitle>Вопросы и ответы</SectionTitle>
+            <Questions slug={product.slug} initial={questions} />
+          </section>
+        </div>
       </div>
-
-      <section className="mt-12" id="accessories">
-        <h2 className="mb-5">Комплектующие</h2>
-        <Accessories items={product.accessories} />
-      </section>
-
-      <section className="mt-12" id="reviews">
-        <h2 className="mb-5">Отзывы</h2>
-        <Reviews slug={product.slug} initial={reviews} />
-      </section>
-
-      <section className="mt-12" id="questions">
-        <h2 className="mb-5">Вопросы и ответы</h2>
-        <Questions slug={product.slug} initial={questions} />
-      </section>
-    </div>
+    </BuyProvider>
   );
 }
