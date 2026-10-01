@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1.7
 FROM oven/bun:1 AS deps
 WORKDIR /app
-COPY frontend/package.json frontend/bun.lock ./
-RUN bun install --frozen-lockfile
+# bun.lock не хранится в git: если его нет в контексте сборки, зависимости ставятся по package.json
+COPY frontend/package.json frontend/bun.lock* ./
+RUN if [ -f bun.lock ]; then bun install --frozen-lockfile; else bun install; fi
 
 FROM oven/bun:1 AS build
 WORKDIR /app
