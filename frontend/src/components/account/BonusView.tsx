@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { DataTable, cellPad, type Column } from "./DataTable";
 import { PeriodFilter, periodFromParams, periodKey, type Period } from "./PeriodFilter";
-import { Card, CardTitle, ErrorLine, errorMessage } from "./shared";
+import { Card, CardTitle, ErrorLine, btnCls, errorMessage } from "./shared";
 
 type Entry = BonusEntry & { kind_label?: string };
 type Statement = BonusStatement & { entries: Entry[]; accrued?: number; spent?: number; period?: { from: string; to: string } };
@@ -115,7 +115,7 @@ export function BonusView() {
       <Card>
         <CardTitle>Бонусная карта</CardTitle>
         <div className="mt-[21px] flex flex-col gap-[20px] sm:flex-row sm:items-stretch sm:gap-[27px]">
-          <div className="flex w-full shrink-0 flex-col justify-between rounded-[10px] bg-brand px-[22px] pb-[18px] pt-[18px] sm:w-[304px]" aria-label="Бонусный счёт">
+          <div className="flex w-full shrink-0 flex-col justify-between rounded-[7px] bg-brand px-[22px] pb-[18px] pt-[18px] sm:w-[304px]" aria-label="Бонусный счёт">
             <span className="text-[14px] font-medium leading-[20px] text-black">Бонусный счёт ТЭК</span>
             <span className="mt-[18px] text-[28px] font-bold leading-[32px] text-black tnum">{money(balance)}</span>
             <span className="mt-[10px] text-[13px] leading-[17px] text-g333">
@@ -123,7 +123,7 @@ export function BonusView() {
               {user ? ` · кешбэк ${user.cashback_pct}%` : ""}
             </span>
           </div>
-          <div className="flex flex-col justify-center gap-[8px] text-[14px] leading-[20px] text-sub">
+          <div className="flex flex-col justify-center gap-[6px] text-[15px] leading-[20px] text-[#555]">
             <p className="text-black">Кешбэк начисляется на бонусный счёт после оплаты заказа и доступен для оплаты следующих заказов.</p>
             {data ? (
               <p className="tnum">
@@ -137,7 +137,7 @@ export function BonusView() {
       <Card>
         <CardTitle
           right={
-            <Button variant="secondary" icon={<Download className="size-4" aria-hidden />} loading={downloading} onClick={download} disabled={!data}>
+            <Button variant="secondary" className={btnCls} icon={<Download className="size-4" aria-hidden />} loading={downloading} onClick={download} disabled={!data}>
               Скачать в Excel
             </Button>
           }
@@ -146,9 +146,9 @@ export function BonusView() {
         </CardTitle>
         <PeriodFilter key={key} value={period} onApply={apply} busy={busy && result !== null} className="mt-[22px]" />
         <ErrorLine error={error} className="mt-[20px]" />
-        <div className="mt-[37px]">
+        <div className="mt-[38px]">
           {data === null && !error ? (
-            <Skeleton className="h-[200px] rounded-[10px]" />
+            <Skeleton className="h-[200px] rounded-[7px]" />
           ) : data ? (
             <DataTable
               columns={columns}
@@ -157,7 +157,7 @@ export function BonusView() {
               empty="За выбранный период операций по бонусному счёту нет"
               prepend={
                 <tr className="border-b border-line bg-surface-2">
-                  <td colSpan={4} className={cn(cellPad, "text-sub")}>
+                  <td colSpan={4} className={cn(cellPad, "text-[#555]")}>
                     Баланс на {date(data.period?.from ?? period.from)}
                   </td>
                   <td className={cn(cellPad, "text-right font-medium tnum")}>{moneyBare(data.opening)}</td>

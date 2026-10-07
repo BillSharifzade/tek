@@ -79,9 +79,10 @@ export default async function ProjectsPage({ searchParams }: { searchParams: SP 
   return (
     <div className="bg-surface">
       <div className="container-page pb-[70px] min-[1292px]:pl-[17px]">
-        <h1 className="pt-[40px] text-[28px] font-bold leading-[32px] text-black md:pt-[50px] md:text-[35px] md:leading-[12px]">Выполненные проекты</h1>
+        {/* Figma 10554:307: заголовок 35/12 на y=163 (49px под шапкой 114), карточка фильтров на y=221 */}
+        <h1 className="pt-[40px] text-[28px] font-bold leading-[32px] text-black md:pt-[49px] md:text-[35px] md:leading-[12px]">Выполненные проекты</h1>
 
-        <div className="mt-[28px] md:mt-[45px]">
+        <div className="mt-[28px] md:mt-[46px]">
           <ProjectFilters groups={groups} hrefFor={(param, value) => hrefWith({ [param]: value })} />
         </div>
 

@@ -43,7 +43,8 @@ export function ServiceTemplate({ config: c }: { config: ServiceConfig }) {
 
         {/* ── hero ─────────────────────────────────────────────── */}
         <section id="order" aria-labelledby="svc-title" className={cn(ANCHOR, "relative overflow-hidden rounded-[11px] bg-surface-2 lg:h-[475px]")}>
-          <div className="relative aspect-[572/475] w-full lg:absolute lg:right-0 lg:top-0 lg:aspect-auto lg:h-full lg:w-[572px]">
+          {/* фото 572px справа; на 1024–1279 — 42%, чтобы заголовок не наезжал на фото */}
+          <div className="relative aspect-[572/475] w-full lg:absolute lg:right-0 lg:top-0 lg:aspect-auto lg:h-full lg:w-[42%] xl:w-[572px]">
             <Image
               src={c.hero.image}
               alt=""
@@ -53,11 +54,12 @@ export function ServiceTemplate({ config: c }: { config: ServiceConfig }) {
               className={c.hero.imageFit === "contain" ? "object-contain p-8" : "object-cover"}
             />
           </div>
-          <div className="px-5 pb-8 pt-7 lg:pl-[62px] lg:pr-0 lg:pt-[65px]">
+          {/* заголовок 40/52: верх строки на y=249 (63px от верха плашки), галки на y=387 */}
+          <div className="px-5 pb-8 pt-7 lg:pl-[62px] lg:pr-[calc(42%_+_24px)] lg:pt-[63px] xl:pr-0">
             <h1 id="svc-title" className="text-[30px] font-bold leading-[38px] text-black lg:max-w-[540px] lg:text-[40px] lg:leading-[52px]">
               {c.hero.title}
             </h1>
-            <ul className="mt-6 grid grid-cols-2 gap-y-[21px] sm:grid-cols-[188px_188px] lg:ml-[2px] lg:mt-[32px]">
+            <ul className="mt-6 grid grid-cols-2 gap-y-[21px] sm:grid-cols-[188px_188px] lg:ml-[2px] lg:mt-[34px]">
               {c.hero.checks.map((t) => (
                 <li key={t} className="flex items-start gap-[7px] text-[16px] leading-[15px] text-black">
                   <IconCheckCircle className="shrink-0" />
@@ -70,7 +72,7 @@ export function ServiceTemplate({ config: c }: { config: ServiceConfig }) {
         </section>
 
         {/* ── жёлтая плашка с преимуществами (наезжает на hero) ─────────────── */}
-        <ul className="relative z-10 mx-4 -mt-6 grid gap-5 rounded-[11px] bg-brand px-6 py-5 shadow-[0_2px_8px_2px_rgba(0,0,0,0.13)] sm:grid-cols-3 lg:mx-0 lg:ml-[160px] lg:-mt-[55px] lg:h-[111px] lg:w-[938px] lg:grid-cols-[200px_200px_200px] lg:gap-x-[90px] lg:pl-[79px] lg:pr-0 lg:pt-[23px]">
+        <ul className="relative z-10 mx-4 -mt-6 grid gap-5 rounded-[11px] bg-brand px-6 py-5 shadow-[0_2px_8px_2px_rgba(0,0,0,0.13)] sm:grid-cols-3 lg:mx-0 lg:ml-[160px] lg:-mt-[55px] lg:min-h-[111px] lg:w-[938px] lg:max-w-[calc(100%_-_160px)] lg:grid-cols-[repeat(3,minmax(0,200px))] lg:gap-x-[90px] lg:pl-[79px] lg:pr-0 lg:pt-[23px]">
           {c.advantages.map((a) => (
             <li key={a.title} className="text-black">
               <p className="text-[16px] font-bold leading-[17px]">{a.title}</p>
@@ -89,7 +91,7 @@ export function ServiceTemplate({ config: c }: { config: ServiceConfig }) {
           <h2 id="svc-how" className={H2}>
             Как мы работаем
           </h2>
-          <ol className="mt-8 grid gap-8 sm:grid-cols-2 lg:mt-[56px] lg:grid-cols-[289px_289px_289px_289px] lg:gap-x-[34px]">
+          <ol className="mt-8 grid gap-8 sm:grid-cols-2 lg:mt-[56px] lg:grid-cols-[repeat(4,minmax(0,289px))] lg:gap-x-[34px]">
             {c.steps.map((s, i) => (
               <li key={s.title} className="relative min-h-[42px] pl-[59px] pt-[5px]">
                 <span className="absolute left-0 top-0 grid size-[42px] place-items-center rounded-full bg-brand text-[20px] font-bold leading-[20px] text-g333">
@@ -106,12 +108,12 @@ export function ServiceTemplate({ config: c }: { config: ServiceConfig }) {
       {/* ── серая полоса: фото + кнопка ────────────────────────── */}
       {c.promo ? (
         <section aria-labelledby="svc-promo" className="mt-16 bg-btn lg:mt-[94px]">
-          <div className={cn(COL, "flex flex-col-reverse gap-8 py-10 lg:h-[456px] lg:flex-row lg:items-start lg:justify-between lg:gap-0 lg:py-0")}>
+          <div className={cn(COL, "flex flex-col-reverse gap-8 py-10 lg:min-h-[456px] lg:flex-row lg:items-start lg:justify-between lg:gap-0 lg:pb-10 lg:pt-0")}>
             <div className="lg:w-[508px] lg:pt-[60px]">
               <h2 id="svc-promo" className="text-[26px] font-bold leading-[34px] text-black lg:text-[32px] lg:leading-[45px]">
                 {c.promo.title}
               </h2>
-              <p className="mt-4 text-[18px] leading-[25px] text-g333 lg:mt-[19px] lg:w-[500px]">{c.promo.text}</p>
+              <p className="mt-4 text-[18px] leading-[25px] text-g333 lg:mt-[19px] lg:max-w-[500px]">{c.promo.text}</p>
               {c.promo.href ? (
                 <Link
                   href={c.promo.href}
@@ -138,12 +140,12 @@ export function ServiceTemplate({ config: c }: { config: ServiceConfig }) {
       {/* ── полоса из 4 советов ─────────────────────────────── */}
       {c.tips ? (
         <section aria-label="Рекомендации" className={cn("bg-surface", !c.promo && "mt-16 lg:mt-[94px]")}>
-          <ul className={cn(COL, "grid gap-6 py-8 sm:grid-cols-2 lg:h-[179px] lg:grid-cols-[275px_275px_275px_275px] lg:gap-x-[53px] lg:py-0 lg:pt-[36px]")}>
+          <ul className={cn(COL, "grid gap-6 py-8 sm:grid-cols-2 lg:min-h-[179px] lg:grid-cols-[repeat(4,minmax(0,275px))] lg:gap-x-[53px] lg:py-0 lg:pb-6 lg:pt-[36px]")}>
             {c.tips.map((t) => (
               <li key={t.title} className="relative pl-[45px]">
                 <IconCheckBold className="absolute left-0 top-0 text-black" />
                 <p className="pt-[4px] text-[17px] font-semibold leading-[17px] text-black">{t.title}</p>
-                <p className="mt-[12px] text-[15px] leading-[23px] text-g333 lg:w-[230px]">{t.text}</p>
+                <p className="mt-[12px] text-[15px] leading-[23px] text-g333 lg:max-w-[230px]">{t.text}</p>
               </li>
             ))}
           </ul>
@@ -165,7 +167,7 @@ export function ServiceTemplate({ config: c }: { config: ServiceConfig }) {
         {/* ── FAQ + заявка ───────────────────────────────────── */}
         <div
           className={cn(
-            "grid gap-12 lg:grid-cols-[584px_584px] lg:justify-between lg:gap-0",
+            "grid gap-12 lg:grid-cols-[repeat(2,minmax(0,584px))] lg:justify-between lg:gap-x-10 lg:gap-y-0",
             c.schedule ? "mt-16 lg:mt-[103px]" : "mt-16 lg:mt-[93px]",
           )}
         >

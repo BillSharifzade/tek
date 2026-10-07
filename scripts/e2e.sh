@@ -25,8 +25,13 @@ echo "  product=$PROD category=$CAT"
 check "$API/catalog/products/$PROD" 200
 check "$API/catalog/categories/$CAT" 200
 echo "== WEB =="
-for p in / /catalog "/catalog/$CAT" "/product/$PROD" /brands /cart /checkout /login /register /about /services /projects /news /contacts /support /help /configurators "/search?q=%D0%BA%D0%B0%D0%B1%D0%B5%D0%BB%D1%8C" /account; do
+for p in / /catalog "/catalog/$CAT" "/product/$PROD" /brands /cart /checkout /login /register /about /vacancies /services /projects /news /contacts /support \
+  /help /help/delivery /help/payment /help/warranty /help/faq /configurators /favorites "/search?q=%D0%BA%D0%B0%D0%B1%D0%B5%D0%BB%D1%8C" /account; do
   check "$WEB$p" 200
+done
+# удалённые по доработкам R2 страницы услуг
+for p in /services/internet-magazin /services/sborka-shchitovogo-oborudovaniya /services/konfiguratory; do
+  check "$WEB$p" 404
 done
 if [ "${SHOTS:-1}" = "1" ]; then
   echo "== SCREENSHOTS → $OUT =="

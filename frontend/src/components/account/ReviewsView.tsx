@@ -39,7 +39,7 @@ export function ReviewsView() {
 
   return (
     <Card>
-      <CardTitle right={answered > 0 ? <span className="rounded-[7px] bg-brand-light px-[12px] py-[6px] text-[14px] leading-[20px] text-g333">Получено ответов: {answered}</span> : null}>
+      <CardTitle right={answered > 0 ? <span className="rounded-[7px] bg-brand-light px-[12px] py-[6px] text-[15px] leading-[20px] text-g333">Получено ответов: {answered}</span> : null}>
         Отзывы и вопросы
       </CardTitle>
       <Tabs<Tab>
@@ -54,7 +54,7 @@ export function ReviewsView() {
       <ErrorLine error={error} className="mt-[20px]" />
 
       {loading ? (
-        <Skeleton className="mt-[20px] h-[160px] rounded-[10px]" />
+        <Skeleton className="mt-[20px] h-[160px] rounded-[7px]" />
       ) : tab === "reviews" ? (
         reviews && reviews.length === 0 ? (
           <EmptyState className="mt-[20px]">
@@ -70,16 +70,16 @@ export function ReviewsView() {
                 <ItemHeader product={r.product} dateValue={r.date} replied={Boolean(r.reply)} />
                 <Stars value={r.rating} className="mt-[10px]" />
                 {r.pros ? (
-                  <p className="mt-[10px] text-[14px] leading-[20px]">
+                  <p className="mt-[10px] text-[15px] leading-[20px]">
                     <span className="font-medium">Достоинства:</span> {r.pros}
                   </p>
                 ) : null}
                 {r.cons ? (
-                  <p className="mt-[4px] text-[14px] leading-[20px]">
+                  <p className="mt-[6px] text-[15px] leading-[20px]">
                     <span className="font-medium">Недостатки:</span> {r.cons}
                   </p>
                 ) : null}
-                <p className="mt-[8px] whitespace-pre-line text-[14px] leading-[20px] text-g333">{r.text}</p>
+                <p className="mt-[8px] whitespace-pre-line text-[15px] leading-[20px] text-g333">{r.text}</p>
                 {r.reply ? <ReplyBlock reply={r.reply} /> : null}
               </li>
             ))}
@@ -92,7 +92,7 @@ export function ReviewsView() {
           {questions.map((q, i) => (
             <li key={q.id ?? `${q.product.slug}-${i}`} className="py-[20px]">
               <ItemHeader product={q.product} dateValue={q.date} replied={Boolean(q.answer)} />
-              <p className="mt-[10px] whitespace-pre-line text-[14px] leading-[20px] text-g333">{q.text}</p>
+              <p className="mt-[10px] whitespace-pre-line text-[15px] leading-[20px] text-g333">{q.text}</p>
               {q.answer ? <ReplyBlock reply={q.answer} /> : <p className="mt-[10px] text-[13px] leading-[18px] text-muted">Ожидает ответа специалиста ТЭК</p>}
             </li>
           ))}
@@ -123,7 +123,7 @@ function ReplyBlock({ reply, className }: { reply: ReviewReply; className?: stri
         <span className="font-medium text-black">{reply.author || "Точикэлектрокомплект"}</span>
         <span className="text-muted"> · Специалист ТЭК · {date(reply.date)}</span>
       </p>
-      <p className="mt-[4px] whitespace-pre-line text-[14px] leading-[20px] text-g333">{reply.text}</p>
+      <p className="mt-[4px] whitespace-pre-line text-[15px] leading-[20px] text-g333">{reply.text}</p>
     </div>
   );
 }

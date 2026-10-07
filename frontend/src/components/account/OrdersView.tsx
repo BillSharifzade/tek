@@ -19,8 +19,8 @@ interface OrdersResponse {
 }
 
 /**
- * «Заказы» (Figma 9097:650): карточка с заголовком, период «с … по …» и таблица
- * №/Дата/Сумма/Оплачено/Остаток/Срок оплаты (+ статус заказа). По умолчанию — последние 30 дней (ТЗ).
+ * «Заказы» (Figma 9097:650): карточка 347px с заголовком, период «с … по …» (в 22px под заголовком) и таблица
+ * №/Дата/Сумма/Оплачено/Остаток/Срок оплаты (шапка в 38px под полями дат) + статус заказа (ТЗ). По умолчанию — последние 30 дней (ТЗ).
  * Строка кликабельна → состав заказа и статус доставки.
  */
 export function OrdersView() {
@@ -89,9 +89,9 @@ export function OrdersView() {
       <CardTitle>Заказы</CardTitle>
       <PeriodFilter key={key} value={period} onApply={apply} busy={busy && result !== null} className="mt-[22px]" />
       <ErrorLine error={error} className="mt-[20px]" />
-      <div className="mt-[37px]">
+      <div className="mt-[38px]">
         {data === null && !error ? (
-          <Skeleton className="h-[160px] rounded-[10px]" />
+          <Skeleton className="h-[160px] rounded-[7px]" />
         ) : data ? (
           <DataTable
             columns={columns}

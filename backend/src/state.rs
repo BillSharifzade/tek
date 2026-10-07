@@ -28,11 +28,14 @@ pub struct AppState {
     pub user_cache: Cache<Uuid, Arc<UserRow>>,
     pub http: reqwest::Client,
     pub limiter: crate::services::ratelimit::Limiter,
+    /// SMTP (None — не настроен: письма mock вне production / ждут в очереди в production)
+    pub mailer: Option<crate::services::mail::Mailer>,
     pub version: &'static str,
 }
 
 impl AppState {
     pub fn new(pool: PgPool, cfg: Config) -> Self {
+        let mailer = crate::services::mail::Mailer::from_config(&cfg);
         Self {
             pool,
             cfg: Arc::new(cfg),
@@ -49,6 +52,7 @@ impl AppState {
                 .build()
                 .expect("http client"),
             limiter: Default::default(),
+            mailer,
             version: env!("CARGO_PKG_VERSION"),
         }
     }

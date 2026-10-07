@@ -16,7 +16,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { Stepper } from "@/components/ui/Stepper";
 import { Textarea } from "@/components/ui/Input";
 import { StatusBadge, StatusTimeline } from "./OrderStatus";
-import { Card, CardTitle, EmptyState, ErrorLine, errorMessage, fieldCls } from "./shared";
+import { Card, CardTitle, EmptyState, ErrorLine, btnCls, errorMessage, fieldCls, labelCls } from "./shared";
 
 /** Extra fields the backend returns beyond the base contract. */
 type OrderData = Order & {
@@ -113,8 +113,8 @@ export function OrderDetailView({ number }: { number: string }) {
   if (state === "loading") {
     return (
       <div className="flex flex-col gap-[16px] lg:gap-[27px]" aria-busy>
-        <Skeleton className="h-[140px] rounded-[10px]" />
-        <Skeleton className="h-[320px] rounded-[10px]" />
+        <Skeleton className="h-[140px] rounded-[7px]" />
+        <Skeleton className="h-[320px] rounded-[7px]" />
       </div>
     );
   }
@@ -148,7 +148,7 @@ export function OrderDetailView({ number }: { number: string }) {
         <CardTitle
           right={
             <span className="flex items-center gap-[12px]">
-              <span className="text-[14px] leading-[20px] text-sub tnum">от {date(order.created_at)}</span>
+              <span className={cn(labelCls, "tnum")}>от {date(order.created_at)}</span>
               <StatusBadge status={order.status} label={order.status_label} />
             </span>
           }
@@ -163,8 +163,8 @@ export function OrderDetailView({ number }: { number: string }) {
           <Info title="Оплата">
             {order.payment.method_label}
             {order.payment.sublabel ? ` (${order.payment.sublabel})` : ""}
-            <span className="block font-normal text-sub">{order.payment.status_label}</span>
-            {order.due_date && order.status !== "cancelled" ? <span className="block font-normal text-sub tnum">Срок оплаты: {date(order.due_date)}</span> : null}
+            <span className="block font-normal text-[#555]">{order.payment.status_label}</span>
+            {order.due_date && order.status !== "cancelled" ? <span className="block font-normal text-[#555] tnum">Срок оплаты: {date(order.due_date)}</span> : null}
           </Info>
           <Info title="Комментарий">{order.comment ? order.comment : <span className="font-normal text-muted">—</span>}</Info>
         </dl>
@@ -177,12 +177,12 @@ export function OrderDetailView({ number }: { number: string }) {
               order.can_edit || order.can_cancel ? (
                 <div className="flex flex-wrap gap-[10px]">
                   {order.can_edit ? (
-                    <Button variant="secondary" icon={<Pencil className="size-4" aria-hidden />} onClick={startEdit}>
+                    <Button variant="secondary" className={btnCls} icon={<Pencil className="size-4" aria-hidden />} onClick={startEdit}>
                       Редактировать
                     </Button>
                   ) : null}
                   {order.can_cancel ? (
-                    <Button variant="danger" icon={<X className="size-4" aria-hidden />} onClick={() => setConfirmCancel(true)}>
+                    <Button variant="danger" className={btnCls} icon={<X className="size-4" aria-hidden />} onClick={() => setConfirmCancel(true)}>
                       Отменить заказ
                     </Button>
                   ) : null}
@@ -190,10 +190,10 @@ export function OrderDetailView({ number }: { number: string }) {
               ) : null
             ) : (
               <div className="flex flex-wrap gap-[10px]">
-                <Button variant="outline" onClick={() => setEditing(false)} disabled={saving}>
+                <Button variant="outline" className={btnCls} onClick={() => setEditing(false)} disabled={saving}>
                   Отмена
                 </Button>
-                <Button loading={saving} onClick={saveEdit}>
+                <Button className={btnCls} loading={saving} onClick={saveEdit}>
                   Сохранить изменения
                 </Button>
               </div>
@@ -211,34 +211,34 @@ export function OrderDetailView({ number }: { number: string }) {
               <li key={i.product.id} className={cn("flex flex-wrap items-center gap-x-[16px] gap-y-[10px] py-[14px]", removed && "opacity-40")}>
                 <ImageBox src={i.product.image} alt={i.product.name} className="size-[64px] shrink-0 border border-line" sizes="64px" rounded="rounded-[7px]" />
                 <div className="min-w-[200px] flex-1">
-                  <Link href={`/product/${i.product.slug}`} className="line-clamp-2 text-[14px] font-medium leading-[20px] text-black underline decoration-transparent underline-offset-[3px] transition-colors hover:decoration-black">
+                  <Link href={`/product/${i.product.slug}`} className="line-clamp-2 text-[15px] font-medium leading-[20px] text-black underline decoration-transparent underline-offset-[3px] transition-colors hover:decoration-black">
                     {i.product.name}
                   </Link>
-                  <p className="mt-[2px] text-[13px] leading-[18px] text-sub tnum">
+                  <p className="mt-[2px] text-[13px] leading-[18px] text-[#555] tnum">
                     Код: {i.product.code} · {money(i.price.price)} {i.product.price_unit_label}
                     {i.price.discount_pct > 0 ? <span className="ml-[8px] text-[#00A000]">−{i.price.discount_pct}%</span> : null}
                   </p>
                 </div>
                 {editing ? (
                   removed ? (
-                    <button type="button" className="text-[14px] leading-[20px] text-sub underline underline-offset-[3px] hover:text-black" onClick={() => setEditItems((items) => [...items, { product_id: i.product.id, qty: i.qty }])}>
+                    <button type="button" className="text-[15px] leading-[20px] text-[#555] underline underline-offset-[3px] hover:text-black" onClick={() => setEditItems((items) => [...items, { product_id: i.product.id, qty: i.qty }])}>
                       Вернуть
                     </button>
                   ) : (
                     <div className="flex items-center gap-[10px]">
                       <Stepper value={edit?.qty ?? i.qty} onChange={(q) => setQty(i.product.id, q)} min={1} max={i.product.stock_total || undefined} size="sm" />
-                      <span className="text-[14px] text-sub">{i.product.unit}</span>
+                      <span className="text-[15px] leading-[20px] text-[#555]">{i.product.unit}</span>
                       <button type="button" onClick={() => removeItem(i.product.id)} className="flex size-[32px] items-center justify-center rounded-[6px] text-sub transition-colors hover:bg-sale-bg hover:text-sale-text" aria-label="Удалить из заказа">
                         <Trash2 className="size-4" />
                       </button>
                     </div>
                   )
                 ) : (
-                  <span className="text-[14px] leading-[20px] text-sub tnum">
+                  <span className={cn(labelCls, "tnum")}>
                     {fmtQty(i.qty)} {i.product.unit}
                   </span>
                 )}
-                {!editing ? <span className="w-[120px] text-right text-[14px] font-medium leading-[20px] tnum">{money(i.line_total)}</span> : null}
+                {!editing ? <span className="w-[120px] text-right text-[15px] font-semibold leading-[20px] tnum">{money(i.line_total)}</span> : null}
               </li>
             );
           })}
@@ -247,10 +247,10 @@ export function OrderDetailView({ number }: { number: string }) {
         {editing ? (
           <div className="mt-[20px]">
             <Textarea aria-label="Комментарий к заказу" placeholder="Комментарий к заказу" value={editComment} onChange={(e) => setEditComment(e.target.value)} className={cn(fieldCls, "h-auto min-h-[72px] py-[8px]")} />
-            <p className="mt-[8px] text-[13px] leading-[18px] text-sub">Итоговая сумма будет пересчитана по вашим персональным ценам после сохранения; менеджер получит обновление заказа.</p>
+            <p className="mt-[8px] text-[13px] leading-[18px] text-[#555]">Цены товаров остаются такими, как при оформлении заказа; итог и стоимость доставки пересчитаются после сохранения, менеджер получит обновление заказа.</p>
           </div>
         ) : (
-          <dl className="ml-auto mt-[16px] flex max-w-[344px] flex-col gap-[6px] text-[14px] leading-[20px] tnum">
+          <dl className="ml-auto mt-[16px] flex max-w-[344px] flex-col gap-[6px] text-[15px] leading-[20px] tnum">
             <Row label={`Товары (${order.items.length})`} value={money(order.subtotal_list ?? order.subtotal + order.discount_total)} />
             {order.discount_total > 0 ? <Row label="Скидка" value={`− ${money(order.discount_total)}`} valueClassName="text-[#0FB500]" /> : null}
             {order.coupon_discount > 0 ? <Row label={`Купон${order.coupon_code ? ` ${order.coupon_code}` : ""}`} value={`− ${money(order.coupon_discount)}`} valueClassName="text-[#0FB500]" /> : null}
@@ -271,7 +271,7 @@ export function OrderDetailView({ number }: { number: string }) {
         <CardTitle>История заказа</CardTitle>
         <ol className="mt-[21px] flex flex-col gap-[10px]">
           {order.events.map((e, i) => (
-            <li key={`${e.kind}-${i}`} className="flex items-start gap-[12px] text-[14px] leading-[20px]">
+            <li key={`${e.kind}-${i}`} className="flex items-start gap-[12px] text-[15px] leading-[20px]">
               <span className="mt-[7px] size-[6px] shrink-0 rounded-full bg-brand" aria-hidden />
               <span className="flex-1">{e.label}</span>
               <span className="shrink-0 text-[13px] text-muted tnum">{formatDateTime(e.at)}</span>
@@ -279,8 +279,8 @@ export function OrderDetailView({ number }: { number: string }) {
           ))}
         </ol>
         {order.manager ? (
-          <p className="mt-[20px] border-t border-line pt-[16px] text-[14px] leading-[20px] text-sub">
-            Менеджер по заказу: <span className="font-medium text-black">{order.manager.name}</span>,{" "}
+          <p className={cn("mt-[20px] border-t border-line pt-[16px]", labelCls)}>
+            Менеджер по заказу: <span className="font-semibold text-black">{order.manager.name}</span>,{" "}
             <a href={`tel:${order.manager.phone.replace(/[^\d+]/g, "")}`} className="link-hover tnum">
               {order.manager.phone}
             </a>
@@ -289,11 +289,11 @@ export function OrderDetailView({ number }: { number: string }) {
       </Card>
 
       <div className="flex flex-wrap gap-[10px]">
-        <ButtonLink href="/account/orders" variant="outline" icon={<ArrowLeft className="size-4" aria-hidden />}>
+        <ButtonLink href="/account/orders" variant="outline" className={btnCls} icon={<ArrowLeft className="size-4" aria-hidden />}>
           К списку заказов
         </ButtonLink>
         {order.status === "delivered" ? (
-          <ButtonLink href="/catalog" variant="secondary">
+          <ButtonLink href="/catalog" variant="secondary" className={btnCls}>
             Повторить покупки в каталоге
           </ButtonLink>
         ) : null}
@@ -326,8 +326,8 @@ export function OrderDetailView({ number }: { number: string }) {
 function Info({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[14px] leading-[20px] text-sub">{title}</dt>
-      <dd className="mt-[4px] text-[14px] font-medium leading-[20px] text-black">{children}</dd>
+      <dt className={labelCls}>{title}</dt>
+      <dd className="mt-[6px] text-[15px] font-semibold leading-[20px] text-black">{children}</dd>
     </div>
   );
 }
@@ -335,7 +335,7 @@ function Info({ title, children }: { title: string; children: React.ReactNode })
 function Row({ label, value, className, labelClassName, valueClassName }: { label: string; value: string; className?: string; labelClassName?: string; valueClassName?: string }) {
   return (
     <div className={cn("flex items-baseline justify-between gap-[24px]", className)}>
-      <dt className={cn("text-sub", labelClassName)}>{label}</dt>
+      <dt className={cn("text-[#555]", labelClassName)}>{label}</dt>
       <dd className={valueClassName}>{value}</dd>
     </div>
   );

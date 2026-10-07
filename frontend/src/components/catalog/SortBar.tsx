@@ -12,14 +12,16 @@ const WIDTH: Record<string, string> = {
 };
 
 /**
- * «Сортировка:» (SemiBold 13) + сегмент-кнопки h=32 r=5: активная #FFCC33, остальные #F0F2F4.
+ * «Сортировка:» (SemiBold 13) + сегмент-кнопки h=32 r=5: активная #FFCC33 (hover #FED75B), остальные —
+ * серые по палитре ТЗ #EEF0F2 → hover #D9DDE3 (в макете #F0F2F4; правило ТЗ приоритетнее).
+ * Текст 13/12: строка y=262 при кнопке y=252 — ровно 10px сверху (по центру 32), «Сортировка:» на той же строке.
  * Ссылки (без клиентского JS): sort хранится в URL, страница сбрасывается.
  */
 export function SortBar({ pathname, searchParams, className }: { pathname: string; searchParams: SearchParams; className?: string }) {
   const active = sortKeyOf(searchParams.sort);
   return (
     <div className={cn("flex flex-wrap items-center gap-y-[8px]", className)}>
-      <span className="relative -top-[1px] mr-[12px] w-[77px] text-[13px] font-semibold leading-[12px] text-black">Сортировка:</span>
+      <span className="mr-[12px] w-[77px] text-[13px] font-semibold leading-[12px] text-black">Сортировка:</span>
       <ul className="flex flex-wrap gap-[4px]">
         {SORTS.map((s) => {
           const on = s.key === active;
@@ -33,11 +35,11 @@ export function SortBar({ pathname, searchParams, className }: { pathname: strin
                 className={cn(
                   "relative block h-[32px] rounded-[5px] text-black transition-colors",
                   WIDTH[s.key],
-                  on ? "bg-brand hover:bg-brand-hover" : "bg-field hover:bg-btn-hover",
+                  on ? "bg-brand hover:bg-brand-hover" : "bg-btn hover:bg-btn-hover",
                 )}
               >
                 {Icon ? <Icon className={cn("absolute left-[17px]", s.icon === "up" ? "top-[9px]" : "top-[7px]")} /> : null}
-                <span className={cn("absolute top-[9px] whitespace-nowrap text-[13px] leading-[12px]", Icon ? "left-[40px]" : "left-[18px]")}>{s.label}</span>
+                <span className={cn("absolute top-[10px] whitespace-nowrap text-[13px] leading-[12px]", Icon ? "left-[40px]" : "left-[18px]")}>{s.label}</span>
               </Link>
             </li>
           );

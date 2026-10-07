@@ -10,7 +10,8 @@ use uuid::Uuid;
 #[derive(Debug, Clone, sqlx::FromRow)]
 pub struct UserRow {
     pub id: Uuid,
-    pub email: String,
+    /// не обязателен с доработок R1 (регистрация по телефону)
+    pub email: Option<String>,
     pub phone: Option<String>,
     pub password_hash: String,
     pub first_name: String,
@@ -83,7 +84,7 @@ SELECT p.id, p.code, p.slug, p.name, p.brand_id, b.slug AS brand_slug, b.name AS
        p.group_id, p.variant, p.unit, p.list_price, p.sale_price, p.is_hit, p.is_new,
        p.pack_qty, p.pack_label, p.configurator_id, p.attributes, p.images, p.description,
        p.short_description, p.features, p.rating, p.reviews_count, p.questions_count, p.popularity,
-       p.created_at,
+       p.created_at, p.is_active,
        (SELECT COALESCE(SUM(s.qty), 0) FROM stock s WHERE s.product_id = p.id) AS stock_total
 FROM products p
 LEFT JOIN brands b ON b.id = p.brand_id
@@ -124,6 +125,8 @@ pub struct ProductRow {
     pub questions_count: i32,
     pub popularity: i32,
     pub created_at: DateTime<Utc>,
+    /// false — снят с продажи: не виден в каталоге, не добавляется в корзину (миграция 0009)
+    pub is_active: bool,
     pub stock_total: Decimal,
 }
 

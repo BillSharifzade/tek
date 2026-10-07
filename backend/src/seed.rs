@@ -150,6 +150,20 @@ impl P {
     }
 }
 
+/// Категории верхнего уровня с фото (frontend/public/categories/{slug}.png); то же — в миграциях 0006 и 0008.
+const CATEGORY_PHOTOS: &[&str] = &[
+    "kabelenesushchie-sistemy",
+    "svetotekhnika",
+    "generatory",
+    "molniezashchita-i-zazemlenie",
+    "nizkovoltnoe-oborudovanie",
+    "shchitovoe-oborudovanie",
+    "elektroustanovochnye-izdeliya",
+    "instrumenty",
+    "solnechnaya-energetika",
+    "elektromontazhnaya-produktsiya",
+];
+
 const COUNTRIES: &[(&str, &str)] = &[
     ("dks", "Россия"),
     ("schneider-electric", "Франция"),
@@ -286,13 +300,13 @@ pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
     let mut ctx = Ctx { rng: Rng(0x9E37_79B9_7F4A_7C15), brands: HashMap::new(), cats: HashMap::new(), stores: vec![], code_seq: 200_000, slugs: HashMap::new() };
 
     // ---------- stores ----------
-    for (code, city, name, addr, phone, hours, hint, sort) in [
-        ("dushanbe", "Душанбе", "Центральный склад", "г. Душанбе, ул. Академика Акобира Адхамова 43", "+992 (44) 620 60 60", "Пн–Сб 8:00–18:00", "сегодня", 1),
-        ("khujand", "Худжанд", "Филиал Худжанд", "г. Худжанд, ул. И. Сомони 12", "+992 (92) 777 60 60", "Пн–Сб 8:00–18:00", "завтра", 2),
-        ("kushoniyon", "Душанбе", "Магазин на рынке Кушониён", "г. Душанбе, пр-кт Х. Шерози 28/30, рынок Кушониён, магазин №327", "+992 550006613", "Ежедневно 8:00–17:00", "сегодня", 3),
+    for (code, city, name, addr, phone, hours, hint, sort, (lat, lon)) in [
+        ("dushanbe", "Душанбе", "Центральный склад", "г. Душанбе, ул. Низоми Ганджави", None, "8:30–17:00", "сегодня", 1, (38.549998, 68.735072)),
+        ("khujand", "Худжанд", "Филиал Худжанд", "г. Худжанд, рынок Вахдат, вход 1", Some("+992 92 111 22 25"), "Пн–Сб 8:00–17:00", "завтра", 2, (40.247170, 69.695286)),
+        ("kushoniyon", "Душанбе", "Магазин на рынке Кушониён", "г. Душанбе, рынок Кушониён, магазин №327", Some("+992 55 000 66 13"), "Пн – Сб: 9:00–17:00, Вс — выходной", "сегодня", 3, (38.633192, 68.766223)),
     ] {
-        let id: i32 = sqlx::query_scalar("INSERT INTO stores (code, city, name, address, phone, hours, delivery_hint, sort) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id")
-            .bind(code).bind(city).bind(name).bind(addr).bind(phone).bind(hours).bind(hint).bind(sort)
+        let id: i32 = sqlx::query_scalar("INSERT INTO stores (code, city, name, address, phone, hours, delivery_hint, sort, lat, lon) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id")
+            .bind(code).bind(city).bind(name).bind(addr).bind(phone).bind(hours).bind(hint).bind(sort).bind(lat).bind(lon)
             .fetch_one(&mut *tx).await?;
         ctx.stores.push(id);
     }
@@ -352,6 +366,10 @@ pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
         ("nizkovoltnoe-oborudovanie", "Низковольтное оборудование", &[("avtomaticheskie-vyklyuchateli", "Автоматические выключатели", &[]), ("kontaktory", "Контакторы", &[])]),
         ("shchitovoe-oborudovanie", "Щитовое оборудование", &[("raspredelitelnye-shchity", "Распределительные щиты", &[]), ("telekommunikatsionnye-shkafy", "Телекоммуникационные шкафы", &[])]),
         ("schetchiki-elektroenergii", "Счетчики электроэнергии", &[("schetchiki", "Счетчики", &[]), ("komplektuyushchie-schetchikov", "Комплектующие счетчиков", &[])]),
+        // категории из макета лендинга (редакция 06.10), товары придут из 1С
+        ("instrumenty", "Инструменты", &[]),
+        ("solnechnaya-energetika", "Солнечная энергетика", &[]),
+        ("elektromontazhnaya-produktsiya", "Электромонтажная продукция", &[]),
     ];
     for (i, (slug, name, children)) in tree.iter().enumerate() {
         let id = insert_category(&mut tx, None, slug, name, i as i32).await?;
@@ -372,6 +390,11 @@ pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
             }
         }
     }
+    // фото категорий (frontend/public/categories/*.png) — где есть; у остальных остаются иллюстрации
+    sqlx::query("UPDATE categories SET image_url = '/categories/' || slug || '.png' WHERE parent_id IS NULL AND slug = ANY($1)")
+        .bind(CATEGORY_PHOTOS)
+        .execute(&mut *tx)
+        .await?;
 
     // ---------- configurators ----------
     let conf_trays: i32 = sqlx::query_scalar(
@@ -769,18 +792,15 @@ pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
     .await?;
     sqlx::query(
         r#"INSERT INTO usp (title, text, icon, sort) VALUES
-           ('Бережно доставляем товары по Таджикистану за 48 часов', 'По Душанбе и Худжанду — за 1 рабочий день', 'truck', 1),
-           ('Квалифицированная техподдержка', 'Инженеры помогут с подбором и расчётом', 'headset', 2),
-           ('Только оригинальная продукция', 'Прямые контракты с производителями, сертификаты на всё', 'shield', 3),
-           ('Бесплатная пуско-наладка и расчет специалиста', 'Для генераторов, ИБП и щитового оборудования', 'wrench', 4)"#,
+           ('Большой ассортимент **оригинальных товаров** от мировых брендов', 'Прямые контракты с производителями, сертификаты на всё', 'assortment', 1),
+           ('**Доставка товаров** по Душанбе в течение 24 часов с момента заказа', 'Собственная служба доставки, по Таджикистану — за 48 часов', 'truck', 2),
+           ('**Квалифицированная техподдержка** по каждому товару', 'Инженеры помогут с подбором и расчётом', 'support', 3),
+           ('**Удобный личный кабинет** для работы с заказами, оплатами и сметами', 'Персональные цены, акт сверки и бонусная карта', 'account', 4)"#,
     )
     .execute(&mut *tx)
     .await?;
     for (i, (slug, title, short)) in [
-        ("internet-magazin", "Интернет-магазин", "Более 400 позиций в наличии, персональные цены и кешбэк для электриков и закупщиков."),
-        ("konfiguratory", "Конфигураторы", "Автоматический подбор кабеленесущих систем и кабель-каналов с расчётом комплектующих."),
         ("obsluzhivanie-dgu-ibp", "Обслуживание ДГУ и ИБП", "Сервисное обслуживание, пуско-наладка и ремонт дизельных генераторов и ИБП."),
-        ("sborka-shchitovogo-oborudovaniya", "Сборка щитового оборудования", "Проектирование и сборка распределительных щитов и ГРЩ по вашему заданию."),
         ("solnechnye-elektrostantsii", "Солнечные электростанции под ключ", "Проектирование, поставка и монтаж СЭС для промышленных и частных объектов."),
         ("podderzhka-v-proektirovanii", "Поддержка в проектировании", "Консультации инженеров, подбор оборудования и подготовка спецификаций."),
     ]
@@ -789,7 +809,7 @@ pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
     {
         sqlx::query("INSERT INTO services (slug, title, short, body, image_url, sort) VALUES ($1,$2,$3,$4,$5,$6)")
             .bind(slug).bind(title).bind(short)
-            .bind(format!("<p>{short}</p><p>Свяжитесь с нами по телефону <a href=\"tel:+992446206060\">+992 (44) 620 60 60</a> или оставьте заявку — мы подготовим коммерческое предложение в течение одного рабочего дня.</p>"))
+            .bind(format!("<p>{short}</p><p>Свяжитесь с нами по телефону <a href=\"tel:+992446206060\">+992 446 20 60 60</a> или оставьте заявку — мы подготовим коммерческое предложение в течение одного рабочего дня.</p>"))
             .bind(match *slug {
                 "obsluzhivanie-dgu-ibp" | "solnechnye-elektrostantsii" => "/figma/service-hero.webp".to_string(),
                 _ => format!("/services/{slug}.svg"),
@@ -843,17 +863,17 @@ pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
     ] {
         sqlx::query("INSERT INTO news (slug, title, published_at, excerpt, body, image_url) VALUES ($1,$2,$3::date,$4,$5,$6)")
             .bind(ctx.unique_slug(&slugify(title))).bind(title).bind(date).bind(excerpt)
-            .bind(format!("<p>{excerpt}</p><p>Подробности — у вашего персонального менеджера или по телефону +992 (44) 620 60 60.</p>"))
+            .bind(format!("<p>{excerpt}</p><p>Подробности — у вашего персонального менеджера или по телефону +992 446 20 60 60.</p>"))
             .bind("/news/default.svg")
             .execute(&mut *tx).await?;
     }
     for (slug, title, body) in [
         ("about", "О компании", "<p>ООО «Точикэлектрокомплект» (ТЭК) — поставщик электротехнической продукции в Республике Таджикистан с 2009 года. Официальный дистрибьютор Schneider Electric, ДКС, Legrand, Philips Lighting, AKSA.</p><p>Собственный склад 3000 м² в Душанбе, филиал в Худжанде, инженерный отдел, сервисная служба по обслуживанию ДГУ и ИБП, сборка щитового оборудования.</p><ul><li>Доставка по Душанбе и Худжанду за 1 рабочий день</li><li>Квалифицированная техническая поддержка</li><li>Соответствие стандартам качества</li><li>Только оригинальная брендовая продукция</li></ul>"),
-        ("contacts", "Контакты", "<p><strong>Телефон:</strong> <a href=\"tel:+992446206060\">+992 (44) 620 60 60</a>, <a href=\"tel:+992550006613\">+992 550006613</a></p><p><strong>E-mail:</strong> <a href=\"mailto:info@tec.tj\">info@tec.tj</a></p><p><strong>Офис и склад:</strong> г. Душанбе, ул. Академика Акобира Адхамова 43</p><p><strong>Магазин:</strong> г. Душанбе, пр-кт Х. Шерози 28/30, рынок Кушониён, магазин №327</p><p><strong>Филиал:</strong> г. Худжанд, ул. И. Сомони 12</p><p>Режим работы: Пн–Сб 8:00–18:00</p>"),
-        ("support", "Поддержка", "<p>Инженеры ТЭК помогут подобрать оборудование, рассчитать кабеленесущие системы и подготовить спецификацию.</p><ul><li>Онлайн-калькуляторы и конфигураторы</li><li>Каталоги и брошюры производителей</li><li>Сертификаты и декларации на продукцию</li></ul>"),
-        ("help", "Помощь", "<h3>Как оформить заказ</h3><p>Добавьте товары в корзину, выберите доставку и способ оплаты, подтвердите заказ. Менеджер свяжется с вами для уточнения деталей.</p><h3>Регистрация</h3><p>Новые аккаунты проходят одобрение компанией в течение одного рабочего дня. После одобрения вам доступны персональные цены и кешбэк.</p><h3>Возврат</h3><p>Возврат товара надлежащего качества — в течение 14 дней при сохранении упаковки.</p>"),
+        ("contacts", "Контакты", "<p><strong>Телефон:</strong> <a href=\"tel:+992446206060\">+992 446 20 60 60</a></p><p><strong>E-mail:</strong> <a href=\"mailto:info@tec.tj\">info@tec.tj</a>, <a href=\"mailto:sales@tec.tj\">sales@tec.tj</a></p><p><strong>Главный офис:</strong> г. Душанбе, ул. Бохтар 37/1, офис 704</p><p><strong>Склад:</strong> г. Душанбе, ул. Низоми Ганджави</p><p><strong>Магазин:</strong> г. Душанбе, рынок Кушониён, магазин №327</p><p><strong>Филиал:</strong> г. Худжанд, рынок Вахдат, вход 1</p><p>Режим работы офиса: Пн – Пт: 9:00–17:00, Сб – Вс — выходной</p>"),
+        ("support", "Для проектировщиков", "<p>Технические материалы и онлайн-инструменты для подбора оборудования и подготовки проекта. Рассчитывайте комплектацию, изучайте решения производителей и обращайтесь к инженерам ТЭК за помощью с расчётами и спецификациями.</p><ul><li>Онлайн-калькуляторы и конфигураторы</li><li>Каталоги и брошюры производителей</li><li>Проработка проекта совместно с инженерами ТЭК</li><li>Сертификаты и декларации на продукцию</li></ul>"),
+        ("help", "Помощь", "<h3>Как оформить заказ</h3><p>Добавьте товары в корзину, выберите доставку и способ оплаты, подтвердите заказ. Менеджер свяжется с вами для уточнения деталей.</p><h3>Регистрация</h3><p>Новые аккаунты проходят одобрение компанией в течение одного рабочего дня. После одобрения вам доступны персональные цены и кешбэк.</p><h3>Возврат</h3><p>Возврат товара надлежащего качества — в течение 30 дней при сохранении упаковки.</p>"),
         ("delivery", "Доставка", "<p>Бережно доставляем товары по Таджикистану за 48 часов. По Душанбе и Худжанду — за 1 рабочий день.</p><p>Стоимость доставки по городу — 30,00 с. Самовывоз со склада и из магазина на рынке Кушониён — бесплатно.</p><p><em>Подъем/спуск на этажи и разгрузка товара не входят в услугу доставки.</em></p>"),
-        ("payment", "Оплата", "<ul><li><strong>Алиф Банк</strong> — онлайн-оплата картой</li><li><strong>Душанбе Сити Банк</strong> — онлайн-оплата картой</li><li><strong>Наличными</strong> — при получении</li><li><strong>По счёту</strong> — для юридических лиц (срок оплаты 14 дней)</li></ul>"),
+        ("payment", "Оплата", "<ul><li><strong>Алиф Банк</strong> — онлайн-оплата картой</li><li><strong>Душанбе Сити Банк</strong> — онлайн-оплата картой</li><li><strong>Наличными</strong> — при получении</li><li><strong>По счёту</strong> — для юридических лиц</li></ul>"),
     ] {
         sqlx::query("INSERT INTO pages (slug, title, body_html) VALUES ($1,$2,$3)").bind(slug).bind(title).bind(body).execute(&mut *tx).await?;
     }
@@ -861,7 +881,7 @@ pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
     // ---------- демо: аккаунты с известными паролями, их заказы, отзывы, купоны (только SEED_DEMO=full) ----------
     if demo {
         // ---------- companies & users ----------
-        let company_id: Uuid = sqlx::query_scalar("INSERT INTO companies (name, inn, address, phone, email) VALUES ('ООО «Точикэлектрокомплект»', '123123123', 'Таджикистан, 734060, г. Душанбе, ул. Исмоили Сомони 68/13', '+992 (44) 620 60 60', 'info@tec.tj') RETURNING id")
+        let company_id: Uuid = sqlx::query_scalar("INSERT INTO companies (name, inn, address, phone, email, verified) VALUES ('ООО «Точикэлектрокомплект»', '123123123', 'Таджикистан, 734060, г. Душанбе, ул. Исмоили Сомони 68/13', '+992446206060', 'info@tec.tj', true) RETURNING id")
             .fetch_one(&mut *tx).await?;
         let mk_user = |email: &str, phone: &str, pw: &str, fname: &str, lname: &str, role: &str, status: &str, ctype: &str, company: Option<Uuid>, manager: Option<Uuid>, lead: bool, d: Decimal, c: Decimal| {
             let hash = hash_password(pw).expect("hash");

@@ -27,7 +27,7 @@ export function Steps({ items, className }: { items: { title: string; text: Reac
 /** Полоса рекомендаций: чёрная галка 31px, заголовок 17/600, текст 15/23 #333. */
 export function CheckPoints({ items, className }: { items: { title: string; text: ReactNode }[]; className?: string }) {
   return (
-    <ul className={cn("grid grid-cols-1 gap-[24px] sm:grid-cols-2 lg:grid-cols-4 lg:gap-[34px]", className)}>
+    <ul className={cn("grid grid-cols-1 gap-[24px] sm:grid-cols-2 lg:gap-[34px]", items.length === 3 ? "lg:grid-cols-3" : "lg:grid-cols-4", className)}>
       {items.map((p) => (
         <li key={p.title} className="flex gap-[14px]">
           <IconCheckBold className="size-[31px] shrink-0" />
@@ -44,8 +44,9 @@ export function CheckPoints({ items, className }: { items: { title: string; text
 /** Жёлтая заметка «Сообщите заранее»: #FEECBB r7, красный треугольник, жирная подпись + текст 14 #333. */
 export function Note({ title, children, className }: { title: string; children: ReactNode; className?: string }) {
   return (
-    <div className={cn("flex items-start gap-[12px] rounded-[7px] bg-brand-light px-[20px] py-[15px] text-[14px] leading-[20px] md:items-center md:px-[26px]", className)}>
-      <TriangleAlert className="mt-px size-[20px] shrink-0 text-sale-text md:mt-0" strokeWidth={1.8} aria-hidden />
+    // иконка, заголовок и первая строка текста — на одной линии (текст может переноситься на несколько строк)
+    <div className={cn("flex items-start gap-[12px] rounded-[7px] bg-brand-light px-[20px] py-[15px] text-[14px] leading-[20px] md:px-[26px]", className)}>
+      <TriangleAlert className="size-[20px] shrink-0 text-sale-text" strokeWidth={1.8} aria-hidden />
       <p className="flex flex-col gap-x-[30px] gap-y-1 text-g333 md:flex-row">
         <span className="shrink-0 font-medium text-black">{title}</span>
         <span>{children}</span>
@@ -82,7 +83,7 @@ export function InfoPanel({ icon, title, children, className }: { icon?: ReactNo
           {title}
         </p>
       ) : null}
-      <div className={cn(title && "mt-[2px]")}>{children}</div>
+      <div className={cn("leading-[20px] md:leading-[22px]", title && "mt-[4px]")}>{children}</div>
     </div>
   );
 }

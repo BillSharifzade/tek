@@ -87,7 +87,8 @@ export function ProjectCard({ project, className, priority, tagHref = projectTag
           <span className="text-[13px] leading-[17px] text-muted tnum">{project.year}</span>
           <Link href={href} className="mt-[3px] inline-flex items-start gap-[4px] text-[14px] leading-[12px] text-g333 link-hover">
             <span className="underline decoration-1">Подробнее</span>
-            <IconChevron className="mt-px shrink-0" />
+            {/* в макете шеврон #000 при тексте #333 */}
+            <IconChevron className="mt-px shrink-0 text-black" />
           </Link>
         </div>
       </div>

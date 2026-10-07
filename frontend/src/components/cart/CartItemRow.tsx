@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { CartItem } from "@/lib/types";
-import { money, qty as fmtQty } from "@/lib/format";
+import { money, qty as fmtQty, stockQty } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { ImageBox } from "@/components/ui/ImageBox";
@@ -29,12 +29,18 @@ function QtyStepper({ value, onChange, max, label, step = 1 }: { value: number; 
     setText(String(value));
   }
   const commit = (raw: string) => {
+    // поле стёрли кликом и ничего не ввели — остаётся прежнее количество
+    if (!raw.trim()) {
+      setText(String(value));
+      return;
+    }
     const next = snapQty(Math.floor(Number(raw.replace(",", ".").replace(/\s/g, ""))), step);
     setText(String(next));
     if (next !== value) onChange(next);
   };
   return (
     <div className="flex h-[12px] w-[106px] items-center" role="group" aria-label={label}>
+      {/* Figma «-» 6px @724, штрих на y=383 (строка 378–390): svg 6×2 по центру кнопки → @724,383 без полупикселей */}
       <button
         type="button"
         onClick={() => value > step && onChange(value - step)}
@@ -42,8 +48,8 @@ function QtyStepper({ value, onChange, max, label, step = 1 }: { value: number; 
         aria-label="Уменьшить"
         className="flex h-[24px] w-[18px] shrink-0 items-center justify-center text-sub transition-colors hover:text-black disabled:text-[#C4C4C4]"
       >
-        <svg width={7} height={2} viewBox="0 0 7 2" aria-hidden>
-          <rect y="0.35" width="7" height="1.3" fill="currentColor" />
+        <svg width={6} height={2} viewBox="0 0 6 2" aria-hidden>
+          <rect width="6" height="1.3" fill="currentColor" />
         </svg>
       </button>
       <input
@@ -51,6 +57,7 @@ function QtyStepper({ value, onChange, max, label, step = 1 }: { value: number; 
         inputMode="numeric"
         value={text}
         aria-label={label}
+        onFocus={() => setText("")}
         onChange={(e) => setText(e.target.value.replace(/[^\d]/g, ""))}
         onBlur={(e) => commit(e.target.value)}
         onKeyDown={(e) => {
@@ -66,12 +73,13 @@ function QtyStepper({ value, onChange, max, label, step = 1 }: { value: number; 
         }}
         className="h-[20px] w-[69px] min-w-0 rounded-[3px] bg-transparent p-0 text-center text-[14px] font-medium leading-[20px] text-sub tnum outline-none transition-colors hover:bg-surface focus:bg-surface"
       />
+      {/* Figma «+» 809…817 × 379…387 (центр 813,383): глиф 9×9 на 1px левее и выше центра кнопки */}
       <button
         type="button"
         onClick={() => onChange(value + step)}
         disabled={max !== undefined && value >= max}
         aria-label="Увеличить"
-        className="flex h-[24px] w-[19px] shrink-0 items-center justify-center text-sub transition-colors hover:text-black disabled:text-[#C4C4C4]"
+        className="flex h-[24px] w-[19px] shrink-0 items-center justify-center pb-[1px] pr-[2px] text-sub transition-colors hover:text-black disabled:text-[#C4C4C4]"
       >
         <svg width={9} height={9} viewBox="0 0 9 9" aria-hidden>
           <path d="M0 4.5h9M4.5 0v9" stroke="currentColor" strokeWidth="1.3" />
@@ -95,7 +103,13 @@ export function CartItemRow({ item, onQty, onSelect, onRemove, onAccessories, re
   const inStock = item.stock_total > 0;
 
   return (
-    <li className={cn("relative flex border-b border-line pb-[32px] pt-[40px] first:pt-0 last:border-b-0 last:pb-0", !item.selected && !readOnly && "[&_.cart-dim]:opacity-60")}>
+    // разделитель Figma Line 28: #E5E5E5 1px @x128…957 (на 2px правее чекбокса), 32px под кнопками, 40px до следующей строки
+    <li
+      className={cn(
+        "relative flex pb-[33px] pt-[40px] after:absolute after:bottom-0 after:left-[2px] after:right-0 after:h-px after:bg-line first:pt-0 last:pb-0 last:after:hidden",
+        !item.selected && !readOnly && "[&_.cart-dim]:opacity-60",
+      )}
+    >
       {!readOnly ? <Checkbox box={16} checked={item.selected} onChange={(e) => onSelect(e.target.checked)} aria-label={`Выбрать ${p.name}`} className="ml-[1px] h-[16px] shrink-0 self-start" /> : null}
       <Link href={`/product/${p.slug}`} className={cn("cart-dim shrink-0 transition-opacity", !readOnly && "ml-[13px]")} tabIndex={-1} aria-hidden>
         <ImageBox src={p.image} alt={p.name} className="size-[81px] bg-white" sizes="81px" rounded="rounded-[5px]" />
@@ -107,7 +121,7 @@ export function CartItemRow({ item, onQty, onSelect, onRemove, onAccessories, re
           {inStock ? (
             <span className="ml-[12px] flex items-center gap-[5px] whitespace-nowrap text-black">
               <IconInStock className="shrink-0" />
-              В наличии ({fmtQty(item.stock_total)} {p.unit})
+              В наличии ({stockQty(item.stock_total)} {p.unit})
             </span>
           ) : (
             <span className="ml-[12px] whitespace-nowrap text-sale">Нет в наличии</span>
@@ -152,7 +166,7 @@ export function CartItemRow({ item, onQty, onSelect, onRemove, onAccessories, re
             )}
             {error ? (
               <span role="alert" className="absolute left-0 top-[19px] w-[106px] whitespace-nowrap text-center text-[12px] leading-[12px] text-sale tnum">
-                В наличии ({fmtQty(error.available)}
+                В наличии ({stockQty(error.available)}
                 {p.unit})
               </span>
             ) : null}
@@ -184,9 +198,10 @@ export function CartItemRow({ item, onQty, onSelect, onRemove, onAccessories, re
                 Комплектующие
               </button>
             ) : null}
-            <button type="button" onClick={onRemove} className="link-hover ml-[19px] flex items-center gap-[3px] text-[14px] leading-[12px] text-sub">
-              <IconTrash className="-mt-[1px] shrink-0" />
-              Удалить
+            {/* Figma Group 60: иконка @+9 от верха «Комплектующих», текст @+11 */}
+            <button type="button" onClick={onRemove} className="link-hover ml-[19px] flex h-[32px] items-start gap-[3px] text-[14px] leading-[12px] text-sub">
+              <IconTrash className="mt-[9px] shrink-0" />
+              <span className="mt-[11px]">Удалить</span>
             </button>
           </div>
         ) : null}

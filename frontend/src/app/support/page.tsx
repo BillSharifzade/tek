@@ -13,7 +13,7 @@ import { CATALOGS } from "@/components/content/catalogs";
 import type { CmsPage, ConfiguratorItem } from "@/components/content/types";
 
 export const metadata: Metadata = {
-  title: "Поддержка",
+  title: "Для проектировщиков",
   description: "Онлайн-конфигураторы, каталоги и брошюры производителей, сертификаты и помощь инженеров ТЭК в проектировании.",
 };
 
@@ -34,15 +34,16 @@ export default async function SupportPage() {
 
   // плитки разделов — как сервисные плитки лендинга (385×122, #F7F8F9 r8, иконка 57, 16 Bold + 14/17 #666)
   const tiles = [
-    { href: "#configurators", title: "Конфигураторы", text: "Онлайн-расчёт кабеленесущих систем и комплектации", Icon: IconCube },
+    { href: "/configurators", title: "Конфигураторы", text: "Онлайн конфигураторы для инженеров и электриков", Icon: IconCube },
     { href: "#catalogs", title: "Каталоги и брошюры", text: `${CATALOGS.length} PDF-каталогов и типовых альбомов производителей`, Icon: IconDoc },
     { href: "/services/podderzhka-v-proektirovanii", title: "Помощь в проектировании", text: "Подбор оборудования, спецификации и техническая защита", Icon: IconUserCircle },
-    { href: "/about#certificates", title: "Сертификаты", text: "Сертификаты дистрибьютора и документация на товары", Icon: IconCheckBold },
+    { href: "/catalog", title: "Сертификаты", text: "Сертификаты качества на странице каждого товара", Icon: IconCheckBold },
   ];
 
   return (
     <div className="container-page pb-[64px] md:pb-[100px]">
-      <PageHead crumbs={[{ label: "Поддержка" }]} title={page?.title ?? "Поддержка"} />
+      {/* доработки R2: страница «Поддержка» называется «Для проектировщиков» (в шапке пункт «Поддержка» ведёт сюда) */}
+      <PageHead crumbs={[{ label: "Для проектировщиков" }]} title="Для проектировщиков" />
 
       <section className="mt-[20px] grid grid-cols-1 gap-[28px] md:mt-[24px] lg:grid-cols-[minmax(0,1fr)_417px] lg:gap-[60px]">
         {page ? <Prose html={page.body_html} /> : <div />}

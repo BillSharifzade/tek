@@ -99,6 +99,20 @@ pub fn new_refresh_token() -> String {
     format!("{a}{b}")
 }
 
+pub const PHONE_FORMAT_ERROR: &str = "Укажите телефон в формате +992XXXXXXXXX";
+
+/// Телефон — только номера Таджикистана: +992 и 9 цифр. Принимает любое написание («+992 92 111 22 25»,
+/// «992921112225», «921112225») и возвращает `+992921112225`; иначе `None`.
+pub fn canonical_phone(raw: &str) -> Option<String> {
+    let digits: String = raw.chars().filter(char::is_ascii_digit).collect();
+    let national = match digits.len() {
+        9 => digits.as_str(),
+        12 if digits.starts_with("992") => &digits[3..],
+        _ => return None,
+    };
+    Some(format!("+992{national}"))
+}
+
 /// Password policy from the contract:
 /// ≥8 chars, latin letters + digits (a few punctuation chars tolerated), at least one letter and
 /// one digit, must not contain the user name / email local part.
@@ -211,6 +225,24 @@ impl FromRequestParts<AppState> for Manager {
         }
         Ok(Manager(u))
     }
+}
+
+/// Только администратор: менеджеру — 403 `admin_only`, клиенту — 403 `forbidden` (как у `Manager`).
+pub struct Admin(pub Arc<UserRow>);
+
+impl FromRequestParts<AppState> for Admin {
+    type Rejection = AppError;
+    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+        let Manager(u) = Manager::from_request_parts(parts, state).await?;
+        if u.role != "admin" {
+            return Err(admin_only());
+        }
+        Ok(Admin(u))
+    }
+}
+
+pub fn admin_only() -> AppError {
+    AppError::forbidden("admin_only", "Доступно только администратору")
 }
 
 /// Identity used by the cart: optional user + optional guest token (`X-Cart-Token`).

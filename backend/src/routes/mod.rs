@@ -1,10 +1,14 @@
+use std::time::Duration;
+
 use axum::{extract::State, http::StatusCode, routing::get, Json, Router};
 use serde_json::{json, Value};
+use tower_http::timeout::TimeoutLayer;
 
 use crate::state::AppState;
 
 pub mod account;
 pub mod admin;
+pub mod admin_catalog;
 pub mod auth;
 pub mod brands;
 pub mod cart;
@@ -33,5 +37,9 @@ pub fn api() -> Router<AppState> {
         .merge(checkout::routes())
         .merge(account::routes())
         .merge(admin::routes())
+        .merge(admin_catalog::routes())
         .merge(documents::routes())
+        .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(30)))
+        // импорт каталога: большой файл пишется в базу дольше 30 с
+        .merge(admin_catalog::import_routes().layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(600))))
 }

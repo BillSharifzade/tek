@@ -29,8 +29,9 @@ export function AccountGuard({ children }: { children: React.ReactNode }) {
 export function AccountSkeleton() {
   return (
     <div className="flex flex-col gap-[16px] lg:flex-row lg:items-start lg:gap-[28px]" aria-busy>
-      <Skeleton className="h-[48px] rounded-[10px] lg:h-[505px] lg:w-[246px] lg:shrink-0" />
-      <Skeleton className="h-[347px] flex-1 rounded-[10px]" />
+      {/* меню: 9 пунктов × 56 + «Выйти» 56 + рамка 2 */}
+      <Skeleton className="h-[48px] rounded-[7px] lg:h-[562px] lg:w-[246px] lg:shrink-0" />
+      <Skeleton className="h-[347px] flex-1 rounded-[7px]" />
     </div>
   );
 }

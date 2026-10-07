@@ -1,22 +1,25 @@
 "use client";
 
-import Image from "next/image";
-
 /** Центр Душанбе по умолчанию (lon, lat). */
 export const DUSHANBE: [number, number] = [68.7738, 38.5598];
 
 /**
- * Карта доставки (Figma 10461:672, 665×407, без скругления): статичный фрагмент карты из макета
- * (public/figma/checkout-map.webp, пин уже на снимке — остриём в центре). Встраиваемый виджет Яндекса
- * показывал стороннюю рекламу, поэтому вместо него — картинка и ссылка «Открыть на карте» (новая вкладка)
- * с точкой по координатам адреса. Снимок чуть увеличен и сдвинут (scale 1.05, 40%), чтобы кнопки масштаба и логотип со скрина ушли за край.
+ * Карта доставки (Figma 10461:672, 665×407, без скругления). В макете — снимок чужой карты; здесь — статичная карта
+ * Яндекса (Static API, без рекламы, линейки и пробок, как на «Контактах») с жёлтой меткой по координатам адреса:
+ * меняется вместе с адресом / точкой «Определить местоположение». Ссылка «Открыть на карте» — в новой вкладке.
  */
 export function DeliveryMap({ center, zoom = 16, className }: { center: [number, number]; zoom?: number; className?: string }) {
   const [lon, lat] = center.map((n) => n.toFixed(6));
-  const href = `https://yandex.ru/maps/?ll=${lon},${lat}&z=${zoom}&pt=${lon},${lat},pm2ywm&l=map`;
+  const ll = `${lon},${lat}`;
+  const href = `https://yandex.ru/maps/?ll=${ll}&z=${zoom}&pt=${ll},pm2ywm&l=map`;
+  const key = process.env.NEXT_PUBLIC_YANDEX_MAPS_KEY;
+  const params = `ll=${ll}&z=${zoom}&size=650,407&lang=ru_RU&pt=${ll},pm2ywl`;
+  const src = key ? `https://static-maps.yandex.ru/v1?apikey=${encodeURIComponent(key)}&${params}` : `https://static-maps.yandex.ru/1.x/?l=map&${params}`;
   return (
     <div className={`relative h-[300px] w-full overflow-hidden bg-[#E8E4DD] sm:h-[407px] ${className ?? ""}`}>
-      <Image src="/figma/checkout-map.webp" alt="" fill loading="eager" sizes="(min-width: 640px) 665px, 100vw" className="scale-[1.05] object-cover object-[40%_50%]" />
+      {/* внешний снимок карты — обычный img (next/image для внешних адресов не настроен) */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img key={src} src={src} alt={`Адрес доставки на карте (${lat}, ${lon})`} decoding="async" className="absolute inset-0 size-full object-cover" />
       <a
         href={href}
         target="_blank"

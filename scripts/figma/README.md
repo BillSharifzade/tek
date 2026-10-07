@@ -10,5 +10,6 @@
 | `compare.py figma.png site.png prefix` | Side-by-side + overlay по кускам и средний diff |
 | `zoom.py figma.png site.png x0 y0 x1 y1 out.png` | Увеличенная стопка макет/сайт/наложение (красно-голубая кайма = расхождение) |
 | `svg2tsx.py icon.svg Name` | SVG-экспорт иконки → React-компонент (чёрный → currentColor) |
+| `node2svg.py <node-id> [out.svg]` | SVG иконки из геометрии векторов (nodes API, `geometry=paths`) — когда images API недоступен (на тарифе Starter лимит ~раз в несколько суток) |
 
 Python-скрипты требуют Pillow (`uv venv && uv pip install pillow`).

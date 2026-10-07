@@ -123,9 +123,10 @@ export default async function ProductRoute({ params }: Props) {
             <OfferSelector product={product} className="mt-[23px]" />
 
             {shortSpecs.length > 0 ? (
-              <section className={cn("offer-dim", product.variants ? "mt-[35px]" : "mt-[31px]")} aria-label="Основные характеристики">
+              <section className={cn("offer-dim", product.variants ? "mt-[36px]" : "mt-[32px]")} aria-label="Основные характеристики">
+                {/* Figma: «Описание» на y=638 = низ свотчей 602 + 36; первая строка — базовая линия 691 */}
                 <div className="flex items-start justify-between">
-                  <h2 className="mt-[2px] text-[20px] font-semibold leading-[20px] text-black xl:ml-[3px]">Характеристики</h2>
+                  <h2 className="mt-px text-[20px] font-semibold leading-[20px] text-black xl:ml-[3px]">Характеристики</h2>
                   <a
                     href={paragraphs.length > 0 ? "#description" : "#specs"}
                     className="flex h-[24px] w-[86px] items-start rounded-[5px] bg-btn pl-[8px] pt-[6px] text-[13px] font-medium leading-[12px] text-g333 transition-colors hover:bg-btn-hover"
@@ -134,14 +135,14 @@ export default async function ProductRoute({ params }: Props) {
                     <IconChevronSmall className="ml-[3px] mt-[1.1px]" />
                   </a>
                 </div>
-                <SpecRows items={shortSpecs} align="right" labelWidth={138} className="mt-[15px] xl:pl-[2px]" />
+                <SpecRows items={shortSpecs} align="right" labelWidth={138} className="mt-[14px] xl:pl-[2px]" />
               </section>
             ) : null}
 
             {product.pack ? (
               <div className="mt-[31px] flex h-[55px] w-[201px] items-start rounded-[7px] border border-outline">
                 <IconPack className="ml-[16px] mt-[13px] shrink-0" />
-                <p className="ml-[14px] mt-[5px] text-[13px] leading-[19px] text-sub">
+                <p className="ml-[14px] mt-[6px] text-[13px] leading-[19px] text-sub">
                   Кратность упаковки:
                   <br />
                   <span className="text-black">{product.pack.label}</span>
@@ -178,7 +179,8 @@ export default async function ProductRoute({ params }: Props) {
                 </div>
               ) : null}
               {specCols.length > 0 ? (
-                <div className="mt-[32px] grid grid-cols-1 gap-x-[48px] md:grid-cols-2 xl:grid-cols-[405px_405px] xl:gap-x-[48px]">
+                // Figma: текст 14/25 с y=1490 → базовая линия 1507; у строк 14/21 она на 2px выше, отсюда 34, а не 32
+                <div className="mt-[34px] grid grid-cols-1 gap-x-[48px] md:grid-cols-2 xl:grid-cols-[405px_405px] xl:gap-x-[48px]">
                   {specCols.map((col, i) => (
                     <SpecRows key={i} items={col} align="column" labelWidth={154} className={i > 0 ? "mt-[13px] md:mt-0" : undefined} />
                   ))}
@@ -192,7 +194,8 @@ export default async function ProductRoute({ params }: Props) {
             </aside>
           </section>
 
-          <section id="accessories" className="mt-16 scroll-mt-[140px] lg:mt-[69px] lg:scroll-mt-[287px]">
+          {/* Figma: последняя строка характеристик — базовая линия 2208, заголовок с y=2287 (строка 14/21 кончается на 2214) */}
+          <section id="accessories" className="mt-16 scroll-mt-[140px] lg:mt-[73px] lg:scroll-mt-[287px]">
             <SectionTitle>Комплектующие</SectionTitle>
             <ProductAccessories items={product.accessories} />
           </section>

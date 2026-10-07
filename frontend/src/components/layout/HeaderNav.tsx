@@ -25,17 +25,42 @@ function Dropdown({ item }: { item: NavItem }) {
   };
 
   return (
-    <div ref={ref} className="relative shrink-0" style={{ width: item.w }} onMouseEnter={enter} onMouseLeave={leave}>
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className={cn("relative block h-[12px] w-full text-left", itemCls, open && "text-black")}
-      >
-        {item.label}
-        <IconCaret className={cn("absolute right-0 top-[5px] transition-transform", open && "rotate-180")} />
-      </button>
+    <div
+      ref={ref}
+      className="relative shrink-0"
+      style={{ width: item.w }}
+      onMouseEnter={enter}
+      onMouseLeave={leave}
+      // фокус клавиатуры ушёл из пункта и его списка — список закрывается
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOpen(false);
+      }}
+    >
+      {item.clickable ? (
+        // пункт-ссылка (доработки R2: «Услуги» ведёт на страницу всех услуг), список открывается при наведении
+        <Link
+          href={item.href}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onFocus={enter}
+          onClick={() => setOpen(false)}
+          className={cn("relative block h-[12px] w-full text-left", itemCls, open && "text-black")}
+        >
+          {item.label}
+          <IconCaret className={cn("absolute right-0 top-[5px] transition-transform", open && "rotate-180")} />
+        </Link>
+      ) : (
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className={cn("relative block h-[12px] w-full text-left", itemCls, open && "text-black")}
+        >
+          {item.label}
+          <IconCaret className={cn("absolute right-0 top-[5px] transition-transform", open && "rotate-180")} />
+        </button>
+      )}
       {open && item.children ? (
         <div className="absolute left-[-16px] top-full z-[90] pt-[10px]">
           <ul role="menu" className="min-w-[240px] rounded-[6px] bg-white py-[8px] shadow-pop animate-fade-in">

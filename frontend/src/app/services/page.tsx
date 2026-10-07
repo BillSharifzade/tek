@@ -1,38 +1,27 @@
 import type { Metadata } from "next";
-import { publicGet, safe } from "@/lib/server";
-import type { ServiceItem } from "@/components/content/types";
-import { SERVICE_CONFIGS, TILE_TEXT } from "@/components/services/data";
 import { RequestForm } from "@/components/services/RequestForm";
-import { ServiceTiles, type ServiceTile } from "@/components/services/ServiceTiles";
+import { DirectionTile, SERVICE_DIRECTIONS } from "@/components/home/Directions";
 
 export const metadata: Metadata = {
   title: "Услуги",
-  description: "Сервис центр дизельных генераторов, солнечные электростанции под ключ, поддержка в проектировании и другие услуги ТЭК.",
+  description: "Услуги ТЭК: сервис центр дизельных генераторов, солнечные электростанции под ключ, помощь проектировщикам.",
 };
 
-/** Услуги из ТЗ — крупными плитками, в этом порядке. */
-const MAIN = ["obsluzhivanie-dgu-ibp", "solnechnye-elektrostantsii", "podderzhka-v-proektirovanii"];
+/** Доработки R2: только услуги из ТЗ — компактными плитками, с иконками и описаниями как на главной. */
+const TILES = [SERVICE_DIRECTIONS.generators, SERVICE_DIRECTIONS.solar, SERVICE_DIRECTIONS.designers];
 
-export default async function ServicesPage() {
-  const api = await safe(publicGet<ServiceItem[]>("/content/services", undefined, 300), [] as ServiceItem[]);
-
-  const main: ServiceTile[] = MAIN.map((slug) => {
-    const t = TILE_TEXT[slug];
-    const fromApi = api.find((s) => s.slug === slug);
-    return { slug, title: t?.title ?? SERVICE_CONFIGS[slug]?.title ?? fromApi?.title ?? slug, text: t?.text ?? fromApi?.short ?? "" };
-  });
-  const other: ServiceTile[] = api.filter((s) => !MAIN.includes(s.slug)).map((s) => ({ slug: s.slug, title: s.title, text: s.short }));
-
+export default function ServicesPage() {
   return (
     <div className="mx-auto w-full max-w-[1292px] px-4 pb-[93px] min-[1292px]:pl-[17px] min-[1292px]:pr-[15px]">
       <h1 className="pt-[40px] text-[28px] font-bold leading-[32px] text-black md:pt-[50px] md:text-[35px] md:leading-[40px]">Услуги</h1>
-      <p className="mt-3 max-w-[640px] text-[16px] leading-[24px] text-sub md:mt-[14px]">
-        Сервис и ремонт генераторов, солнечные электростанции под ключ и инженерная поддержка проектировщиков — полный цикл работ по электроснабжению объектов.
-      </p>
 
-      <div className="mt-8 md:mt-[40px]">
-        <ServiceTiles main={main} other={other} />
-      </div>
+      <ul className="mt-8 grid gap-4 sm:grid-cols-2 md:mt-[40px] lg:grid-cols-3 lg:gap-x-[16px] lg:gap-y-[14px]">
+        {TILES.map((t) => (
+          <li key={t.href}>
+            <DirectionTile t={t} />
+          </li>
+        ))}
+      </ul>
 
       <section aria-labelledby="services-request" className="mt-16 grid gap-8 rounded-[11px] bg-surface-2 px-5 py-8 lg:mt-[93px] lg:grid-cols-[1fr_584px] lg:gap-[60px] lg:px-[62px] lg:py-[56px]">
         <div>

@@ -36,6 +36,14 @@ pub struct Config {
     /// Public URL of the storefront (used for share links).
     pub frontend_url: String,
     pub db_max_connections: u32,
+    /// SMTP для писем: `smtps://user:pass@smtp.example.com:465` или `smtp://user:pass@host:587?tls=required`;
+    /// не задан — вне production письма помечаются отправленными (mock), в production копятся в очереди
+    pub smtp_url: Option<String>,
+    /// отправитель писем: `ТЭК <noreply@tec.tj>`
+    pub mail_from: String,
+    /// куда уведомлять о заказах, регистрациях и заявках, если у клиента нет закреплённого менеджера
+    /// (иначе — лид-менеджеру)
+    pub manager_notify_email: Option<String>,
 }
 
 fn env_or(key: &str, default: &str) -> String {
@@ -82,6 +90,9 @@ impl Config {
             onec_webhook_url: std::env::var("ONEC_WEBHOOK_URL").ok().filter(|v| !v.is_empty()),
             frontend_url: env_or("FRONTEND_URL", "http://127.0.0.1:3010"),
             db_max_connections: env_or("DB_MAX_CONNECTIONS", "32").parse().unwrap_or(32),
+            smtp_url: std::env::var("SMTP_URL").ok().map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+            mail_from: env_or("MAIL_FROM", "ТЭК <noreply@tec.tj>"),
+            manager_notify_email: std::env::var("MANAGER_NOTIFY_EMAIL").ok().map(|v| v.trim().to_lowercase()).filter(|v| v.contains('@')),
         }
     }
 
@@ -100,6 +111,9 @@ impl Config {
         if !self.frontend_url.starts_with("https://") {
             errors.push("FRONTEND_URL: укажите публичный https-адрес сайта");
         }
+        if self.payments_mock && !self.demo_stand {
+            errors.push("PAYMENTS_MOCK: заглушка оплаты принимает callback без подписи — любой мог бы отметить заказ оплаченным; в production запрещена (кроме DEMO_STAND=true)");
+        }
         if self.seed == SeedMode::Full && !self.demo_stand {
             errors.push("SEED_DEMO=full создаёт демо-аккаунты с известными паролями — в production допустимо только catalog или off (или DEMO_STAND=true для демо-стенда)");
         }
@@ -107,6 +121,9 @@ impl Config {
             if p.len() < 12 {
                 errors.push("ADMIN_PASSWORD: не короче 12 символов");
             }
+        }
+        if let Err(e) = crate::services::mail::check_config(self) {
+            errors.push(e);
         }
         if errors.is_empty() { Ok(()) } else { Err(errors.join("\n")) }
     }

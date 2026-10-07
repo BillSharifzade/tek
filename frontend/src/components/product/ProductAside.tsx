@@ -36,7 +36,7 @@ function brandLogo(product: Product): string | null {
   return product.brand.logo ?? null;
 }
 
-/** «Инфа о бренде» (Figma 8612:295): 305×142, бренд 16/20 600, «Все товары >» #1C3697, страны с флагами, логотип справа. */
+/** «Инфа о бренде» (Figma 8612:295): 305×142, бренд 16/20 600, «Все товары >» #1C3697, страны с флагами (шаг 25), логотип справа. */
 export function BrandCard({ product }: { product: Product }) {
   const b = product.brand;
   const logo = brandLogo(product);
@@ -51,7 +51,7 @@ export function BrandCard({ product }: { product: Product }) {
           <Image src={logo} alt={b.name} fill sizes="119px" className="object-contain" />
         </Link>
       ) : null}
-      <ul className="mt-[18px] flex flex-col gap-[9px] text-[14px] leading-[15px] text-sub">
+      <ul className="mt-[17px] flex flex-col gap-[10px] text-[14px] leading-[15px] text-sub">
         {b.country_brand ? (
           <li className="flex items-center gap-[7px]">
             <Flag country={b.country_brand} />
@@ -69,7 +69,7 @@ export function BrandCard({ product }: { product: Product }) {
   );
 }
 
-/** «Сервисы» (Figma 8612:310): кнопки конфигураторов 250×55, #EEF0F2, r10, шестерёнка 25×25 + текст 14/19 500 #333. */
+/** «Сервисы» (Figma 8612:310): кнопки конфигураторов 250×55 (x 1109…1359 — на 1px правее линии), #EEF0F2, r10, шестерёнка 25×25 + текст 14/19 500 #333. */
 export function ServicesCard({ product }: { product: Product }) {
   const links = product.configurator ? [product.configurator] : [];
   if (links.length === 0) return null;
@@ -79,7 +79,7 @@ export function ServicesCard({ product }: { product: Product }) {
       <ul className="mt-[20px] flex flex-col gap-[11px]">
         {links.map((c) => (
           <li key={c.url}>
-            <Link href={c.url} className="flex min-h-[55px] items-center rounded-[10px] bg-btn py-[8px] pl-[14px] pr-[14px] transition-colors hover:bg-btn-hover">
+            <Link href={c.url} className="ml-px flex min-h-[55px] items-center rounded-[10px] bg-btn py-[8px] pl-[14px] pr-[14px] transition-colors hover:bg-btn-hover">
               <IconSetting className="shrink-0" />
               <span className="ml-[12px] text-[14px] font-medium leading-[19px] text-g333">{c.name}</span>
             </Link>

@@ -10,7 +10,8 @@ import { packStep, snapQty } from "@/lib/qty";
 
 /**
  * Нижняя строка карточки (Figma «Group 166», 225×32):
- * [−] 32×32 #F0F2F4 r6 · «1000» Medium 14/12 #666 · «+» Light 16 · кнопка «В корзину» 110×32 #FFCC33 r6.
+ * [−] 32×32 · «1000» Medium 14/12 #666 · [+] 32×32 · кнопка «В корзину» 110×32 #FFCC33 r6.
+ * Серый квадрат r6 у «−» и «+» — только при наведении (в макете #F0F2F4, по палитре ТЗ #EEF0F2); при клике в поле число стирается для ручного ввода.
  */
 export function CardBuyRow({ product, className }: { product: ProductCard; className?: string }) {
   const hydrated = useHydrated();
@@ -18,6 +19,8 @@ export function CardBuyRow({ product, className }: { product: ProductCard; class
   const add = useCart((s) => s.add);
   const step = packStep(product);
   const [qty, setQty] = useState(step);
+  /** ручной ввод: пока поле в фокусе — набранный текст (пусто сразу после клика) */
+  const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const disabled = !product.in_stock;
 
@@ -29,20 +32,25 @@ export function CardBuyRow({ product, className }: { product: ProductCard; class
           aria-label="Уменьшить количество"
           disabled={disabled || qty <= step}
           onClick={() => setQty((q) => Math.max(step, q - step))}
-          className="absolute left-0 top-0 size-[32px] rounded-[6px] bg-field text-[16px] font-light leading-[12px] text-sub transition-colors hover:bg-btn-hover hover:text-black disabled:hover:bg-field disabled:hover:text-sub"
+          className="absolute left-0 top-0 size-[32px] rounded-[6px] text-[16px] font-light leading-[12px] text-sub transition-colors hover:bg-btn hover:text-black disabled:hover:bg-transparent disabled:hover:text-sub"
         >
           –
         </button>
         <input
           aria-label="Количество"
           inputMode="numeric"
-          value={qty}
+          value={draft ?? qty}
           disabled={disabled}
-          onChange={(e) => {
-            const n = Number(e.target.value.replace(/\D/g, ""));
-            setQty(Number.isFinite(n) && n > 0 ? Math.min(n, 99999) : step);
+          onFocus={() => setDraft("")}
+          onChange={(e) => setDraft(e.target.value.replace(/\D/g, "").slice(0, 5))}
+          onBlur={() => {
+            const n = Number(draft);
+            if (draft && n > 0) setQty(snapQty(n, step));
+            setDraft(null);
           }}
-          onBlur={() => setQty((q) => snapQty(q, step))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
           className="absolute left-[39px] top-[10px] h-[12px] w-[32px] bg-transparent text-center text-[14px] font-medium leading-[12px] text-sub outline-none tnum"
         />
         <button
@@ -50,7 +58,7 @@ export function CardBuyRow({ product, className }: { product: ProductCard; class
           aria-label="Увеличить количество"
           disabled={disabled}
           onClick={() => setQty((q) => q + step)}
-          className="absolute left-[84px] top-0 h-[32px] w-[20px] text-center text-[16px] font-light leading-[12px] text-sub transition-colors hover:text-black"
+          className="absolute left-[78px] top-0 size-[32px] rounded-[6px] text-center text-[16px] font-light leading-[12px] text-sub transition-colors hover:bg-btn hover:text-black disabled:hover:bg-transparent disabled:hover:text-sub"
         >
           +
         </button>

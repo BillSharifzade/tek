@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import type { Product } from "@/lib/types";
-import { money, qty as fmtQty } from "@/lib/format";
+import { money, qty as fmtQty, stockQty } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { inCity, useCity } from "@/store/city";
 import { useAuth } from "@/store/auth";
@@ -26,12 +26,12 @@ export function cityStock(product: Product, city: string) {
   return { qty, hint };
 }
 
-/** Плашка «Бесплатная пуско-наладка и расчет специалиста» (Figma 8612:248): 292×57, #FFEAB5, r10. */
+/** Плашка «Бесплатная пуско-наладка и расчет специалиста» (Figma 8612:248): 292×57, #FFEAB5, r10; строки 13px с шагом 17 (базовые линии 24 / 41). */
 export function PromoPlaque({ className }: { className?: string }) {
   return (
     <div className={cn("relative h-[57px] rounded-[10px] bg-[#FFEAB5]", className)}>
       <IconFire className="absolute left-[16px] top-[12px]" />
-      <p className="absolute left-[62px] top-[10px] text-[13px] leading-[19px] text-g333">
+      <p className="absolute left-[62px] top-[11px] text-[13px] leading-[17px] text-g333">
         <span className="block font-bold text-black">Бесплатная пуско-наладка</span>
         <span className="block">и расчет специалиста</span>
       </p>
@@ -65,7 +65,7 @@ export function BuyBox({ product }: { product: Product }) {
         sale ? "pt-[21px] shadow-[inset_0_0_0_1px_#DF3128,0_2px_7px_2px_rgba(0,0,0,0.08)]" : "pt-[20px] shadow-pop",
       )}
     >
-      <FavoriteButton product={product} box={31} glyph={15} className={cn("absolute right-[23px]", sale ? "top-[23px]" : "top-[20px]")} />
+      <FavoriteButton product={product} box={31} glyph={15} tone={sale ? "sale" : undefined} className={cn("absolute right-[23px]", sale ? "top-[23px]" : "top-[20px]")} />
 
       {sale ? <p className="mb-[15px] text-[20px] font-bold leading-[20px] text-sale">Распродажа</p> : null}
       <p className="text-[14px] leading-[15px] text-muted">{priceLabel(product)}</p>
@@ -88,7 +88,7 @@ export function BuyBox({ product }: { product: Product }) {
             {here.qty > 0 ? <IconCheckCircle /> : <IconClock className="absolute left-[-1px] top-[-1px]" />}
           </span>
           <span className="relative top-[-1px] ml-[9px]">
-            {inCity(hereCity)}: {fmtQty(here.qty)} {product.unit}
+            {inCity(hereCity)}: {stockQty(here.qty)} {product.unit}
           </span>
         </li>
         <li className="flex items-start">

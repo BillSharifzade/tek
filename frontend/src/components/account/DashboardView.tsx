@@ -12,7 +12,7 @@ import { useAuth } from "@/store/auth";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { IconBasket, IconBox, IconHeart } from "@/components/icons/figma";
-import { Card, CardTitle, ErrorLine, errorMessage } from "./shared";
+import { Card, CardTitle, ErrorLine, btnCls, errorMessage, labelCls } from "./shared";
 
 /** The backend also returns pricing info on the dashboard payload. */
 type DashboardData = Dashboard & { cashback_pct?: number; discount_pct?: number; user_name?: string; active_orders?: number };
@@ -33,8 +33,8 @@ const iconCls = "size-[23px] shrink-0";
 /** Widget tile inside the «Основная информация» card: icon + label, large value, hint. */
 function Widget({ href, icon, label, value, hint, hintTone }: { href: string; icon: React.ReactNode; label: string; value: React.ReactNode; hint?: React.ReactNode; hintTone?: "danger" }) {
   return (
-    <Link href={href} className="group flex min-h-[124px] flex-col rounded-[10px] bg-surface-2 px-[20px] pb-[18px] pt-[18px] transition-colors hover:bg-btn">
-      <span className="flex items-center gap-[10px] text-[14px] leading-[20px] text-sub group-hover:text-black">
+    <Link href={href} className="group flex min-h-[124px] flex-col rounded-[7px] bg-surface-2 px-[20px] pb-[18px] pt-[18px] transition-colors hover:bg-btn">
+      <span className={cn("flex items-center gap-[10px] group-hover:text-black", labelCls)}>
         <span className="flex size-[23px] shrink-0 items-center justify-center text-black">{icon}</span>
         {label}
       </span>
@@ -45,8 +45,9 @@ function Widget({ href, icon, label, value, hint, hintTone }: { href: string; ic
 }
 
 /**
- * «Основная информация» (Figma 9063:200): белая карточка с виджетами
- * «название компании, баланс, заказы, документы, избранное, корзина» (пометка дизайнера) + уведомления об ответах (ТЗ).
+ * «Основная информация» (Figma 9063:200): белая карточка (863×504 в макете, r7) с виджетами
+ * «название компании, баланс, заказы, документы, избранное, корзина» — в макете вместо виджетов только эта пометка дизайнера,
+ * поэтому плитки собраны в языке карточек ЛК; + уведомления об ответах (ТЗ).
  */
 export function DashboardView() {
   const router = useRouter();
@@ -105,7 +106,7 @@ export function DashboardView() {
         <CardTitle
           right={
             data ? (
-              <span className="text-[14px] leading-[20px] text-sub">
+              <span className={labelCls}>
                 Скидка <span className="font-medium text-black">{discount}%</span> · кешбэк <span className="font-medium text-black">{cashback}%</span> ·{" "}
                 <Link href="/account/bonus" className="link-hover">
                   бонусы <span className="font-medium text-black tnum">{money(data.bonus_balance)}</span>
@@ -149,14 +150,14 @@ export function DashboardView() {
         ) : !error ? (
           <div className="mt-[24px] grid grid-cols-1 gap-[16px] sm:grid-cols-2 xl:grid-cols-3" aria-busy>
             {Array.from({ length: 6 }).map((_, i) => (
-              <Skeleton key={i} className="h-[124px] rounded-[10px]" />
+              <Skeleton key={i} className="h-[124px] rounded-[7px]" />
             ))}
           </div>
         ) : null}
 
         {data?.manager ? (
-          <p className="mt-[24px] text-[14px] leading-[20px] text-sub">
-            Персональный менеджер: <span className="font-medium text-black">{data.manager.name}</span>
+          <p className={cn("mt-[24px]", labelCls)}>
+            Персональный менеджер: <span className="font-semibold text-black">{data.manager.name}</span>
             {" · "}
             <a href={`tel:${data.manager.phone.replace(/[^\d+]/g, "")}`} className="link-hover tnum">
               {data.manager.phone}
@@ -173,7 +174,7 @@ export function DashboardView() {
         <CardTitle
           right={
             unread > 0 ? (
-              <Button variant="secondary" loading={marking} onClick={markAll}>
+              <Button variant="secondary" className={btnCls} loading={marking} onClick={markAll}>
                 Отметить прочитанными
               </Button>
             ) : null
@@ -185,9 +186,9 @@ export function DashboardView() {
           </span>
         </CardTitle>
         {notes === null ? (
-          error ? null : <Skeleton className="mt-[20px] h-[96px] rounded-[10px]" />
+          error ? null : <Skeleton className="mt-[20px] h-[96px] rounded-[7px]" />
         ) : notes.length === 0 ? (
-          <p className="mt-[20px] text-[14px] leading-[20px] text-sub">Уведомлений пока нет. Здесь появятся ответы на ваши отзывы и вопросы и изменения по заказам.</p>
+          <p className={cn("mt-[20px]", labelCls)}>Уведомлений пока нет. Здесь появятся ответы на ваши отзывы и вопросы и изменения по заказам.</p>
         ) : (
           <ul className="mt-[14px] divide-y divide-line">
             {(showAll ? notes : notes.slice(0, 5)).map((n) => (
@@ -195,8 +196,8 @@ export function DashboardView() {
                 <button type="button" onClick={() => openNote(n)} className="group flex w-full items-start gap-[12px] py-[12px] text-left">
                   <span className={cn("mt-[7px] size-[7px] shrink-0 rounded-full", n.is_read ? "bg-line-3" : "bg-brand")} aria-hidden />
                   <span className="min-w-0 flex-1">
-                    <span className={cn("block text-[14px] leading-[20px] text-black", !n.is_read && "font-medium")}>{n.title}</span>
-                    <span className="block text-[13px] leading-[18px] text-sub group-hover:text-black">{n.body}</span>
+                    <span className={cn("block text-[15px] leading-[20px] text-black", !n.is_read && "font-medium")}>{n.title}</span>
+                    <span className="block text-[14px] leading-[18px] text-[#555] group-hover:text-black">{n.body}</span>
                   </span>
                   <span className="shrink-0 text-[13px] leading-[20px] text-muted tnum">{timeAgo(n.created_at)}</span>
                 </button>
@@ -205,7 +206,7 @@ export function DashboardView() {
           </ul>
         )}
         {notes && notes.length > 5 ? (
-          <Button variant="outline" className="mt-[16px]" onClick={() => setShowAll((v) => !v)}>
+          <Button variant="outline" className={cn(btnCls, "mt-[16px]")} onClick={() => setShowAll((v) => !v)}>
             {showAll ? "Свернуть" : `Показать все (${notes.length})`}
           </Button>
         ) : null}

@@ -56,7 +56,7 @@ export interface ScheduleTable {
   /** надзаголовок над колонками значений («Наработка в моточасах») */
   groupLabel: string;
   columns: string[];
-  rows: { name: string; sup?: string; marks: boolean[] }[];
+  rows: { name: string; marks: boolean[] }[];
 }
 
 export interface ServiceConfig {

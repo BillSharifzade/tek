@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import type { CartItem } from "@/lib/types";
-import { countLabel, money, qty as fmtQty } from "@/lib/format";
+import { countLabel, money, stockQty } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { useCart } from "@/store/cart";
 import { ImageBox } from "@/components/ui/ImageBox";
@@ -36,7 +36,11 @@ function useCanHover(): boolean {
   );
 }
 
-/** Компактный степпер строки: «−  1  +» (14 Medium #666, кнопки 24×24 #EEF0F2 r5), число редактируется. */
+/**
+ * Компактный степпер строки: «−  1  +» (14 Medium #666, кнопки 24×24 r5), число редактируется.
+ * Как в референсе и в строках корзины макета (8641:438) — голые «−»/«+»; серый квадрат #EEF0F2 только при наведении
+ * (то же правило, что у степпера карточки).
+ */
 function MiniQty({ value, onChange, label, step = 1 }: { value: number; onChange: (v: number) => void; label: string; step?: number }) {
   const [text, setText] = useState(String(value));
   const [last, setLast] = useState(value);
@@ -45,12 +49,17 @@ function MiniQty({ value, onChange, label, step = 1 }: { value: number; onChange
     setText(String(value));
   }
   const commit = (raw: string) => {
+    // поле стёрли кликом и ничего не ввели — остаётся прежнее количество
+    if (!raw.trim()) {
+      setText(String(value));
+      return;
+    }
     const next = snapQty(Math.min(Math.floor(Number(raw.replace(",", ".").replace(/\s/g, ""))), 99999), step);
     setText(String(next));
     if (next !== value) onChange(next);
   };
   const btn =
-    "flex size-[24px] shrink-0 items-center justify-center rounded-[5px] bg-btn text-sub transition-colors hover:bg-btn-hover hover:text-black disabled:bg-btn disabled:text-[#C4C4C4]";
+    "flex size-[24px] shrink-0 items-center justify-center rounded-[5px] text-sub transition-colors hover:bg-btn hover:text-black disabled:text-[#C4C4C4] disabled:hover:bg-transparent disabled:hover:text-[#C4C4C4]";
   return (
     <div className="flex items-center gap-[4px]" role="group" aria-label={label}>
       <button type="button" onClick={() => value > step && onChange(value - step)} disabled={value <= step} aria-label="Уменьшить" className={btn}>
@@ -63,6 +72,7 @@ function MiniQty({ value, onChange, label, step = 1 }: { value: number; onChange
         inputMode="numeric"
         value={text}
         aria-label={label}
+        onFocus={() => setText("")}
         onChange={(e) => setText(e.target.value.replace(/[^\d]/g, ""))}
         onBlur={(e) => commit(e.target.value)}
         onKeyDown={(e) => {
@@ -117,7 +127,7 @@ function MiniCartRow({ item }: { item: CartItem }) {
         </div>
         {shortage ? (
           <p role="alert" className="mt-[4px] text-[12px] leading-[14px] text-sale tnum">
-            В наличии {fmtQty(shortage.available)} {p.unit}
+            В наличии {stockQty(shortage.available)} {p.unit}
           </p>
         ) : null}
         <button type="button" onClick={() => void remove(item.id).catch(() => {})} className="link-hover mt-[8px] flex items-center gap-[4px] text-[13px] leading-[15px] text-sub">

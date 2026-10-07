@@ -11,7 +11,7 @@ export default function LoginPage() {
     <AuthShell
       crumb="Вход"
       title="Вход в личный кабинет"
-      subtitle="Персональные цены, кешбэк на бонусный счёт и история заказов"
+      subtitle="История заказов, акты сверок и кешбэки"
       footer={<p className="mx-auto mt-[16px] max-w-[360px] text-center text-[13px] leading-[18px] text-muted">Регистрация новых аккаунтов проходит через одобрение компании</p>}
     >
       <Suspense fallback={<Skeleton className="h-[220px] rounded-[10px]" />}>

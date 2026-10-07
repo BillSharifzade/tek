@@ -22,11 +22,7 @@ export default async function ConfiguratorsPage() {
   const items = await publicGet<ConfiguratorItem[]>("/content/configurators", undefined, 300);
   return (
     <div className="container-page pb-[64px] md:pb-[100px]">
-      <PageHead crumbs={[{ label: "Конфигураторы" }]} title="Конфигураторы">
-        <p className="mt-[12px] max-w-[760px] text-[15px] leading-[24px] text-g333 md:text-[16px] md:leading-[26px]">
-          Программы позволяют автоматически рассчитать количество требуемых элементов кабеленесущих систем и систем организации рабочих мест.
-        </p>
-      </PageHead>
+      <PageHead crumbs={[{ label: "Конфигураторы" }]} title="Конфигураторы" />
       <ul className="mt-[28px] grid grid-cols-1 gap-[20px] md:mt-[36px] lg:grid-cols-2">
         {items.map((c) => (
           <li key={c.slug}>

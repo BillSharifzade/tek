@@ -22,6 +22,6 @@ export async function sendLead(input: LeadInput): Promise<{ ok: true } | { ok: f
     return { ok: true };
   } catch (e) {
     if (e instanceof ApiError) return { ok: false, code: e.code, message: e.message };
-    return { ok: false, message: "Не удалось отправить заявку. Позвоните нам: +992 (44) 620 60 60" };
+    return { ok: false, message: "Не удалось отправить заявку. Позвоните нам: +992 446 20 60 60" };
   }
 }

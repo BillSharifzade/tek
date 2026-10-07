@@ -8,17 +8,18 @@ export const metadata: Metadata = {
 };
 
 /**
- * Каркас ЛК (Figma 9063:200): серый фон #F4F5F7 под шапкой, крошки, заголовок,
- * слева меню-карточка 246px, справа (через 28px) контент.
- * Отступы по вертикали — как на остальных страницах (крошки y=157, заголовок y=188, контент y=247).
+ * Каркас ЛК (Figma 9063:200 / 9085:409): серый фон #F4F5F7 под шапкой, крошки «Главная / Мой кабинет» (11px #8F8F8F),
+ * заголовок Bold 29/30, слева меню-карточка 246px, справа (через 28px) контент.
+ * Крошки стоят на той же высоте, что и на остальных страницах (y=157); от центра крошек до центра заголовка — 35px,
+ * от низа заголовка до меню и карточек — 42px (как в макете).
  */
 export default function AccountLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="bg-page pb-[80px]">
       <div className="container-page">
-        <Breadcrumbs items={[{ label: "Мой кабинет" }]} className="pt-[43px]" />
+        <Breadcrumbs items={[{ label: "Мой кабинет" }]} separator="/" className="pt-[43px] text-[11px] leading-[15px] text-[#8F8F8F]" />
         <AccountHeading />
-        <div className="mt-[30px] sm:mt-[40px]">
+        <div className="mt-[30px] sm:mt-[42px]">
           <AccountGuard>
             <div className="flex flex-col gap-[16px] lg:flex-row lg:items-start lg:gap-[28px]">
               <AccountNav />

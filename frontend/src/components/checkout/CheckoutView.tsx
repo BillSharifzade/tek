@@ -8,6 +8,7 @@ import { client } from "@/lib/client";
 import { ApiError } from "@/lib/api";
 import { dayMonth, money } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { isValidPhone, PHONE_ERROR, phoneForField, phoneInputProps } from "@/lib/phone";
 import { useCart } from "@/store/cart";
 import { useAuth } from "@/store/auth";
 import { toast } from "@/store/toast";
@@ -35,8 +36,11 @@ interface FormState {
 
 type Errors = Partial<Record<keyof FormState, string>>;
 
-/** Поля чекаута в макете: рамка #E5E5E5, r7, плейсхолдер #666. */
-const coField = "rounded-[7px] border-line placeholder:text-sub";
+/**
+ * Поля чекаута в макете: рамка #E5E5E5, r7, плейсхолдер #666. Текст в Figma — в 13px от внешнего края рамки
+ * («Адрес» @210 в поле @197, «Имя» @167 в @154, «Комментарий» @165 в @152), т. е. 1px рамки + 12px отступа.
+ */
+const coField = "rounded-[7px] border-line pl-[12px] placeholder:text-sub";
 
 const confirmBtn =
   "flex w-[253px] max-w-full shrink-0 items-center justify-center rounded-[4px] bg-brand text-[15px] font-medium leading-[24px] text-black transition-colors hover:bg-brand-hover disabled:cursor-not-allowed disabled:opacity-60";
@@ -92,7 +96,7 @@ function DateField({ value, options, onChange, invalid }: { value: string; optio
           }
         }}
         className={cn(
-          "flex h-[56px] w-[166px] items-center rounded-[7px] border bg-white pb-[4px] pl-[13px] text-left text-[14px] leading-[12px] transition-colors hover:border-outline",
+          "flex h-[56px] w-[166px] items-center rounded-[7px] border bg-white pb-[4px] pl-[12px] text-left text-[14px] leading-[12px] transition-colors hover:border-outline",
           invalid ? "border-sale" : "border-line",
           value ? "text-black" : "text-sub",
         )}
@@ -151,7 +155,7 @@ export function CheckoutView() {
   if (user && !prefilled) {
     // первый рендер с известным пользователем → один раз подставляем контакты (derived state, без эффекта)
     setPrefilled(true);
-    setForm((f) => ({ ...f, first_name: user.first_name, last_name: user.last_name, phone: user.phone, email: user.email, address: user.company?.address ?? f.address }));
+    setForm((f) => ({ ...f, first_name: user.first_name, last_name: user.last_name, phone: phoneForField(user.phone), email: user.email, address: user.company?.address ?? f.address }));
   }
 
   const selectedItems = useMemo(() => cart?.items.filter((i) => i.selected) ?? [], [cart]);
@@ -163,7 +167,7 @@ export function CheckoutView() {
 
   if (!hydrated || !loaded || !options) {
     return (
-      <div className="mt-[32px] grid grid-cols-1 gap-6 lg:grid-cols-[740px_297px] lg:gap-x-[36px]">
+      <div className="mt-[32px] grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,740px)_297px] lg:gap-x-[36px]">
         <Skeleton className="h-[1284px] rounded-[10px]" />
         <Skeleton className="h-[137px] rounded-[10px]" />
       </div>
@@ -222,7 +226,7 @@ export function CheckoutView() {
   const validate = (): boolean => {
     const e: Errors = {};
     if (!form.first_name.trim()) e.first_name = "Укажите имя";
-    if (!/^\+?\d[\d\s()-]{6,}$/.test(form.phone.trim())) e.phone = "Укажите корректный номер телефона";
+    if (!isValidPhone(form.phone)) e.phone = PHONE_ERROR;
     if (!user && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) e.email = form.email.trim() ? "Проверьте e-mail — адрес указан с ошибкой" : "Укажите e-mail — по нему можно найти заказ";
     if (!pickup && !form.address.trim()) e.address = "Укажите адрес доставки";
     if (!pickup && !form.date) e.date = "Выберите дату доставки";
@@ -273,9 +277,10 @@ export function CheckoutView() {
   const payIcon = (code: string) => {
     switch (code) {
       case "alif":
-        return { icon: <IconAlif className="mr-[13px] shrink-0" />, cls: "pl-[17px]" };
+        // Figma Group 114/115: значки на 1px выше центра текста (Алиф @+12, ДС @+17 от верха чипса 56)
+        return { icon: <IconAlif className="mb-[2px] mr-[13px] shrink-0" />, cls: "pl-[17px]" };
       case "dc":
-        return { icon: <IconDcBank className="mr-[15px] shrink-0" />, cls: "pl-[15px]" };
+        return { icon: <IconDcBank className="mb-[2px] mr-[15px] shrink-0" />, cls: "pl-[15px]" };
       case "cash":
         return { icon: <IconCoins className="mr-[12px] shrink-0 text-[#5F6061]" />, cls: "pl-[15px]" };
       default:
@@ -284,7 +289,7 @@ export function CheckoutView() {
   };
 
   return (
-    <form onSubmit={submit} noValidate className="mt-[32px] grid grid-cols-1 gap-6 lg:grid-cols-[740px_297px] lg:items-start lg:gap-x-[36px]">
+    <form onSubmit={submit} noValidate className="mt-[32px] grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,740px)_297px] lg:items-start lg:gap-x-[36px]">
       <div className="min-w-0 rounded-[10px] border border-line-3 bg-white">
         {/* Способ получения — из API (доставка / самовывоз), в стиле чипсов макета */}
         <section className="px-[16px] pb-[23px] pt-[30px] sm:pl-[38px] sm:pr-[35px]">
@@ -358,7 +363,7 @@ export function CheckoutView() {
                     disabled={!d.available}
                     onClick={() => set("date", d.date)}
                     title={d.label}
-                    sub={d.available ? d.day_label : "недоступно"}
+                    sub={d.available ? d.day_label : "Недоступно"}
                   />
                 ))}
               </div>
@@ -388,7 +393,8 @@ export function CheckoutView() {
         )}
         <DashLine />
 
-        <section className="px-[16px] pb-[25px] pt-[26px] sm:pl-[38px] sm:pr-[35px]">
+        {/* Figma: Line 31 @951 → «Способ оплаты» @979 (27px) */}
+        <section className="px-[16px] pb-[25px] pt-[27px] sm:pl-[38px] sm:pr-[35px]">
           <SectionTitle>Способ оплаты</SectionTitle>
           <div className="mt-[22px] flex flex-wrap gap-[9px]" role="radiogroup" aria-label="Способ оплаты">
             {options.payment_methods
@@ -432,13 +438,10 @@ export function CheckoutView() {
             </div>
             <div>
               <Input
-                type="tel"
-                value={form.phone}
-                onChange={(e) => set("phone", e.target.value)}
+                {...phoneInputProps(form.phone, (v) => set("phone", v))}
                 invalid={Boolean(errors.phone)}
                 placeholder="Телефон"
                 aria-label="Телефон"
-                autoComplete="tel"
                 className={coField}
               />
               <FieldError>{errors.phone}</FieldError>
@@ -464,7 +467,7 @@ export function CheckoutView() {
               <Link href="/login?next=/checkout" className="link-hover text-link">
                 Войдите
               </Link>
-              , чтобы получить персональные цены, кэшбэк и оплату по счёту для юрлиц.
+              , чтобы получить персональные цены, кешбэк и оплату по счёту для юрлиц.
             </p>
           ) : null}
         </section>
@@ -477,12 +480,13 @@ export function CheckoutView() {
             onChange={(e) => set("comment", e.target.value)}
             placeholder="Комментарий"
             aria-label="Комментарий к заказу"
-            className={cn(coField, "mt-[20px] h-[72px] min-h-[72px] resize-none py-[7px] sm:w-[667px]")}
+            className={cn(coField, "mt-[20px] h-[72px] min-h-[72px] resize-none py-[7px]")}
           />
         </section>
         <DashLine />
 
-        <div className="flex flex-wrap items-start gap-x-[93px] gap-y-4 px-[16px] pb-[34px] pt-[29px] sm:pl-[36px] sm:pr-[35px]">
+        {/* Figma: кнопка @1409–1454, низ карточки @1490 (рамка 1px) */}
+        <div className="flex flex-wrap items-start gap-x-[93px] gap-y-4 px-[16px] pb-[35px] pt-[29px] sm:pl-[36px] sm:pr-[35px]">
           <TotalLine total={total} className="mt-[4px]" />
           <button type="submit" disabled={busy} className={cn(confirmBtn, "h-[45px]")}>
             {busy ? "Оформляем…" : "Подтвердить заказ"}
@@ -502,7 +506,7 @@ export function CheckoutView() {
           {cart.discount_total > 0 ? <SummaryRow label="Скидка" value={money(cart.discount_total)} green /> : null}
           {cart.coupon ? <SummaryRow label={`Промокод ${cart.coupon.code}`} value={money(cart.coupon.discount)} green /> : null}
           <SummaryRow label="Доставка" value={deliveryPrice > 0 ? money(deliveryPrice) : "бесплатно"} />
-          {cart.cashback_total > 0 ? <SummaryRow label="Кэшбэк" value={money(cart.cashback_total)} className="text-[#4938F8]" /> : null}
+          {cart.cashback_total > 0 ? <SummaryRow label="Кешбэк" value={money(cart.cashback_total)} className="text-[#4938F8]" /> : null}
         </div>
         <p className="mt-[12px] text-[12px] leading-[16px] text-muted">
           Нажимая «Подтвердить заказ», вы соглашаетесь с условиями продажи и обработкой персональных данных.

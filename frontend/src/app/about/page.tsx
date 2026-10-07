@@ -4,7 +4,6 @@ import type { Metadata } from "next";
 import type { Brand, CategoryNode } from "@/lib/types";
 import { publicGet, safe } from "@/lib/server";
 import { countLabel } from "@/lib/format";
-import { SITE } from "@/lib/site";
 import { ButtonLink } from "@/components/ui/Button";
 import { IconCheckGreen } from "@/components/icons/figma";
 import { PageHead, SectionTitle, Lead } from "@/components/content/PageHead";
@@ -14,12 +13,12 @@ import { AnchorTabs } from "@/components/content/AnchorTabs";
 import { IconArrowSmall } from "@/components/content/icons";
 import { brandLogo, CERTIFICATES, CLIENTS } from "@/components/content/brands";
 import type { CmsPage } from "@/components/content/types";
-import { ADVANTAGES, FACTS, HIGHLIGHTS, RANGE, VACANCIES, type Vacancy } from "./data";
+import { ADVANTAGES, FACTS, HIGHLIGHTS, RANGE } from "./data";
 import { asset } from "@/lib/asset";
 
 export const metadata: Metadata = {
   title: "О компании",
-  description: "ТЭК — дистрибьютор электротехнической продукции в Таджикистане: партнёры, сертификаты дистрибьютора, вакансии.",
+  description: "ТЭК — дистрибьютор электротехнической продукции в Таджикистане: партнёры, сертификаты дистрибьютора, клиенты.",
 };
 
 const TABS = [
@@ -27,7 +26,6 @@ const TABS = [
   { id: "partners", label: "Бренды-партнёры" },
   { id: "certificates", label: "Сертификаты" },
   { id: "clients", label: "Нам доверяют" },
-  { id: "vacancies", label: "Вакансии" },
 ];
 
 function MoreLink({ href, children }: { href: string; children: React.ReactNode }) {
@@ -39,65 +37,10 @@ function MoreLink({ href, children }: { href: string; children: React.ReactNode 
   );
 }
 
-function VacancyCard({ v }: { v: Vacancy }) {
-  const mail = `mailto:${SITE.email}?subject=${encodeURIComponent(`Резюме: ${v.title}`)}`;
-  return (
-    <details className="group rounded-[11px] bg-surface-2 transition-shadow open:shadow-card" id={v.id}>
-      <summary className="flex cursor-pointer list-none flex-col gap-[14px] px-[20px] py-[22px] marker:content-none md:flex-row md:items-center md:justify-between md:gap-6 md:px-[28px] md:py-[24px] [&::-webkit-details-marker]:hidden">
-        <div className="min-w-0">
-          <p className="text-[13px] leading-[18px] text-muted">{v.dept}</p>
-          <h3 className="mt-[4px] text-[18px] font-bold leading-[24px] transition-colors group-hover:text-black md:text-[20px] md:leading-[26px]">{v.title}</h3>
-          <ul className="mt-[12px] flex flex-wrap gap-[8px]">
-            {[v.city, v.experience, v.schedule].map((t) => (
-              <li key={t} className="inline-flex h-[24px] items-center rounded-[15px] bg-white px-[11px] text-[13px] leading-[18px] text-g333">
-                {t}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="flex shrink-0 items-center justify-between gap-[20px] md:justify-end">
-          <span className="text-[18px] font-bold leading-[24px] md:text-[20px]">{v.salary}</span>
-          <span className="flex size-[36px] items-center justify-center rounded-full bg-white transition-colors group-hover:bg-btn-hover">
-            <svg width="10" height="5" viewBox="0 0 10 5" aria-hidden className="text-[#333] transition-transform group-open:rotate-180">
-              <path d="M0 0h10L5 5z" fill="currentColor" />
-            </svg>
-          </span>
-        </div>
-      </summary>
-      <div className="border-t border-line-3 px-[20px] pb-[24px] pt-[22px] md:px-[28px] md:pb-[28px]">
-        <div className="grid grid-cols-1 gap-[24px] md:grid-cols-3 md:gap-[32px]">
-          {v.blocks.map((b) => (
-            <div key={b.title}>
-              <h4 className="text-[16px] font-semibold leading-[20px]">{b.title}</h4>
-              <ul className="mt-[10px] flex flex-col gap-[6px] text-[14px] leading-[21px] text-g333">
-                {b.items.map((it) => (
-                  <li key={it} className="relative pl-[16px] before:absolute before:left-[3px] before:top-[8px] before:size-[5px] before:rounded-full before:bg-[#B3BAC7] before:content-['']">
-                    {it}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-        <div className="mt-[24px] flex flex-col gap-[12px] sm:flex-row sm:items-center sm:gap-[20px]">
-          <ButtonLink href={mail} className="px-[24px]">
-            Отправить резюме
-          </ButtonLink>
-          <span className="text-[13px] leading-[18px] text-muted">
-            или напишите на{" "}
-            <a href={`mailto:${SITE.email}`} className="text-g333 underline underline-offset-2 hover:text-black">
-              {SITE.email}
-            </a>
-          </span>
-        </div>
-      </div>
-    </details>
-  );
-}
-
 export default async function AboutPage() {
   const [page, brands, tree] = await Promise.all([
-    publicGet<CmsPage>("/content/pages/about", undefined, 300),
+    // текст «О нас» — из CMS; пустая база (SEED_DEMO=off) не должна ронять страницу
+    safe(publicGet<CmsPage>("/content/pages/about", undefined, 300), null),
     safe(publicGet<Brand[]>("/brands", undefined, 300), [] as Brand[]),
     safe(publicGet<CategoryNode[]>("/catalog/tree", undefined, 300), [] as CategoryNode[]),
   ]);
@@ -151,7 +94,7 @@ export default async function AboutPage() {
         <section className="mt-[56px] grid grid-cols-1 gap-[32px] md:mt-[90px] lg:grid-cols-[minmax(0,1fr)_620px] lg:gap-[60px]">
           <div>
             <SectionTitle>О нас</SectionTitle>
-            <Prose html={page.body_html} className="mt-[18px]" />
+            {page ? <Prose html={page.body_html} className="mt-[18px]" /> : null}
             <p className="mt-[14px] text-[15px] leading-[24px] text-g333 md:text-[16px] md:leading-[26px]">
               Помимо поставок мы оказываем услуги электромонтажа, щитовой сборки, выполняем пусконаладку, ремонт и обслуживание ДГУ.
             </p>
@@ -259,20 +202,6 @@ export default async function AboutPage() {
       </section>
 
       <div className="container-page">
-        {/* Вакансии */}
-        <section id="vacancies" className="mt-[56px] scroll-mt-[130px] md:mt-[90px]">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <SectionTitle>Вакансии</SectionTitle>
-            <span className="text-[14px] leading-[20px] text-muted">{countLabel(VACANCIES.length, ["открытая вакансия", "открытые вакансии", "открытых вакансий"])}</span>
-          </div>
-          <Lead className="mt-[12px] max-w-[860px]">Присоединяйтесь к команде ТЭК: официальное трудоустройство, обучение у производителей и работа на крупнейших энергетических объектах страны.</Lead>
-          <div className="mt-[24px] flex flex-col gap-[13px] md:mt-[28px]">
-            {VACANCIES.map((v) => (
-              <VacancyCard key={v.id} v={v} />
-            ))}
-          </div>
-        </section>
-
         <CtaBand className="mt-[56px] md:mt-[90px]" />
       </div>
     </div>

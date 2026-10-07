@@ -21,6 +21,7 @@ export function CatalogShell({
   count?: number;
   /** ряд плиток подкатегорий над фильтрами */
   tiles?: React.ReactNode;
+  /** null — без колонки фильтров (пустой запрос поиска) */
   filters: React.ReactNode;
   children: React.ReactNode;
   /** под сеткой на всю ширину (описание категории) */
@@ -32,9 +33,8 @@ export function CatalogShell({
       <CatalogTitle title={title} count={count} className="mt-[8px]" />
       {tiles ? <div className="mt-[28px] lg:ml-[1px] lg:mt-[36px]">{tiles}</div> : null}
       <div className={cn("grid grid-cols-1 gap-[24px] lg:grid-cols-[250px_minmax(0,1fr)] lg:gap-0", tiles ? "mt-[28px] lg:mt-[57px]" : "mt-[28px] lg:mt-[41px]")}>
-        <div className="lg:pl-[1px] lg:pt-[11px]">
-          <FiltersToggle>{filters}</FiltersToggle>
-        </div>
+        {/* без фильтров (пустой поиск) — колонка остаётся пустой, кнопка «Фильтры» на мобильных не показывается */}
+        <div className={cn("lg:pl-[1px] lg:pt-[11px]", !filters && "max-lg:hidden")}>{filters ? <FiltersToggle>{filters}</FiltersToggle> : null}</div>
         {children}
       </div>
       {after}

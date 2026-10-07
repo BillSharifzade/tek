@@ -1,11 +1,12 @@
 import Link from "next/link";
 import type { Product } from "@/lib/types";
-import { qty as fmtQty } from "@/lib/format";
+import { stockQty } from "@/lib/format";
 import { Leader } from "./Specs";
 import { IconCheckMark, IconCross, IconPickup } from "./icons";
 
 /**
- * «Самовывоз» (Figma 10380:174): иконка тележки 24×24, заголовок 18/20 600; строки через 28px —
+ * «Самовывоз» (Figma 10380:174): иконка тележки 24×24, заголовок 18/20 600 строкой вровень с верхом иконки
+ * (в макете рамка текста 10.6px по центру строки — базовая линия 16px от верха); строки через 28px —
  * магазин (14/20 #1C3697, ссылка) …… остаток (13/20 500, #000 / #666 для нуля) + зелёная галка или серый крест.
  */
 export function Pickup({ product, className }: { product: Product; className?: string }) {
@@ -14,7 +15,7 @@ export function Pickup({ product, className }: { product: Product; className?: s
     <section className={className} aria-label="Самовывоз">
       <div className="flex h-[24px] items-start">
         <IconPickup className="shrink-0" />
-        <h2 className="ml-[9px] mt-[5px] text-[18px] font-semibold leading-[20px] text-black">Самовывоз</h2>
+        <h2 className="ml-[9px] text-[18px] font-semibold leading-[20px] text-black">Самовывоз</h2>
       </div>
       <ul className="mt-[16px] flex flex-col gap-[8px]">
         {product.stock.map((s) => {
@@ -26,7 +27,7 @@ export function Pickup({ product, className }: { product: Product; className?: s
               </Link>
               <Leader top={14} className="ml-[5px] mr-[4px]" />
               <span className={has ? "text-[13px] font-medium text-black tnum" : "text-[13px] font-medium text-sub tnum"}>
-                {fmtQty(s.qty)} {product.unit}
+                {stockQty(s.qty)} {product.unit}
               </span>
               <span className="ml-[2px] flex h-[20px] w-[14px] shrink-0 items-start justify-center">
                 {has ? <IconCheckMark className="mt-[4px]" /> : <IconCross className="mt-[5px]" />}

@@ -9,7 +9,7 @@ interface Paged<T> {
   pages: number;
 }
 
-const STATIC = ["/", "/catalog", "/brands", "/services", "/projects", "/news", "/configurators", "/about", "/contacts", "/help", "/support"];
+const STATIC = ["/", "/catalog", "/brands", "/services", "/projects", "/news", "/configurators", "/about", "/vacancies", "/contacts", "/help", "/help/delivery", "/help/payment", "/help/warranty", "/help/faq", "/support"];
 
 async function allPages<T>(path: string, perPage: number): Promise<T[]> {
   const first = await safe(publicGet<Paged<T>>(path, { per_page: perPage, page: 1 }, 3600), { items: [], pages: 0 });

@@ -14,6 +14,7 @@ const HEART_FILLED =
 /**
  * Квадратная кнопка «Избранное»: серый #EEF0F2 + чёрный контур; в избранном — #FDE9E8 + красное сердце.
  * box — сторона квадрата (27 в карточке, 31 в блоке цены, 24 в корзине, 45×44 в плавающей шапке товара).
+ * tone="sale" — блок цены распродажи (Figma 10725:4552): #FDE9E8 и красный контур сердца и до добавления в избранное.
  */
 export function FavoriteButton({
   product,
@@ -22,6 +23,7 @@ export function FavoriteButton({
   boxH,
   glyph,
   withLabel,
+  tone,
 }: {
   product: ProductCard;
   className?: string;
@@ -29,12 +31,14 @@ export function FavoriteButton({
   boxH?: number;
   glyph?: number;
   withLabel?: boolean;
+  tone?: "sale";
 }) {
   const hydrated = useHydrated();
   const active = useFavorites((s) => s.ids.includes(product.id));
   const toggle = useFavorites((s) => s.toggle);
   const on = hydrated && active;
   const g = glyph ?? Math.round(box * 0.5);
+  const pink = on || tone === "sale";
   return (
     <button
       type="button"
@@ -49,7 +53,7 @@ export function FavoriteButton({
       style={withLabel ? undefined : { width: box, height: boxH ?? box }}
       className={cn(
         "inline-flex shrink-0 items-center justify-center gap-2 rounded-[6px] transition-colors",
-        on ? "bg-[#fde9e8] text-sale hover:bg-[#fbd8d6]" : "bg-btn text-black hover:bg-btn-hover",
+        pink ? "bg-[#fde9e8] text-sale hover:bg-[#fbd8d6]" : "bg-btn text-black hover:bg-btn-hover",
         withLabel && "h-[44px] px-[16px] text-[14px] font-medium",
         className,
       )}

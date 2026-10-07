@@ -92,7 +92,8 @@ export function AddProductPanel() {
         className="group relative ml-[2px] flex h-[50px] w-[calc(100%-2px)] items-center justify-center gap-[5px] rounded-[7px] bg-white text-[16px] leading-[12px] text-sub transition-colors hover:bg-surface-2 hover:text-black"
       >
         <DashedFrame radius={7} className="transition-colors group-hover:[&>rect]:stroke-outline-hover" />
-        <IconPlus16 className="mt-[1px] shrink-0" />
+        {/* Figma: плюс 16×16 @472,262, текст @493,264 (рамка @244, h50) */}
+        <IconPlus16 className="mt-[2px] shrink-0" />
         <span className="mt-[2px]">Добавить товар</span>
       </button>
     );

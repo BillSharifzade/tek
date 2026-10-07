@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ProductCard as ProductCardT } from "@/lib/types";
-import { qty as fmtQty } from "@/lib/format";
+import { stockQty } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { ImageBox } from "@/components/ui/ImageBox";
 import { BadgeList } from "@/components/ui/Badge";
@@ -44,7 +44,7 @@ export function StockLine({ product, className }: { product: ProductCardT; class
   return (
     <span className={cn("flex items-center gap-[4px] text-[13px] font-medium leading-[17px] text-black", className)}>
       <IconCheckGreen />
-      В наличии ({fmtQty(product.stock_total)}
+      В наличии ({stockQty(product.stock_total)}
       {unitShort(product.unit)})
     </span>
   );
@@ -98,11 +98,13 @@ export function ProductCard({ product, className, compact, priority }: ProductCa
       </Link>
 
       <p className="absolute left-[-1px] top-[391px] text-[13px] leading-[20px] text-muted">{priceLabel(product)}</p>
-      <div className="absolute left-[-1px] top-[414px] flex items-baseline gap-[6px]">
+      {/* Скидка — вариант «Товар» во фрейме «Frame 2» (10829:3929): старая цена Medium 15/10 #666 зачёркнута, новая 20/14 ExtraBold
+          #DF3128 через 11px; базовые линии обеих ≈428 (на 3px выше обычной цены — 431) */}
+      <div className={cn("absolute left-[-1px] flex items-baseline", discounted ? "top-[411px] gap-[6px] xl:gap-[11px]" : "top-[414px]")}>
         {discounted ? (
           <>
             <SplitPrice value={product.price.list} big={15} small={10} weight={500} strike className="text-sub" />
-            <SplitPrice value={product.price.price} className="relative top-[-1px] text-sale" />
+            <SplitPrice value={product.price.price} className="text-sale" />
           </>
         ) : (
           <SplitPrice value={product.price.price} className="text-black" />

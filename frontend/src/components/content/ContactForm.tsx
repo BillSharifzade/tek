@@ -6,6 +6,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { toast } from "@/store/toast";
 import { sendLead } from "@/lib/leads";
 import { cn } from "@/lib/cn";
+import { isValidPhone, PHONE_ERROR, phoneInputProps } from "@/lib/phone";
 
 /** Поле формы из макета «Оставьте заявку» (10972:2084): 36px, белое, рамка #E5E5E5, r7, плейсхолдер 14px #666. */
 const field =
@@ -37,7 +38,7 @@ export function ContactForm({
     e.preventDefault();
     const next: typeof errors = {};
     if (!name.trim()) next.name = "Укажите имя";
-    if (!/^\+?\d[\d\s()-]{6,}$/.test(phone.trim())) next.phone = "Укажите корректный телефон";
+    if (!isValidPhone(phone)) next.phone = PHONE_ERROR;
     if (withEmail && email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) next.email = "Проверьте адрес почты";
     if (withConsent && !consent) next.consent = "Нужно согласие на обработку данных";
     setErrors(next);
@@ -77,7 +78,7 @@ export function ContactForm({
           <label htmlFor={`${uid}-phone`} className="sr-only">
             Телефон
           </label>
-          <input id={`${uid}-phone`} type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Телефон" autoComplete="tel" inputMode="tel" aria-invalid={Boolean(errors.phone)} className={cn(field, "h-[36px]", errors.phone ? "border-sale" : "border-line")} />
+          <input id={`${uid}-phone`} {...phoneInputProps(phone, setPhone)} placeholder="Телефон" aria-invalid={Boolean(errors.phone)} className={cn(field, "h-[36px]", errors.phone ? "border-sale" : "border-line")} />
           {err(errors.phone)}
         </div>
         {withEmail ? (

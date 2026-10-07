@@ -20,7 +20,9 @@ const scroll = Number(opt("--scroll", "0"));
 const js = opt("--js");
 const port = 9300 + Math.floor(Math.random() * 500);
 const profile = mkdtempSync(join(tmpdir(), "tekshot-"));
-const chrome = spawn("google-chrome-stable", [
+// Chrome: $CHROME, иначе стандартный путь на macOS или google-chrome-stable (Linux)
+const chromeBin = process.env.CHROME || (process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "google-chrome-stable");
+const chrome = spawn(chromeBin, [
   "--headless=new", "--no-sandbox", "--disable-gpu", "--hide-scrollbars", "--no-first-run",
   "--force-device-scale-factor=1", `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`,
   `--window-size=${width},1000`, "about:blank",

@@ -2,7 +2,6 @@ import Image from "next/image";
 import Link from "next/link";
 import type { CategoryNode } from "@/lib/types";
 import { SITE } from "@/lib/site";
-import { IconPin } from "@/components/icons/figma";
 import { CatalogMenuButton } from "./CatalogMenu";
 import { CitySelect } from "./CitySelect";
 import { HeaderActions } from "./HeaderActions";
@@ -20,9 +19,8 @@ export function Header({ categories }: { categories: CategoryNode[] }) {
         <div className="hidden h-[32px] items-start justify-between pt-[17px] lg:flex">
           <HeaderNav />
           <div className="flex items-start">
-            <a href={SITE.phoneHref} className="flex w-[94px] items-start gap-[3px] text-[13px] leading-[12px] text-sub link-hover">
-              <IconPin className="shrink-0" />
-              <span className="mt-px whitespace-nowrap">{SITE.phoneShort}</span>
+            <a href={SITE.phoneHref} className="mt-px whitespace-nowrap text-[13px] leading-[12px] text-sub link-hover tnum">
+              {SITE.phone}
             </a>
             <CitySelect className="ml-[31px] w-[74px]" />
           </div>

@@ -104,14 +104,19 @@ pub fn coupon_discount(c: &CouponRow, subtotal: Decimal) -> Result<Decimal, &'st
             return Err("Лимит использования купона исчерпан");
         }
     }
+    redeemed_coupon_discount(c, subtotal).ok_or("Сумма заказа меньше минимальной для купона")
+}
+
+/// Скидка по купону, уже использованному заказом (изменение заказа): срок и лимит использований не проверяются —
+/// заказ сам занял одно из использований; минимальная сумма — по-прежнему.
+pub fn redeemed_coupon_discount(c: &CouponRow, subtotal: Decimal) -> Option<Decimal> {
     if subtotal < c.min_total {
-        return Err("Сумма заказа меньше минимальной для купона");
+        return None;
     }
-    let d = match c.kind.as_str() {
+    Some(match c.kind.as_str() {
         "percent" => round2(subtotal * c.value / dec!(100)),
         _ => c.value.min(subtotal),
-    };
-    Ok(d)
+    })
 }
 
 pub struct Computed {
@@ -194,7 +199,7 @@ pub async fn add_item(state: &AppState, cart_id: Uuid, product_id: Uuid, qty: De
         return Err(AppError::unprocessable("invalid_qty", "Количество должно быть больше нуля"));
     }
     let row: Option<(Decimal, String, String, Option<Decimal>)> = sqlx::query_as(
-        "SELECT (SELECT COALESCE(SUM(qty),0) FROM stock WHERE product_id = p.id), p.unit, p.name, p.pack_qty FROM products p WHERE p.id = $1",
+        "SELECT (SELECT COALESCE(SUM(qty),0) FROM stock WHERE product_id = p.id), p.unit, p.name, p.pack_qty FROM products p WHERE p.id = $1 AND p.is_active",
     )
     .bind(product_id)
     .fetch_optional(&state.pool)

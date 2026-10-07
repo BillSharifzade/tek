@@ -12,8 +12,9 @@ export function ScheduleTable({ data }: { data: Schedule }) {
   // 9 колонок по 82.75px как в макете; при меньшем числе колонок та же общая ширина делится поровну
   const colW = (82.75 * 9) / Math.max(n, 1);
   return (
-    <ScrollFade belowLg className="scrollbar-none relative -mx-4 overflow-x-auto px-4 lg:mx-0 lg:overflow-visible lg:px-0">
-      <table className="w-full min-w-[1040px] table-fixed border-collapse text-[#222D3A] lg:ml-px lg:w-[1251px]">
+    // 1251px таблицы помещаются только с колонкой 1260 (≥1292); уже — прокрутка, как на мобильных
+    <ScrollFade className="scrollbar-none relative -mx-4 overflow-x-auto px-4 min-[1292px]:mx-0 min-[1292px]:overflow-visible min-[1292px]:px-0">
+      <table className="w-full min-w-[1040px] table-fixed border-collapse text-[#222D3A] min-[1292px]:ml-px min-[1292px]:w-[1251px]">
         <colgroup>
           <col />
           {data.columns.map((c) => (
@@ -42,7 +43,6 @@ export function ScheduleTable({ data }: { data: Schedule }) {
             <tr key={r.name} className="h-[52px] border-b border-[#E4E8EC] even:bg-[#F5F7F9]">
               <th scope="row" className="pl-[5px] pt-[3px] text-left text-[17.5px] font-normal leading-[20px]">
                 {r.name}
-                {r.sup}
               </th>
               {r.marks.map((m, i) => (
                 <td key={i} className="text-center align-middle">

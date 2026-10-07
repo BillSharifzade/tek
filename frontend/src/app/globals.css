@@ -12,6 +12,7 @@
   /* outlined buttons B3BAC7 → hover 4F5A6D (ТЗ) */
   --color-outline: #b3bac7;
   --color-outline-hover: #4f5a6d;
+  /* фон полей ввода (Figma #F0F2F4); серые кнопки/пилюли/пагинация — только --color-btn (палитра ТЗ) */
   --color-field: #f0f2f4;
 
   --color-ink: #000000;

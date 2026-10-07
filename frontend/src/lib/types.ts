@@ -228,7 +228,7 @@ export interface User {
   last_name: string;
   role: "customer" | "manager" | "admin";
   status: "pending" | "approved" | "blocked";
-  customer_type: "retail" | "electrician" | "purchaser";
+  customer_type: "retail" | "legal" | "electrician" | "purchaser";
   discount_pct: number;
   cashback_pct: number;
   bonus_balance: number;

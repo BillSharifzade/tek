@@ -39,7 +39,7 @@ export function FavoritesView() {
 
   return (
     <Card className="xl:px-[20px]">
-      <CardTitle className="xl:px-[10px]" right={visible ? <span className="text-[14px] leading-[20px] text-sub">{countLabel(visible.length, ["товар", "товара", "товаров"])}</span> : null}>
+      <CardTitle className="xl:px-[10px]" right={visible ? <span className="text-[15px] leading-[20px] text-[#555]">{countLabel(visible.length, ["товар", "товара", "товаров"])}</span> : null}>
         Избранное
       </CardTitle>
       <ErrorLine error={error} className="mt-[20px]" />

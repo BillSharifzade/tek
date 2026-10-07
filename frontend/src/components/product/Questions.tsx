@@ -20,8 +20,9 @@ import { MoreButton } from "./ProductAccessories";
 const PAGE = 5;
 
 /**
- * «Вопросы и ответы» (Figma 8612:423): слева вопрос (автор 16/20 500, дата 14/20 #666, текст 14/21, «Ответить»),
- * справа ответы в плашках 393px #F6F7F8 r10 с «Специалист ТЭК»; разделитель #D9DDE4; справа — «Задать вопрос».
+ * «Вопросы и ответы» (Figma 8612:423): слева вопрос (автор 16/20 500, дата 14/20 #666 — шаг 23, текст 14/22, «Ответить»),
+ * справа ответы в плашках 393px #F6F7F8 r10 с «Специалист ТЭК» вровень с автором (текст 14/21); разделитель #D9DDE4;
+ * справа — «Задать вопрос». «Еще» — через 35px под последним вопросом.
  */
 export function Questions({ slug, initial }: { slug: string; initial: QuestionsResponse }) {
   const hydrated = useHydrated();
@@ -75,11 +76,11 @@ export function Questions({ slug, initial }: { slug: string; initial: QuestionsR
         {items.length > 0 ? (
           <ul>
             {items.slice(0, shown).map((q) => (
-              <li key={q.id} className="grid grid-cols-1 gap-4 border-b border-line-3 pb-[27px] last:border-b-0 md:grid-cols-[minmax(0,352px)_393px] md:justify-between md:gap-0 [&+li]:pt-[28px]">
+              <li key={q.id} className="grid grid-cols-1 gap-4 border-b border-line-3 pb-[27px] last:border-b-0 md:grid-cols-[minmax(0,352px)_393px] md:justify-between md:gap-0 last:pb-0 [&+li]:pt-[27px]">
                 <div className="md:pt-[15px]">
                   <p className="text-[16px] font-medium leading-[20px] text-black">{q.author}</p>
-                  <p className="mt-[4px] text-[14px] leading-[20px] text-sub tnum">{date(q.date)}</p>
-                  <p className="mt-[7px] whitespace-pre-line text-[14px] leading-[21px] text-black">{q.text}</p>
+                  <p className="mt-[3px] text-[14px] leading-[20px] text-sub tnum">{date(q.date)}</p>
+                  <p className="mt-[5px] whitespace-pre-line text-[14px] leading-[22px] text-black">{q.text}</p>
                   <div className="mt-[12px] flex gap-[9px]">
                     <ActionChip onClick={() => setOpen(true)}>Ответить</ActionChip>
                     {mine.has(q.id) ? (
@@ -90,13 +91,13 @@ export function Questions({ slug, initial }: { slug: string; initial: QuestionsR
                   </div>
                 </div>
                 {q.answer ? (
-                  <div className="self-start rounded-[10px] bg-surface pb-[18px] pl-[21px] pr-[20px] pt-[15px]">
-                    <p className="flex flex-wrap items-center gap-x-[12px] gap-y-1">
+                  <div className="self-start rounded-[10px] bg-surface pb-[16px] pl-[21px] pr-[20px] pt-[15px]">
+                    <p className="flex flex-wrap items-start gap-x-[12px] gap-y-1">
                       <span className="text-[16px] font-medium leading-[20px] text-black">{q.answer.author}</span>
                       <SpecialistBadge />
                     </p>
-                    <p className="mt-[4px] text-[14px] leading-[20px] text-sub tnum">{date(q.answer.date)}</p>
-                    <p className="mt-[7px] whitespace-pre-line text-[14px] leading-[20px] text-black">{q.answer.text}</p>
+                    <p className="mt-[2px] text-[14px] leading-[20px] text-sub tnum">{date(q.answer.date)}</p>
+                    <p className="mt-[6px] whitespace-pre-line text-[14px] leading-[21px] text-black">{q.answer.text}</p>
                   </div>
                 ) : (
                   <p className="self-start rounded-[10px] bg-surface px-[21px] py-[15px] text-[14px] leading-[20px] text-sub">Ожидает ответа специалиста</p>

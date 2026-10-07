@@ -63,6 +63,9 @@ export interface StoreItem {
   phone: string | null;
   hours: string | null;
   delivery_hint?: string | null;
+  /** координаты точки для «Показать на карте» */
+  lat?: number | null;
+  lon?: number | null;
 }
 
 /** Image path regardless of which field name the backend emitted. */

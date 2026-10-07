@@ -101,7 +101,7 @@ async fn put_profile(State(state): State<AppState>, AuthUser(user): AuthUser, Js
         if taken.is_some() {
             return Err(AppError::conflict("email_taken", "E-mail уже используется"));
         }
-        if *e != user.email {
+        if user.email.as_deref() != Some(e.as_str()) {
             let ok = match body.current_password.clone() {
                 Some(p) => auth::verify_password_async(p, Some(user.password_hash.clone())).await,
                 None => false,
@@ -111,14 +111,25 @@ async fn put_profile(State(state): State<AppState>, AuthUser(user): AuthUser, Js
             }
         }
     }
-    let phone = body.phone.as_ref().map(|s| s.chars().filter(|c| c.is_ascii_digit() || *c == '+').collect::<String>()).filter(|s| !s.is_empty());
+    let phone = match body.phone.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(raw) => Some(auth::canonical_phone(raw).ok_or_else(|| AppError::unprocessable("invalid_phone", auth::PHONE_FORMAT_ERROR))?),
+        None => None,
+    };
+    // тот же номер, что сохранён (в любом написании), — не смена: не трогаем и не проверяем
+    let stored_phone = user.phone.as_deref().map(|s| auth::canonical_phone(s).unwrap_or_else(|| s.to_string()));
+    let phone = phone.filter(|p| stored_phone.as_deref() != Some(p.as_str()));
     if let Some(p) = &phone {
-        if p.chars().filter(char::is_ascii_digit).count() < 9 {
-            return Err(AppError::unprocessable("invalid_phone", "Укажите телефон в формате +992 XX XXX XX XX"));
-        }
         let taken: Option<Uuid> = sqlx::query_scalar("SELECT id FROM users WHERE phone = $1 AND id <> $2").bind(p).bind(user.id).fetch_optional(&state.pool).await?;
         if taken.is_some() {
             return Err(AppError::conflict("phone_taken", "Телефон уже используется другим аккаунтом"));
+        }
+        // телефон — тоже логин: смена, как и смена e-mail, только с текущим паролем
+        let ok = match body.current_password.clone() {
+            Some(pw) => auth::verify_password_async(pw, Some(user.password_hash.clone())).await,
+            None => false,
+        };
+        if !ok {
+            return Err(AppError::unprocessable("password_required", "Для смены телефона введите текущий пароль"));
         }
     }
     sqlx::query(
@@ -147,7 +158,7 @@ async fn put_password(State(state): State<AppState>, AuthUser(user): AuthUser, J
     if !auth::verify_password_async(body.current_password.clone(), Some(user.password_hash.clone())).await {
         return Err(AppError::unprocessable("wrong_password", "Текущий пароль указан неверно"));
     }
-    auth::validate_password(&body.new_password, &user.email, &user.first_name)?;
+    auth::validate_password(&body.new_password, user.email.as_deref().unwrap_or(""), &user.first_name)?;
     let hash = auth::hash_password_async(body.new_password.clone()).await?;
     sqlx::query("UPDATE users SET password_hash = $2 WHERE id = $1").bind(user.id).bind(hash).execute(&state.pool).await?;
     sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1").bind(user.id).execute(&state.pool).await?;

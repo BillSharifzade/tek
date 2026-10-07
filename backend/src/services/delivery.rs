@@ -7,6 +7,19 @@ pub const COURIER_PRICE: Decimal = dec!(30.00);
 /// Доставка бесплатна от этой суммы заказа (как на странице «Помощь»)
 pub const FREE_DELIVERY_FROM: Decimal = dec!(1000.00);
 
+/// Дата через `n` рабочих дней (суббота и воскресенье не считаются) — срок оплаты счёта.
+pub fn add_working_days(from: NaiveDate, n: u32) -> NaiveDate {
+    let mut d = from;
+    let mut left = n;
+    while left > 0 {
+        d += Duration::days(1);
+        if !matches!(d.weekday(), Weekday::Sat | Weekday::Sun) {
+            left -= 1;
+        }
+    }
+    d
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct DeliveryDate {
     pub date: NaiveDate,
@@ -67,4 +80,18 @@ pub fn delivery_dates() -> Vec<DeliveryDate> {
 
 pub fn today_local() -> NaiveDate {
     (Utc::now() + Duration::hours(5)).date_naive()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn working_days_skip_weekend() {
+        let d = |y, m, day| NaiveDate::from_ymd_opt(y, m, day).unwrap();
+        // понедельник + 3 → четверг; пятница + 3 → среда (суббота и воскресенье не считаются)
+        assert_eq!(add_working_days(d(2026, 10, 5), 3), d(2026, 10, 8));
+        assert_eq!(add_working_days(d(2026, 10, 9), 3), d(2026, 10, 14));
+        assert_eq!(add_working_days(d(2026, 10, 10), 3), d(2026, 10, 14));
+    }
 }

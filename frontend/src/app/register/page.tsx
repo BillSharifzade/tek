@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Регистрация" };
 
 export default function RegisterPage() {
   return (
-    <AuthShell crumb="Регистрация" title="Регистрация" width={640} subtitle="После проверки заявки менеджером вам откроется доступ к персональным ценам и кешбэку">
+    <AuthShell crumb="Регистрация" title="Регистрация" width={640}>
       <RegisterForm />
     </AuthShell>
   );

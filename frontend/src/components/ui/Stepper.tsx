@@ -43,6 +43,11 @@ export function Stepper({ value, onChange, min = 1, max, step = 1, size = "md", 
   const btn = size === "sm" ? "w-8" : size === "lg" ? "w-12" : "w-10";
 
   const commit = (raw: string) => {
+    // поле стёрли кликом и ничего не ввели — остаётся прежнее количество
+    if (!raw.trim()) {
+      setText(String(value));
+      return;
+    }
     const parsed = Number(raw.replace(",", ".").replace(/\s/g, ""));
     const next = snap(parsed, step, min, max);
     setText(String(next));
@@ -78,6 +83,7 @@ export function Stepper({ value, onChange, min = 1, max, step = 1, size = "md", 
           value={blank ? "" : text}
           disabled={disabled}
           aria-label={ariaLabel}
+          onFocus={() => setText("")}
           onChange={(e) => setText(e.target.value)}
           onBlur={(e) => commit(e.target.value)}
           onKeyDown={keys}
@@ -101,7 +107,7 @@ export function Stepper({ value, onChange, min = 1, max, step = 1, size = "md", 
         onClick={dec}
         disabled={disabled || value <= min}
         aria-label="Уменьшить"
-        className={cn("flex items-center justify-center text-ink hover:bg-surface disabled:text-muted disabled:hover:bg-transparent", btn)}
+        className={cn("flex items-center justify-center text-ink transition-colors hover:bg-btn disabled:text-muted disabled:hover:bg-transparent", btn)}
       >
         <Minus className="size-4" />
       </button>
@@ -111,6 +117,7 @@ export function Stepper({ value, onChange, min = 1, max, step = 1, size = "md", 
         value={text}
         disabled={disabled}
         aria-label={ariaLabel}
+        onFocus={() => setText("")}
         onChange={(e) => setText(e.target.value)}
         onBlur={(e) => commit(e.target.value)}
         onKeyDown={(e) => {
@@ -131,7 +138,7 @@ export function Stepper({ value, onChange, min = 1, max, step = 1, size = "md", 
         onClick={inc}
         disabled={disabled || (max !== undefined && value >= max)}
         aria-label="Увеличить"
-        className={cn("flex items-center justify-center text-ink hover:bg-surface disabled:text-muted disabled:hover:bg-transparent", btn)}
+        className={cn("flex items-center justify-center text-ink transition-colors hover:bg-btn disabled:text-muted disabled:hover:bg-transparent", btn)}
       >
         <Plus className="size-4" />
       </button>

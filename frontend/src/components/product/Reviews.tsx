@@ -22,14 +22,14 @@ import { MoreButton } from "./ProductAccessories";
 /** Отзыв может прийти с фото (поле появится в API) — показываем миниатюры 88×88. */
 type ReviewItemT = Review & { photos?: string[] };
 
-/** Серые кнопки-действия 24px (Figma «Ответить» #EEF0F2 / «Удалить» #FDE9E8), 13/20. */
+/** Серые кнопки-действия 24px (Figma «Ответить» #EEF0F2 / «Удалить» #FDE9E8), 13/20 — строка по центру (2px сверху). */
 export function ActionChip({ children, onClick, danger, className }: { children: React.ReactNode; onClick: () => void; danger?: boolean; className?: string }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "flex h-[24px] items-center rounded-[5px] px-[8px] pb-[2px] text-[13px] leading-[20px] transition-colors",
+        "flex h-[24px] items-center rounded-[5px] px-[8px] text-[13px] leading-[20px] transition-colors",
         danger ? "bg-[#FDE9E8] text-sale hover:bg-[#fbd8d6]" : "bg-btn text-g333 hover:bg-btn-hover",
         className,
       )}
@@ -47,14 +47,14 @@ export function SpecialistBadge({ className }: { className?: string }) {
 function ReviewItem({ r, onReply, onDelete }: { r: ReviewItemT; onReply: () => void; onDelete?: () => void }) {
   const photos = r.photos ?? [];
   return (
-    <li className="border-b border-line-3 pb-[23px] pt-0 last:border-b-0 [&+li]:pt-[27px]">
+    <li className="border-b border-line-3 pb-[23px] pt-0 last:border-b-0 last:pb-0 [&+li]:pt-[22px]">
       <div className="flex flex-col gap-4 md:flex-row md:gap-0">
         <div className="md:w-[224px] md:shrink-0">
           <Stars value={r.rating} size={14.6} step={15.6} className="mt-[4px] flex" />
           <p className="mt-[11px] text-[16px] font-semibold leading-[20px] text-black">{r.author}</p>
-          <p className="mt-[4px] text-[14px] leading-[20px] text-sub tnum">{date(r.date)}</p>
+          <p className="mt-[3px] text-[14px] leading-[20px] text-sub tnum">{date(r.date)}</p>
           {photos.length > 0 ? (
-            <ul className="mt-[23px] flex gap-[8px]">
+            <ul className="mt-[24px] flex gap-[8px]">
               {photos.slice(0, 2).map((src) => (
                 <li key={src} className="relative size-[88px] overflow-hidden rounded-[5px] bg-[#D9D9D9]">
                   <Image src={src} alt="" fill sizes="88px" className="object-cover" />
@@ -72,7 +72,7 @@ function ReviewItem({ r, onReply, onDelete }: { r: ReviewItemT; onReply: () => v
             ) : null}
             <ActionChip onClick={onReply}>Ответить</ActionChip>
           </div>
-          <div className="flex flex-col gap-[8px] text-[14px] leading-[22px] text-black md:mt-[29px] md:pr-0">
+          <div className="flex flex-col gap-[8px] text-[14px] leading-[22px] text-black md:mt-[28px] md:pr-0">
             {r.pros ? (
               <p>
                 <b className="font-bold">Достоинства:</b> {r.pros}
@@ -86,16 +86,16 @@ function ReviewItem({ r, onReply, onDelete }: { r: ReviewItemT; onReply: () => v
             {r.text ? <p className="whitespace-pre-line">{r.text}</p> : null}
           </div>
           {r.reply ? (
-            <div className="relative mt-[21px] border-t border-line-3 pl-[22px] pt-[18px]">
-              <ActionChip onClick={onReply} className="absolute right-0 top-[17px]">
+            <div className="relative mt-[21px] border-t border-line-3 pl-[22px] pt-[17px]">
+              <ActionChip onClick={onReply} className="absolute right-0 top-[16px]">
                 Ответить
               </ActionChip>
-              <p className="flex flex-wrap items-center gap-x-[11px] gap-y-1 pr-[90px]">
+              <p className="flex flex-wrap items-start gap-x-[11px] gap-y-1 pr-[90px]">
                 <span className="text-[16px] font-semibold leading-[20px] text-black">{r.reply.author}</span>
                 <SpecialistBadge />
               </p>
-              <p className="mt-[4px] text-[14px] leading-[20px] text-sub tnum">{date(r.reply.date)}</p>
-              <p className="mt-[9px] whitespace-pre-line text-[14px] leading-[20px] text-black">{r.reply.text}</p>
+              <p className="mt-[2px] text-[14px] leading-[20px] text-sub tnum">{date(r.reply.date)}</p>
+              <p className="mt-[10px] whitespace-pre-line text-[14px] leading-[20px] text-black">{r.reply.text}</p>
             </div>
           ) : null}
         </div>
@@ -160,7 +160,7 @@ export function Reviews({ slug, initial }: { slug: string; initial: ReviewsRespo
   const list = filter ? items.filter((r) => r.rating === filter) : items;
 
   return (
-    <div className="mt-[31px] grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,856px)_305px] lg:justify-between lg:gap-0">
+    <div className="mt-[32px] grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,856px)_305px] lg:justify-between lg:gap-0">
       <div className="order-2 min-w-0 lg:order-1">
         {list.length > 0 ? (
           <ul>
@@ -173,10 +173,10 @@ export function Reviews({ slug, initial }: { slug: string; initial: ReviewsRespo
             {filter ? "Нет отзывов с такой оценкой среди загруженных." : "Отзывов пока нет. Станьте первым!"}
           </div>
         )}
-        {page < data.pages ? <MoreButton className="mx-auto mt-[26px]" onClick={loadMore} loading={loadingMore} /> : null}
+        {page < data.pages ? <MoreButton className="mx-auto mt-[25px]" onClick={loadMore} loading={loadingMore} /> : null}
       </div>
 
-      <aside className="order-1 self-start rounded-[10px] bg-white px-[26px] pb-[28px] pt-[20px] shadow-pop lg:order-2 lg:pr-[28px]">
+      <aside className="order-1 self-start rounded-[10px] bg-white px-[26px] pb-[28px] pt-[21px] shadow-pop lg:order-2 lg:pr-[28px]">
         <p className="text-[32px] font-semibold leading-[32px] text-black tnum">{data.summary.avg.toFixed(1)}</p>
         <div className="mt-[17px] flex h-[17px] items-center justify-between">
           <Stars value={data.summary.avg} size={17} step={21.4} />

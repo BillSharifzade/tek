@@ -33,12 +33,12 @@ function Arrow({ dir }: { dir: "prev" | "next" }) {
 
 /**
  * Пагинация в языке макета (как сегмент-кнопки сортировки каталога): h=32, r=5, Regular 13,
- * серые #F0F2F4 (hover #D9DDE3), текущая — жёлтая #FFCC33.
+ * серые по палитре ТЗ #EEF0F2 (hover #D9DDE3), текущая — жёлтая #FFCC33.
  */
 export function Pagination({ page, pages, hrefFor, className }: PaginationProps) {
   if (pages <= 1) return null;
   const item = "inline-flex h-[32px] min-w-[32px] items-center justify-center rounded-[5px] px-[10px] text-[13px] leading-[12px] text-black transition-colors tnum";
-  const idle = "bg-field hover:bg-btn-hover";
+  const idle = "bg-btn hover:bg-btn-hover";
   return (
     <nav aria-label="Пагинация" className={cn("flex flex-wrap items-center justify-center gap-[4px]", className)}>
       {page > 1 ? (
@@ -46,7 +46,7 @@ export function Pagination({ page, pages, hrefFor, className }: PaginationProps)
           <Arrow dir="prev" />
         </Link>
       ) : (
-        <span className={cn(item, "bg-field text-muted opacity-60")} aria-hidden>
+        <span className={cn(item, "bg-btn text-muted opacity-60")} aria-hidden>
           <Arrow dir="prev" />
         </span>
       )}
@@ -70,7 +70,7 @@ export function Pagination({ page, pages, hrefFor, className }: PaginationProps)
           <Arrow dir="next" />
         </Link>
       ) : (
-        <span className={cn(item, "bg-field text-muted opacity-60")} aria-hidden>
+        <span className={cn(item, "bg-btn text-muted opacity-60")} aria-hidden>
           <Arrow dir="next" />
         </span>
       )}

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import type { ProductCard } from "@/lib/types";
-import { money, qty as fmtQty } from "@/lib/format";
+import { money, stockQty } from "@/lib/format";
 import { useHydrated } from "@/lib/hooks";
 import { cn } from "@/lib/cn";
 import { useCart } from "@/store/cart";
@@ -47,6 +47,8 @@ function AccessoryBuyRow({ product }: { product: ProductCard }) {
   const add = useCart((s) => s.add);
   const step = packStep(product);
   const [qty, setQty] = useState(step);
+  /** ручной ввод: при клике в поле число стирается */
+  const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const disabled = !product.in_stock;
   const glyph =
@@ -62,11 +64,17 @@ function AccessoryBuyRow({ product }: { product: ProductCard }) {
         <input
           aria-label="Количество"
           inputMode="numeric"
-          value={qty}
+          value={draft ?? qty}
           disabled={disabled}
-          onChange={(e) => {
-            const n = Number(e.target.value.replace(/\D/g, ""));
-            setQty(Number.isFinite(n) && n > 0 ? Math.min(n, 99999) : 1);
+          onFocus={() => setDraft("")}
+          onChange={(e) => setDraft(e.target.value.replace(/\D/g, "").slice(0, 5))}
+          onBlur={() => {
+            const n = Number(draft);
+            if (draft && n > 0) setQty(snapQty(n, step));
+            setDraft(null);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
           }}
           className="h-full min-w-0 flex-1 bg-transparent text-center text-[14px] font-medium leading-[12px] text-sub outline-none tnum focus-visible:text-black"
         />
@@ -105,7 +113,7 @@ function AccessoryBuyRow({ product }: { product: ProductCard }) {
 
 /**
  * Компактная карточка комплектующего — Figma 8612:341 «Group 25» (216×421, обводка 1px #E8E8E8/80%, без скругления):
- * фото 180×180 с (18,16) · звёзды + отзывы + код на y=205 · цена Bold 20/21 на y=233 · название 13/21 (до 4 строк) на y=262 ·
+ * фото 180×180 с (18,16) · звёзды + отзывы + код на y=205 · цена Bold 20 (базовая линия 249) · название 13/21 (до 4 строк) на y=262 ·
  * «В наличии (…)» 12/13 #666 на y=362 · количество + «В корзину» 108×32 у нижней кромки (y=389).
  */
 export function AccessoryCard({ product, className }: { product: ProductCard; className?: string }) {
@@ -131,11 +139,11 @@ export function AccessoryCard({ product, className }: { product: ProductCard; cl
         <span className="ml-auto truncate pl-2 tnum">{product.code}</span>
       </div>
 
-      <p className="mt-[15px] flex h-[21px] items-baseline gap-[6px] overflow-hidden whitespace-nowrap">
+      <p className="mt-[14px] flex h-[21px] items-baseline gap-[6px] overflow-hidden whitespace-nowrap">
         <span className={cn("text-[20px] font-bold leading-[21px] tnum", discounted ? "text-sale" : "text-black")}>{money(product.price.price)}</span>
         {discounted ? <span className="text-[12px] leading-[12px] text-muted line-through tnum">{money(product.price.list)}</span> : null}
       </p>
-      <Link href={href} className="mt-[8px] line-clamp-4 h-[84px] text-[13px] leading-[21px] text-black hover:underline">
+      <Link href={href} className="mt-[9px] line-clamp-4 h-[84px] text-[13px] leading-[21px] text-black hover:underline">
         {product.name}
       </Link>
 
@@ -143,7 +151,7 @@ export function AccessoryCard({ product, className }: { product: ProductCard; cl
         <p className="mt-[16px] flex h-[14px] items-center gap-[6px] text-[12px] leading-[13px] text-sub">
           <IconCheck14 className="shrink-0" />
           <span className="truncate">
-            В наличии ({fmtQty(product.stock_total)}
+            В наличии ({stockQty(product.stock_total)}
             {unitShort(product.unit)})
           </span>
         </p>

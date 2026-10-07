@@ -4,28 +4,22 @@ import { HomeTop } from "@/components/home/HomeTop";
 import { BrandStrip } from "@/components/home/BrandStrip";
 import { Directions } from "@/components/home/Directions";
 import { UspRow } from "@/components/home/UspRow";
-import { CategoryTiles, type CategoryTileData } from "@/components/home/CategoryTiles";
+import { CategoryTiles } from "@/components/home/CategoryTiles";
 import { ProductGrid } from "@/components/product/ProductGrid";
 import { ProjectCard } from "@/components/content/ProjectCard";
 import { CenteredHeader } from "@/components/ui/Section";
 
-const TILE_COUNT = 11;
-
-/** Популярные категории из /home; если их меньше 11 плиток макета — добираем самыми наполненными подкатегориями. */
-function categoryTiles(popular: Home["popular_categories"], tree: CategoryNode[]): CategoryTileData[] {
-  const out: CategoryTileData[] = popular.filter((c) => c.product_count > 0).slice(0, TILE_COUNT);
-  if (out.length >= TILE_COUNT) return out;
-  const seen = new Set(out.map((c) => c.slug));
-  const pool: CategoryTileData[] = [];
+/** Количество товаров по slug категории (любого уровня) — для подписей плиток категорий. */
+function categoryCounts(tree: CategoryNode[]): Record<string, number> {
+  const out: Record<string, number> = {};
   const walk = (nodes: CategoryNode[]) => {
     for (const n of nodes) {
-      if (!seen.has(n.slug) && n.product_count > 0) pool.push({ slug: n.slug, name: n.name, image: n.image, product_count: n.product_count });
+      out[n.slug] = n.product_count;
       walk(n.children ?? []);
     }
   };
-  walk(tree.flatMap((n) => n.children ?? []));
-  pool.sort((a, b) => b.product_count - a.product_count);
-  return [...out, ...pool.slice(0, TILE_COUNT - out.length)];
+  walk(tree);
+  return out;
 }
 
 /** Лендинг — Figma «Лендинг» 10999:2802 (контент под шапкой, y ≥ 113). */
@@ -37,11 +31,12 @@ export default async function HomePage() {
     <>
       <h1 className="sr-only">ТЭК — Точикэлектрокомплект: интернет-магазин электротехники в Таджикистане</h1>
 
-      <HomeTop news={home.news} />
-      <BrandStrip brands={home.brands} />
+      <HomeTop news={home.news} banners={home.banners} />
+      {/* key: при другом наборе вендоров полоса начинает ротацию заново */}
+      <BrandStrip key={home.brands.map((b) => b.slug).join(",")} brands={home.brands} />
       <Directions />
       <UspRow items={home.usp} />
-      <CategoryTiles items={categoryTiles(home.popular_categories, tree)} />
+      <CategoryTiles counts={categoryCounts(tree)} />
 
       {fresh.length > 0 ? (
         <section className="container-page mt-14 lg:mt-[69px]" aria-label="Новинки">

@@ -52,7 +52,7 @@ pub async fn load(pool: &PgPool, group_id: i32, ctx: &PriceCtx) -> AppResult<Opt
     if axes.is_empty() {
         return Ok(None);
     }
-    let sql = format!("{PRODUCT_SELECT} WHERE p.group_id = $1");
+    let sql = format!("{PRODUCT_SELECT} WHERE p.group_id = $1 AND p.is_active");
     let rows = sqlx::query_as::<_, ProductRow>(AssertSqlSafe(sql)).bind(group_id).fetch_all(pool).await?;
 
     let mut items: Vec<VariantItem> = rows

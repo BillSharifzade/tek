@@ -3,9 +3,9 @@ use std::time::Duration;
 use serde_json::Value;
 use sqlx::{PgPool, Postgres, Transaction};
 
-use crate::{error::AppResult, state::AppState};
+use crate::{error::AppResult, services::mail::SendError, state::AppState};
 
-/// Queue an integration event (CRM / 1C) inside the caller's transaction.
+/// Queue an integration event (CRM / 1C / e-mail) inside the caller's transaction.
 pub async fn enqueue(tx: &mut Transaction<'_, Postgres>, target: &str, event: &str, payload: Value) -> AppResult<()> {
     sqlx::query("INSERT INTO integration_outbox (target, event, payload) VALUES ($1, $2, $3)")
         .bind(target)
@@ -16,7 +16,6 @@ pub async fn enqueue(tx: &mut Transaction<'_, Postgres>, target: &str, event: &s
     Ok(())
 }
 
-#[allow(dead_code)]
 pub async fn enqueue_pool(pool: &PgPool, target: &str, event: &str, payload: Value) -> AppResult<()> {
     sqlx::query("INSERT INTO integration_outbox (target, event, payload) VALUES ($1, $2, $3)")
         .bind(target)
@@ -37,8 +36,8 @@ struct Pending {
 }
 
 /// Фоновый доставщик событий (каждые 5 с) и ночная уборка устаревших данных (раз в час).
-/// Без адреса вебхука: вне production событие помечается `sent` с `mock = true`; в production остаётся в очереди
-/// до настройки CRM_WEBHOOK_URL / ONEC_WEBHOOK_URL — заказы не теряются.
+/// Без адреса вебхука / SMTP: вне production событие помечается `sent` с `mock = true`; в production остаётся в очереди
+/// до настройки CRM_WEBHOOK_URL / ONEC_WEBHOOK_URL / SMTP_URL — заказы и письма не теряются.
 pub fn spawn_worker(state: AppState) {
     let s = state.clone();
     tokio::spawn(async move {
@@ -80,6 +79,37 @@ async fn cleanup(pool: &PgPool) -> AppResult<()> {
     Ok(())
 }
 
+/// Доставка одного события: `Some(Ok(mock))` — доставлено (`mock` — получатель не настроен, вне production),
+/// `Some(Err((ошибка, постоянная)))` — сбой (постоянный — без повторов), `None` — в production получатель не настроен.
+async fn deliver(state: &AppState, row: &Pending) -> Option<Result<bool, (String, bool)>> {
+    if row.target == "email" {
+        return match &state.mailer {
+            None if state.cfg.production => None,
+            None => Some(Ok(true)),
+            Some(m) => Some(match m.send(&row.payload).await {
+                Ok(()) => Ok(false),
+                Err(SendError::Permanent(e)) => Err((e, true)),
+                Err(SendError::Temporary(e)) => Err((e, false)),
+            }),
+        };
+    }
+    let url = match row.target.as_str() {
+        "crm" => state.cfg.crm_webhook_url.clone(),
+        "onec" => state.cfg.onec_webhook_url.clone(),
+        _ => None,
+    };
+    let body = serde_json::json!({ "event": row.event, "target": row.target, "id": row.id, "payload": row.payload });
+    match url {
+        None if state.cfg.production => None,
+        None => Some(Ok(true)),
+        Some(u) => Some(match state.http.post(&u).json(&body).send().await {
+            Ok(resp) if resp.status().is_success() => Ok(false),
+            Ok(resp) => Err((format!("http {}", resp.status()), false)),
+            Err(e) => Err((e.to_string(), false)),
+        }),
+    }
+}
+
 /// Пауза перед повтором: 30 с, 1 мин, 2 мин … до 6 ч; после 12 попыток (~сутки) — `failed` с ошибкой в логе.
 fn backoff_secs(attempts: i32) -> i64 {
     (30_i64 << attempts.clamp(0, 10)).min(6 * 3600)
@@ -88,34 +118,32 @@ fn backoff_secs(attempts: i32) -> i64 {
 const MAX_ATTEMPTS: i32 = 12;
 
 async fn tick(state: &AppState) -> AppResult<()> {
-    // забираем пачку «к отправке» и сразу сдвигаем срок — другой воркер её не возьмёт, а HTTP идёт без открытой транзакции
+    // забираем пачку «к отправке» и сразу сдвигаем срок — другой воркер её не возьмёт, а HTTP идёт без открытой транзакции.
+    // События одного заказа уходят строго по очереди: пока более раннее ждёт повтора, следующие не отправляются
+    // (иначе CRM / 1С получили бы order.updated раньше order.created).
     let rows = sqlx::query_as::<_, Pending>(
         r#"UPDATE integration_outbox SET next_attempt_at = now() + interval '2 minutes'
-           WHERE id IN (SELECT id FROM integration_outbox WHERE status = 'pending' AND next_attempt_at <= now()
-                        ORDER BY id LIMIT 50 FOR UPDATE SKIP LOCKED)
+           WHERE id IN (SELECT o.id FROM integration_outbox o
+                        WHERE o.status = 'pending' AND o.next_attempt_at <= now()
+                          AND NOT EXISTS (SELECT 1 FROM integration_outbox e
+                                          WHERE e.status = 'pending' AND e.target = o.target AND e.id < o.id
+                                            AND e.payload->>'number' = o.payload->>'number')
+                        ORDER BY o.id LIMIT 50 FOR UPDATE OF o SKIP LOCKED)
            RETURNING id, target, event, payload, attempts"#,
     )
     .fetch_all(&state.pool)
     .await?;
+    // SMTP недоступен — остальные письма пачки не ждут таймаута каждое, а откладываются на минуту (CRM / 1С не задерживаются)
+    let mut email_down = false;
     for row in rows {
-        let url = match row.target.as_str() {
-            "crm" => state.cfg.crm_webhook_url.clone(),
-            "onec" => state.cfg.onec_webhook_url.clone(),
-            _ => None,
-        };
-        let body = serde_json::json!({ "event": row.event, "target": row.target, "id": row.id, "payload": row.payload });
-        let result: Result<bool, String> = match url {
-            None if state.cfg.production => {
-                // интеграция ещё не настроена — оставляем в очереди, проверим через 10 минут
-                sqlx::query("UPDATE integration_outbox SET next_attempt_at = now() + interval '10 minutes' WHERE id = $1").bind(row.id).execute(&state.pool).await?;
-                continue;
-            }
-            None => Ok(true),
-            Some(u) => match state.http.post(&u).json(&body).send().await {
-                Ok(resp) if resp.status().is_success() => Ok(false),
-                Ok(resp) => Err(format!("http {}", resp.status())),
-                Err(e) => Err(e.to_string()),
-            },
+        if email_down && row.target == "email" {
+            sqlx::query("UPDATE integration_outbox SET next_attempt_at = now() + interval '1 minute' WHERE id = $1").bind(row.id).execute(&state.pool).await?;
+            continue;
+        }
+        let Some(result) = deliver(state, &row).await else {
+            // получатель ещё не настроен — оставляем в очереди, проверим через 10 минут
+            sqlx::query("UPDATE integration_outbox SET next_attempt_at = now() + interval '10 minutes' WHERE id = $1").bind(row.id).execute(&state.pool).await?;
+            continue;
         };
         match result {
             Ok(mock) => {
@@ -125,21 +153,23 @@ async fn tick(state: &AppState) -> AppResult<()> {
                     .bind(mock)
                     .execute(&mut *tx)
                     .await?;
-                if row.event.starts_with("order.") || row.event == "stock.reserve" {
-                    if let Some(number) = row.payload.get("number").and_then(|v| v.as_str()) {
-                        let col = if row.target == "crm" { "crm_status" } else { "reservation_status" };
-                        let sql = format!("UPDATE orders SET {col} = $2 WHERE number = $1");
-                        sqlx::query(sqlx::AssertSqlSafe(sql))
-                            .bind(number)
-                            .bind(if mock { "sent_mock" } else { "sent" })
-                            .execute(&mut *tx)
-                            .await?;
-                    }
+                if row.target != "email"
+                    && (row.event.starts_with("order.") || row.event == "stock.reserve")
+                    && let Some(number) = row.payload.get("number").and_then(|v| v.as_str())
+                {
+                    let col = if row.target == "crm" { "crm_status" } else { "reservation_status" };
+                    let sql = format!("UPDATE orders SET {col} = $2 WHERE number = $1");
+                    sqlx::query(sqlx::AssertSqlSafe(sql))
+                        .bind(number)
+                        .bind(if mock { "sent_mock" } else { "sent" })
+                        .execute(&mut *tx)
+                        .await?;
                 }
                 tx.commit().await?;
             }
-            Err(err) => {
-                let failed = row.attempts + 1 >= MAX_ATTEMPTS;
+            Err((err, permanent)) => {
+                email_down |= row.target == "email" && !permanent;
+                let failed = permanent || row.attempts + 1 >= MAX_ATTEMPTS;
                 if failed {
                     tracing::error!(id = row.id, target = %row.target, event = %row.event, error = %err, "integration event failed permanently");
                 } else {

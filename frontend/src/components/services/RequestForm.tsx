@@ -3,6 +3,7 @@
 import { useEffect, useId, useState, useTransition } from "react";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
+import { isValidPhone, PHONE_ERROR, phoneInputProps } from "@/lib/phone";
 import { toast } from "@/store/toast";
 import { submitServiceRequest } from "./actions";
 import { REQUEST_EVENT } from "./RequestButton";
@@ -33,7 +34,7 @@ export function RequestForm({ service, className = "mt-[25px]" }: { service: str
     e.preventDefault();
     const next: typeof errors = {};
     if (!name.trim()) next.name = "Укажите имя";
-    if (phone.replace(/\D/g, "").length < 7) next.phone = "Укажите корректный телефон";
+    if (!isValidPhone(phone)) next.phone = PHONE_ERROR;
     setErrors(next);
     if (next.name || next.phone) return;
     start(async () => {
@@ -79,12 +80,8 @@ export function RequestForm({ service, className = "mt-[25px]" }: { service: str
         </label>
         <input
           id={`${id}-phone`}
-          type="tel"
-          inputMode="tel"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          {...phoneInputProps(phone, setPhone)}
           placeholder="Телефон"
-          autoComplete="tel"
           aria-invalid={Boolean(errors.phone)}
           className={cn(field, "h-[36px]", errors.phone && "border-sale hover:border-sale")}
         />

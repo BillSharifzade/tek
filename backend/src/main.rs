@@ -21,7 +21,6 @@ use tower_http::{
     cors::{AllowOrigin, Any, CorsLayer},
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     set_header::SetResponseHeaderLayer,
-    timeout::TimeoutLayer,
     trace::TraceLayer,
 };
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
@@ -34,7 +33,8 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cfg = Config::from_env();
-    // служебные команды: `tek-api healthcheck` (HEALTHCHECK контейнера), `tek-api set-password <email>` (пароль из NEW_PASSWORD)
+    // служебные команды: `tek-api healthcheck` (HEALTHCHECK контейнера), `tek-api set-password <email>` (пароль из NEW_PASSWORD),
+    // `tek-api import <файл.xlsx|файл.csv> [--dry-run]` (импорт каталога, отчёт — JSON в stdout)
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("healthcheck") => {
@@ -43,6 +43,7 @@ async fn main() -> anyhow::Result<()> {
             std::process::exit(if ok { 0 } else { 1 });
         }
         Some("set-password") => return cli_set_password(&cfg, args.get(2).map(String::as_str)).await,
+        Some("import") => return cli_import(&cfg, &args[2..]).await,
         _ => {}
     }
     tracing_subscriber::registry()
@@ -103,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
                 .layer(SetRequestIdLayer::new(x_request_id.clone(), MakeRequestUuid))
                 .layer(TraceLayer::new_for_http())
                 .layer(CatchPanicLayer::new())
-                .layer(TimeoutLayer::with_status_code(axum::http::StatusCode::REQUEST_TIMEOUT, Duration::from_secs(30)))
+                // таймаут запроса (30 с, импорт каталога — 10 мин) — в routes::api()
                 .layer(CompressionLayer::new())
                 .layer(cors)
                 .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
@@ -132,6 +133,20 @@ async fn cli_set_password(cfg: &Config, email: Option<&str>) -> anyhow::Result<(
     let Some(id) = id else { anyhow::bail!("user {email} not found") };
     sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1").bind(id).execute(&pool).await?;
     println!("password updated for {email}");
+    Ok(())
+}
+
+/// Импорт каталога из консоли сервера (как `POST /admin/import/catalog`): `tek-api import catalog.xlsx [--dry-run]`.
+/// Кэш публичных ответов работающего API обновится сам за минуту.
+async fn cli_import(cfg: &Config, args: &[String]) -> anyhow::Result<()> {
+    let dry_run = args.iter().any(|a| a == "--dry-run");
+    let path = args.iter().find(|a| !a.starts_with("--")).ok_or_else(|| anyhow::anyhow!("usage: tek-api import <file.xlsx|file.csv> [--dry-run]"))?;
+    let bytes = std::fs::read(path).map_err(|e| anyhow::anyhow!("{path}: {e}"))?;
+    let pool = PgPoolOptions::new().max_connections(2).connect(&cfg.database_url).await?;
+    sqlx::migrate!("./migrations").run(&pool).await?;
+    let table = services::import::parse_file(path, &bytes).map_err(|e| anyhow::anyhow!("{}", e.message))?;
+    let summary = services::import::run(&pool, table, dry_run).await.map_err(|e| anyhow::anyhow!("{}", e.message))?;
+    println!("{}", serde_json::to_string_pretty(&summary)?);
     Ok(())
 }
 

@@ -40,6 +40,18 @@ export function qty(value: number | string | null | undefined): string {
   return normalizeSpaces(nfQty.format(Number.isFinite(n) ? n : 0));
 }
 
+const nfStock = new Intl.NumberFormat("ru-RU", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 3,
+  useGrouping: false,
+});
+
+/** Остаток на складе — без разделителя тысяч: 28300 → "28300" ; 12.5 → "12,5" */
+export function stockQty(value: number | string | null | undefined): string {
+  const n = typeof value === "string" ? Number(value) : (value ?? 0);
+  return nfStock.format(Number.isFinite(n) ? n : 0);
+}
+
 export function int(value: number | null | undefined): string {
   return normalizeSpaces(nfInt.format(value ?? 0));
 }

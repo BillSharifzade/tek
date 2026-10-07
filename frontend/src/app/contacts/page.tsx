@@ -7,7 +7,8 @@ import { FacebookIcon, InstagramIcon, YoutubeIcon } from "@/components/ui/Social
 import { PageHead, SectionTitle } from "@/components/content/PageHead";
 import { ContactForm } from "@/components/content/ContactForm";
 import { IconArrowSmall } from "@/components/content/icons";
-import { SALES_EMAIL, SOCIAL_LINKS } from "@/components/content/company";
+import { SOCIAL_LINKS } from "@/components/content/company";
+import { StaticMap, yandexMapsHref } from "@/components/content/StaticMap";
 import type { CmsPage, StoreItem } from "@/components/content/types";
 import Link from "next/link";
 
@@ -16,18 +17,10 @@ export const metadata: Metadata = {
   description: `Адреса, телефоны и режим работы ТЭК в Душанбе и Худжанде. ${SITE.phone}, ${SITE.email}.`,
 };
 
-/** Координаты точек (с карты tectj.com/contacts). Для прочих адресов — поиск по тексту на Яндекс.Картах. */
-const COORDS: { match: RegExp; lat: number; lon: number }[] = [
-  { match: /Адхамова/i, lat: 38.569233, lon: 68.803629 },
-  { match: /Шерози|Кушони/i, lat: 38.633192, lon: 68.766223 },
-];
-
-function mapLink(address: string): string {
-  const c = COORDS.find((x) => x.match.test(address));
-  return c ? `https://yandex.ru/maps/?pt=${c.lon},${c.lat}&z=16&l=map` : `https://yandex.ru/maps/?text=${encodeURIComponent(address)}`;
+/** «Показать на карте»: по координатам магазина из API, без них — поиск адреса на Яндекс.Картах. */
+function mapLink(s: StoreItem): string {
+  return s.lat != null && s.lon != null ? yandexMapsHref(s.lat, s.lon) : `https://yandex.ru/maps/?text=${encodeURIComponent(s.address)}`;
 }
-
-const MAP_SRC = `https://yandex.ru/map-widget/v1/?ll=68.785%2C38.601&z=12&pt=${COORDS.map((c, i) => `${c.lon}%2C${c.lat}%2Cpm2ywl${i + 1}`).join("~")}`;
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -57,16 +50,13 @@ export default async function ContactsPage() {
       {/* Главный офис + карта: серая плашка r11 и карта справа, как первый экран «Сервис центр ДГУ» */}
       <section className="mt-[24px] grid overflow-hidden rounded-[11px] bg-surface-2 md:mt-[32px] lg:grid-cols-[440px_minmax(0,1fr)]">
         <div className="flex flex-col px-[20px] py-[28px] md:px-[40px] md:py-[40px]">
-          <p className="text-[13px] leading-[18px] text-muted">Главный офис и склад</p>
+          <p className="text-[13px] leading-[18px] text-muted">Главный офис</p>
           <h2 className="mt-[6px] text-[20px] font-bold leading-[26px] md:text-[22px] md:leading-[28px]">{SITE.address1}</h2>
 
           <div className="mt-[28px] flex flex-col gap-[20px]">
-            <Row label="Телефоны">
+            <Row label="Телефон">
               <a href={SITE.phoneHref} className="link-hover block text-[20px] font-bold leading-[24px] tnum">
                 {SITE.phone}
-              </a>
-              <a href={SITE.phone2Href} className="link-hover mt-[4px] block text-[16px] leading-[22px] text-g333 tnum">
-                {SITE.phone2}
               </a>
             </Row>
             <Row label="Электронная почта">
@@ -74,13 +64,13 @@ export default async function ContactsPage() {
                 <a href={`mailto:${SITE.email}`} className="text-g333 underline underline-offset-[3px] transition-colors hover:text-black">
                   {SITE.email}
                 </a>
-                <a href={`mailto:${SALES_EMAIL}`} className="text-g333 underline underline-offset-[3px] transition-colors hover:text-black">
-                  {SALES_EMAIL}
+                <a href={`mailto:${SITE.salesEmail}`} className="text-g333 underline underline-offset-[3px] transition-colors hover:text-black">
+                  {SITE.salesEmail}
                 </a>
               </p>
             </Row>
             <Row label="Режим работы">
-              <p className="text-[16px] leading-[22px] text-g333">{SITE.hours.replace("–", " – ")}, Вс — выходной</p>
+              <p className="text-[16px] leading-[22px] text-g333">{SITE.hoursFull}</p>
             </Row>
           </div>
 
@@ -95,9 +85,7 @@ export default async function ContactsPage() {
             </a>
           </div>
         </div>
-        <div className="relative h-[320px] bg-surface md:h-[420px] lg:h-auto lg:min-h-[480px]">
-          <iframe title="ТЭК на карте Душанбе" src={MAP_SRC} loading="lazy" className="absolute inset-0 size-full border-0" allowFullScreen />
-        </div>
+        <StaticMap lat={SITE.officeCoords[0]} lon={SITE.officeCoords[1]} title={`Главный офис ТЭК на карте: ${SITE.address1}`} className="h-[320px] md:h-[420px] lg:h-auto lg:min-h-[480px]" />
       </section>
 
       {/* Магазины и филиалы */}
@@ -137,7 +125,7 @@ export default async function ContactsPage() {
                     </div>
                   ) : null}
                 </dl>
-                <a href={mapLink(s.address)} target="_blank" rel="noopener noreferrer" className="mt-auto inline-flex items-center gap-[5px] self-start pt-[18px] text-[14px] leading-[20px] text-g333 underline underline-offset-[3px] transition-colors hover:text-black">
+                <a href={mapLink(s)} target="_blank" rel="noopener noreferrer" className="mt-auto inline-flex items-center gap-[5px] self-start pt-[18px] text-[14px] leading-[20px] text-g333 underline underline-offset-[3px] transition-colors hover:text-black">
                   Показать на карте
                   <IconArrowSmall className="size-[11px]" />
                 </a>
@@ -159,8 +147,8 @@ export default async function ContactsPage() {
           <dl className="mt-[10px] text-[15px] leading-[20px]">
             {[
               ["Компания", SITE.company],
-              ["Юр. адрес", SITE.address1.replace("г. ", "")],
-              ["Отдел продаж", SALES_EMAIL],
+              ["Юр. адрес", SITE.legalAddress],
+              ["Отдел продаж", SITE.salesEmail],
               ["Общие вопросы", SITE.email],
               ["Телефон", SITE.phone],
             ].map(([k, v]) => (

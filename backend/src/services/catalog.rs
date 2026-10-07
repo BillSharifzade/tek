@@ -1,5 +1,5 @@
 use rust_decimal::Decimal;
-use sqlx::{AssertSqlSafe, PgPool};
+use sqlx::{AssertSqlSafe, PgConnection, PgPool};
 use uuid::Uuid;
 
 use crate::{
@@ -48,7 +48,6 @@ pub async fn product_by_slug(pool: &PgPool, slug: &str) -> AppResult<Option<Prod
     Ok(sqlx::query_as::<_, ProductRow>(AssertSqlSafe(sql)).bind(slug).fetch_optional(pool).await?)
 }
 
-#[allow(dead_code)]
 pub async fn product_by_id(pool: &PgPool, id: Uuid) -> AppResult<Option<ProductRow>> {
     let sql = format!("{PRODUCT_SELECT} WHERE p.id = $1");
     Ok(sqlx::query_as::<_, ProductRow>(AssertSqlSafe(sql)).bind(id).fetch_optional(pool).await?)
@@ -70,7 +69,22 @@ pub async fn products_by_ids(pool: &PgPool, ids: &[Uuid]) -> AppResult<Vec<Produ
     Ok(out)
 }
 
+/// Витрина (главная): только товары в продаже.
 pub async fn products_where(pool: &PgPool, where_sql: &str, limit: i64) -> AppResult<Vec<ProductRow>> {
-    let sql = format!("{PRODUCT_SELECT} WHERE {where_sql} LIMIT {limit}");
+    let sql = format!("{PRODUCT_SELECT} WHERE p.is_active AND {where_sql} LIMIT {limit}");
     Ok(sqlx::query_as::<_, ProductRow>(AssertSqlSafe(sql)).fetch_all(pool).await?)
+}
+
+/// Число товаров в продаже в каждом разделе вместе с подразделами (после импорта, снятия с продажи).
+pub async fn recount_categories(conn: &mut PgConnection) -> AppResult<()> {
+    sqlx::query(
+        r#"WITH direct AS (SELECT category_id, count(*) AS n FROM products WHERE is_active GROUP BY category_id),
+                counted AS (SELECT c.id, COALESCE((SELECT sum(d.n) FROM direct d JOIN categories pc ON pc.id = d.category_id
+                                                   WHERE pc.path = c.path OR pc.path LIKE c.path || '/%'), 0)::int AS n
+                            FROM categories c)
+           UPDATE categories c SET product_count = counted.n FROM counted WHERE counted.id = c.id AND c.product_count <> counted.n"#,
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
 }

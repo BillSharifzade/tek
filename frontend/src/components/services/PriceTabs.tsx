@@ -5,7 +5,7 @@ import { cn } from "@/lib/cn";
 import type { PriceTab } from "./types";
 import { IconTruck, IconWarnTriangle } from "./icons";
 import { RequestButton } from "./RequestButton";
-import { FADE_X_BELOW_LG, useScrollFade } from "@/components/layout/ScrollFade";
+import { FADE_X, useScrollFade } from "@/components/layout/ScrollFade";
 
 /**
  * Блок «Прайс» (Figma 10922:4174 и табы 10957:2695 / 10958:2057 / 10961:2097 / 10966:2173):
@@ -22,8 +22,9 @@ export function PriceTabs({ tabs, subject }: { tabs: PriceTab[]; subject: string
 
   return (
     <div className="relative">
+      {/* на 1024–1279 левая колонка уже 698px — полоса ограничена ею (до карточки 417 + 24) и листается */}
       {multi ? (
-        <div ref={stripRef} className={cn(FADE_X_BELOW_LG, "scrollbar-none -mx-4 mb-8 overflow-x-auto px-4 lg:absolute lg:left-0 lg:top-0 lg:z-10 lg:mx-0 lg:mb-0 lg:overflow-visible lg:px-0")}>
+        <div ref={stripRef} className={cn(FADE_X, "scrollbar-none -mx-4 mb-8 overflow-x-auto px-4 lg:absolute lg:left-0 lg:right-[441px] lg:top-0 lg:z-10 lg:mx-0 lg:mb-0 lg:px-0 xl:right-auto xl:overflow-visible")}>
           <div role="tablist" aria-label="Виды работ" className="flex h-[41px] w-max gap-[4px] rounded-[10px] bg-btn p-[4px] lg:min-w-[698px]">
             {tabs.map((t) => {
               const on = t.id === activeId;
@@ -73,12 +74,13 @@ export function PriceTabs({ tabs, subject }: { tabs: PriceTab[]; subject: string
 function Panel({ tab, multi, subject }: { tab: PriceTab; multi: boolean; subject: string }) {
   const textOnly = Boolean(tab.text) && !tab.groups;
   return (
-    <div className="flex flex-col gap-10 lg:flex-row lg:items-start lg:justify-between lg:gap-0">
+    <div className="flex flex-col gap-10 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
       <div className={cn("min-w-0 lg:w-[698px]", multi && "lg:pt-[41px]")}>
         <h2
           className={cn(
             "text-[26px] font-semibold leading-[30px] text-black lg:text-[32px] lg:leading-[22px]",
-            multi && (textOnly ? "lg:mt-[35px]" : "lg:mt-[38px]"),
+            // «Ремонт» (10966:2173): заголовок на 75px от верха меню, остальные табы — на 79 (10922:4174)
+            multi && (textOnly ? "lg:mt-[34px]" : "lg:mt-[38px]"),
           )}
         >
           {tab.title}
@@ -102,7 +104,7 @@ function Panel({ tab, multi, subject }: { tab: PriceTab; multi: boolean; subject
           </div>
         ) : null}
 
-        {tab.text ? <p className="mt-6 text-[16px] leading-[30px] text-g333 lg:mt-[33px]">{tab.text}</p> : null}
+        {tab.text ? <p className="mt-6 text-[16px] leading-[30px] text-g333 lg:mt-[34px]">{tab.text}</p> : null}
 
         {tab.html ? <div className="prose-tek mt-6 lg:mt-[33px]" dangerouslySetInnerHTML={{ __html: tab.html }} /> : null}
 
@@ -113,7 +115,7 @@ function Panel({ tab, multi, subject }: { tab: PriceTab; multi: boolean; subject
               tab.itemSize === 14 ? "mt-[27px]" : "mt-[26px]",
             )}
           >
-            <IconWarnTriangle className="absolute left-[17px] top-[12px]" />
+            <IconWarnTriangle className="absolute left-[17px] top-[13px]" />
             <span aria-hidden className="absolute left-[28px] top-[19px] w-[4px] text-center text-[12px] font-semibold leading-[12px] text-sale-text">
               !
             </span>
@@ -147,7 +149,7 @@ function PriceCard({ tab, subject }: { tab: PriceTab; subject: string }) {
         ))}
       </dl>
 
-      <div className="relative mt-[27px] rounded-[7px] bg-[#F4EFFE] pb-[14.5px] pl-[20px] pr-3 pt-[9.5px] text-[15px] text-[#313033]">
+      <div className="relative mt-[27px] rounded-[7px] bg-[#F4EFFE] pb-[13.5px] pl-[20px] pr-3 pt-[9.5px] text-[15px] text-[#313033]">
         <IconTruck className="absolute left-[21px] top-[13px]" />
         <p className="pl-[30px] font-medium leading-[28px]">{tab.visit.title}</p>
         <div className="mt-[2px]">

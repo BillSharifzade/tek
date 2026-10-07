@@ -27,7 +27,7 @@ export function MoreButton({ onClick, loading, className }: { onClick: () => voi
 /**
  * «Комплектующие» на странице товара (Figma 8612:316): чипсы-группы 39px (первая/активная — жёлтая,
  * остальные #EEF0F2, r5, 14/20 #333, через 11px), под ними ряд компактных карточек 216×421
- * (5 в ряд, шаг 229.5 — x = 0 / 230 / 459 / 689 …, на 18px ниже чипсов) и «Еще» через 32px.
+ * (5 в ряд, шаг 229.5 — x = 0 / 230 / 459 / 689 …, на 18px ниже чипсов) и «Еще» через 32px (x=488 на десктопе).
  */
 export function ProductAccessories({ items }: { items: Accessory[] }) {
   const groups = useMemo(() => {
@@ -45,7 +45,7 @@ export function ProductAccessories({ items }: { items: Accessory[] }) {
 
   return (
     <div>
-      <div role="tablist" className="mt-[28px] flex flex-wrap gap-[11px]">
+      <div role="tablist" className="mt-[29px] flex flex-wrap gap-[11px]">
         {groups.map(([g]) => {
           const on = g === current[0];
           return (
@@ -75,7 +75,8 @@ export function ProductAccessories({ items }: { items: Accessory[] }) {
           </li>
         ))}
       </ul>
-      {products.length > ROW && !expanded ? <MoreButton className="mx-auto mt-[32px]" onClick={() => setExpanded(true)} /> : null}
+      {/* в макете «Еще» стоит на x=615 (488 от края колонки), а не по центру ряда карточек */}
+      {products.length > ROW && !expanded ? <MoreButton className="mx-auto mt-[32px] xl:ml-[488px]" onClick={() => setExpanded(true)} /> : null}
     </div>
   );
 }

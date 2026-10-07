@@ -23,9 +23,11 @@ const VISIBLE = 5;
 const OPEN_ATTRS = 3;
 
 /*
- * Панель фильтров по макету «Каталог» (10683:1085): колонка 240px, секции «^ Заголовок» (Bold 14, #000),
- * чекбоксы 18×18 (обводка #697389, r=2) с подписью Regular 14 #666 «Значение (N)», шаг 25px;
- * цвета — кружок 16px (шаг 27px); «Показать все…» Bold 14 #1C3697; бренды — пилюли #F0F2F4 h=32 r=6.
+ * Панель фильтров по макету «Каталог» (10683:1085, скриншот 240×614 в x=127): секции «^ Заголовок» (Bold 14, #000),
+ * чекбоксы 18×18 (обводка #697389, r=2) с подписью Regular 14 #666 «Значение (N)», шаг 25px
+ * (заглавные подписи — 3…13px от верха строки); цвета — кружок 16px (шаг 27px); «Показать все…» Bold 14 #1C3697;
+ * бренды — пилюли h=32 r=6 (в макете #F0F2F4, по палитре ТЗ #EEF0F2 → hover #D9DDE3).
+ * На телефоне/планшете панель сворачивает FiltersToggle в CatalogShell — собственной кнопки здесь нет.
  */
 
 function Section({ title, defaultOpen = true, children, className }: { title: string; defaultOpen?: boolean; children: React.ReactNode; className?: string }) {
@@ -34,7 +36,7 @@ function Section({ title, defaultOpen = true, children, className }: { title: st
     <section className={cn("pb-[42px]", className)}>
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="group flex h-[16px] w-full items-center text-left">
         <IconChevron className={cn("relative -top-[2px] ml-[2px] shrink-0 text-sub transition-transform group-hover:text-black", !open && "rotate-180")} />
-        <span className="ml-[8px] text-[14px] font-bold leading-[16px] text-black">{title}</span>
+        <span className="relative -top-px ml-[8px] text-[14px] font-bold leading-[16px] text-black">{title}</span>
       </button>
       {open ? children : null}
     </section>
@@ -73,7 +75,7 @@ function CheckRow({
           style={{ background: swatch.color }}
         />
       ) : null}
-      <span className={cn("ml-[8px] mt-[1px] text-[14px] leading-[17px] text-sub transition-colors group-hover:text-black", checked && "text-black")}>{label}</span>
+      <span className={cn("ml-[8px] text-[14px] leading-[17px] text-sub transition-colors group-hover:text-black", checked && "text-black")}>{label}</span>
     </label>
   );
 }
@@ -81,7 +83,7 @@ function CheckRow({
 /** «Показать все…» / «Свернуть» — Bold 14 #1C3697. */
 function ShowAll({ expanded, onClick }: { expanded: boolean; onClick: () => void }) {
   return (
-    <button type="button" onClick={onClick} className="mb-[2px] mt-[13px] block h-[16px] text-[14px] font-bold leading-[16px] text-link link-hover">
+    <button type="button" onClick={onClick} className="mb-[3px] mt-[12px] block h-[16px] text-[14px] font-bold leading-[16px] text-link link-hover">
       {expanded ? "Свернуть" : "Показать все…"}
     </button>
   );
@@ -202,7 +204,6 @@ export function Filters({ subcategories, brands, filters, priceRange, hideBrands
   const pathname = usePathname();
   const sp = useSearchParams();
   const [pending, startTransition] = useTransition();
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [allBrands, setAllBrands] = useState(false);
 
   const navigate = (mutate: (p: URLSearchParams) => void) => {
@@ -242,17 +243,7 @@ export function Filters({ subcategories, brands, filters, priceRange, hideBrands
 
   return (
     <aside className={cn("w-full lg:w-[240px]", className)} aria-label="Фильтры">
-      <button
-        type="button"
-        onClick={() => setMobileOpen((v) => !v)}
-        aria-expanded={mobileOpen}
-        className="flex h-[32px] w-full items-center justify-center gap-[8px] rounded-[5px] bg-field text-[13px] leading-[12px] text-black transition-colors hover:bg-btn-hover lg:hidden"
-      >
-        Фильтры{activeCount > 0 ? ` (${activeCount})` : ""}
-        <IconChevron className={cn("transition-transform", !mobileOpen && "rotate-180")} />
-      </button>
-
-      <div className={cn("mt-[20px] lg:mt-0 lg:block", mobileOpen ? "block" : "hidden", pending && "opacity-60 transition-opacity")}>
+      <div className={cn(pending && "opacity-60 transition-opacity")}>
         {subcategories && subcategories.length > 0 ? (
           <Section title="Категории">
             <ul className="mt-[18px] flex flex-col gap-[7px]">
@@ -291,7 +282,7 @@ export function Filters({ subcategories, brands, filters, priceRange, hideBrands
                       onClick={() => toggleMulti("brand", b.slug)}
                       className={cn(
                         "h-[32px] rounded-[6px] px-[13px] text-[14px] leading-[16px] text-g333 transition-colors",
-                        on ? "bg-brand text-black hover:bg-brand-hover" : "bg-field hover:bg-btn-hover",
+                        on ? "bg-brand text-black hover:bg-brand-hover" : "bg-btn hover:bg-btn-hover",
                       )}
                     >
                       {b.name}
@@ -338,7 +329,7 @@ export function Filters({ subcategories, brands, filters, priceRange, hideBrands
           <button
             type="button"
             onClick={reset}
-            className="mb-[42px] h-[32px] w-full rounded-[5px] bg-field text-[13px] leading-[12px] text-black transition-colors hover:bg-btn-hover"
+            className="mb-[42px] h-[32px] w-full rounded-[5px] bg-btn text-[13px] leading-[12px] text-black transition-colors hover:bg-btn-hover"
           >
             Сбросить фильтры ({activeCount})
           </button>

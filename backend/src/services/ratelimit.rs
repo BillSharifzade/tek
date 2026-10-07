@@ -29,6 +29,7 @@ const RULES: &[(Method, &str, Match, u32, u64)] = &[
     (Method::POST, "/leads", Match::Exact, 5, 600),
     (Method::POST, "/checkout", Match::Exact, 10, 600),
     (Method::POST, "/cart/share", Match::Exact, 20, 600),
+    (Method::POST, "/cart/coupon", Match::Exact, 20, 600),
     (Method::POST, "/reviews", Match::Suffix, 10, 600),
     (Method::POST, "/questions", Match::Suffix, 10, 600),
     (Method::POST, "/payments/", Match::Prefix, 30, 60),

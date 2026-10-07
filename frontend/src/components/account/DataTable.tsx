@@ -31,18 +31,18 @@ const hideCls = { sm: "max-sm:hidden", md: "max-md:hidden", lg: "max-lg:hidden" 
 export const cellPad = "px-[10px] py-[12px]";
 
 /**
- * Таблица ЛК (Figma 9097:650): без рамки, внутри белой карточки; шапка — обычный текст #000,
- * снизу линия #E5E5E5; строки разделены той же линией. На узких экранах — горизонтальный скролл.
+ * Таблица ЛК (Figma 9097:650): без рамки, внутри белой карточки; шапка — Regular 15/23 #000 с отступом 10px,
+ * линия #E5E5E5 в 31px от верха шапки; строки (15/20) разделены той же линией. На узких экранах — горизонтальный скролл.
  */
 export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, prepend, footer, className, dense }: DataTableProps<T>) {
   const pad = dense ? "px-[10px] py-[8px]" : cellPad;
   return (
     <div className={cn("-mx-[20px] overflow-x-auto px-[20px] sm:mx-0 sm:px-0", className)}>
-      <table className="w-full min-w-[640px] border-collapse text-[14px] leading-[20px]">
+      <table className="w-full min-w-[640px] border-collapse text-[15px] leading-[20px]">
         <thead>
           <tr className="border-b border-line text-black">
             {columns.map((c) => (
-              <th key={c.key} scope="col" className={cn("whitespace-nowrap px-[10px] pb-[9px] pt-0 font-normal leading-[22px]", alignCls[c.align ?? "left"], c.hideBelow && hideCls[c.hideBelow], c.className)}>
+              <th key={c.key} scope="col" className={cn("whitespace-nowrap px-[10px] pb-[8px] pt-0 font-normal leading-[23px]", alignCls[c.align ?? "left"], c.hideBelow && hideCls[c.hideBelow], c.className)}>
                 {c.header}
               </th>
             ))}
@@ -52,7 +52,7 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, prepend
           {prepend}
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="px-[10px] py-[40px] text-center text-sub">
+              <td colSpan={columns.length} className="px-[10px] py-[40px] text-center text-[#555]">
                 {empty ?? "Нет данных"}
               </td>
             </tr>

@@ -93,7 +93,7 @@ struct Facet {
     values: Vec<FacetValue>,
 }
 
-fn path_condition(qb: &mut QueryBuilder<Postgres>, path: &str) {
+pub(crate) fn path_condition(qb: &mut QueryBuilder<Postgres>, path: &str) {
     qb.push(" AND (c.path = ").push_bind(path.to_string()).push(" OR c.path LIKE ").push_bind(format!("{path}/%")).push(")");
 }
 
@@ -111,7 +111,7 @@ async fn category(State(state): State<AppState>, Path(slug): Path<String>, heade
             let brands = sqlx::query_as::<_, BrandFacet>(
                 r#"SELECT b.slug, b.name, count(*) AS count FROM products p
                    JOIN brands b ON b.id = p.brand_id JOIN categories c ON c.id = p.category_id
-                   WHERE (c.path = $1 OR c.path LIKE $1 || '/%') GROUP BY b.slug, b.name ORDER BY count DESC, b.name"#,
+                   WHERE p.is_active AND (c.path = $1 OR c.path LIKE $1 || '/%') GROUP BY b.slug, b.name ORDER BY count DESC, b.name"#,
             )
             .bind(&cat.path)
             .fetch_all(&state.pool)
@@ -119,7 +119,7 @@ async fn category(State(state): State<AppState>, Path(slug): Path<String>, heade
             let attrs = sqlx::query_as::<_, AttrFacetRow>(
                 r#"SELECT a->>'name' AS name, a->>'value' AS value, count(*) AS count
                    FROM products p JOIN categories c ON c.id = p.category_id, jsonb_array_elements(p.attributes) a
-                   WHERE (c.path = $1 OR c.path LIKE $1 || '/%') AND (a->>'name') NOT IN ('Артикул','Бренд')
+                   WHERE p.is_active AND (c.path = $1 OR c.path LIKE $1 || '/%') AND (a->>'name') NOT IN ('Артикул','Бренд')
                    GROUP BY 1, 2 ORDER BY 1, 3 DESC, 2"#,
             )
             .bind(&cat.path)
@@ -139,7 +139,7 @@ async fn category(State(state): State<AppState>, Path(slug): Path<String>, heade
                 .collect();
             let (min, max): (Option<Decimal>, Option<Decimal>) = sqlx::query_as(
                 r#"SELECT min(COALESCE(p.sale_price, p.list_price)), max(COALESCE(p.sale_price, p.list_price))
-                   FROM products p JOIN categories c ON c.id = p.category_id WHERE (c.path = $1 OR c.path LIKE $1 || '/%')"#,
+                   FROM products p JOIN categories c ON c.id = p.category_id WHERE p.is_active AND (c.path = $1 OR c.path LIKE $1 || '/%')"#,
             )
             .bind(&cat.path)
             .fetch_one(&state.pool)
@@ -190,7 +190,7 @@ struct Listing {
 }
 
 /// Условие поиска: каждое слово (в любом из вариантов основы) встречается в нормализованном тексте товара.
-fn push_search(qb: &mut QueryBuilder<Postgres>, text: &str, haystack: &str) {
+pub(crate) fn push_search(qb: &mut QueryBuilder<Postgres>, text: &str, haystack: &str) {
     for alts in search::terms(text) {
         qb.push(" AND (FALSE");
         for t in alts {
@@ -206,7 +206,8 @@ async fn run_listing(state: &AppState, q: &HashMap<String, String>, ctx: &PriceC
     let per_page: i64 = q.get("per_page").and_then(|v| v.parse().ok()).unwrap_or(24).clamp(1, 100);
     let select = PRODUCT_SELECT.replacen("SELECT ", "SELECT count(*) OVER() AS total, ", 1);
     let mut qb = QueryBuilder::<Postgres>::new(select);
-    qb.push(" WHERE TRUE");
+    // снятые с продажи товары (is_active = false) на витрине не показываются
+    qb.push(" WHERE p.is_active");
     if let Some(cat) = q.get("category").filter(|s| !s.is_empty()) {
         let path: Option<String> = sqlx::query_scalar("SELECT path FROM categories WHERE slug = $1").bind(cat).fetch_optional(&state.pool).await?;
         match path {
@@ -397,7 +398,8 @@ async fn build_product(state: &AppState, p: &ProductRow, ctx: &PriceCtx) -> AppR
     };
     let pack = match (p.pack_qty, &p.pack_label) {
         (Some(q), Some(l)) => Some(json!({ "qty": q, "label": l })),
-        (Some(q), None) => Some(json!({ "qty": q, "label": format!("{q} {}", p.unit) })),
+        // без подписи (товары из импорта) — «100 м», а не «100.000 м»
+        (Some(q), None) => Some(json!({ "qty": q, "label": format!("{} {}", q.normalize(), p.unit) })),
         _ => None,
     };
     Ok(ProductJson {
@@ -426,13 +428,13 @@ async fn product(State(state): State<AppState>, OptionalUser(user): OptionalUser
         None => {
             state
                 .cached_json(format!("product:{slug}"), &headers, |state| async move {
-                    let p = product_by_slug(&state.pool, &slug).await?.ok_or_else(|| AppError::not_found("Товар не найден"))?;
+                    let p = product_by_slug(&state.pool, &slug).await?.filter(|p| p.is_active).ok_or_else(|| AppError::not_found("Товар не найден"))?;
                     build_product(&state, &p, &PriceCtx::anonymous()).await
                 })
                 .await
         }
         Some(u) => {
-            let p = product_by_slug(&state.pool, &slug).await?.ok_or_else(|| AppError::not_found("Товар не найден"))?;
+            let p = product_by_slug(&state.pool, &slug).await?.filter(|p| p.is_active).ok_or_else(|| AppError::not_found("Товар не найден"))?;
             let ctx = PriceCtx::for_user(&state.pool, &u).await?;
             Ok(Json(build_product(&state, &p, &ctx).await?).into_response())
         }
@@ -713,7 +715,7 @@ async fn suggest(State(state): State<AppState>, OptionalUser(user): OptionalUser
     }
     let ctx = PriceCtx::for_optional(&state.pool, user.as_deref()).await?;
     let mut qb = QueryBuilder::<Postgres>::new(PRODUCT_SELECT);
-    qb.push(" WHERE TRUE");
+    qb.push(" WHERE p.is_active");
     push_search(&mut qb, &text, "p.name || ' ' || p.code || ' ' || COALESCE(b.name, '') || ' ' || c.name");
     qb.push(" ORDER BY (p.code = ").push_bind(text.clone()).push(") DESC, p.popularity DESC LIMIT 5");
     let rows: Vec<ProductRow> = qb.build_query_as().fetch_all(&state.pool).await?;

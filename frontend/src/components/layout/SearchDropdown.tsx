@@ -177,14 +177,14 @@ export function SearchDropdown({
                     <Link
                       href={`/product/${p.slug}`}
                       {...opt(prodBase + k)}
-                      className="flex gap-[14px] rounded-[8px] px-[4px] py-[10px] transition-colors hover:bg-surface data-[active]:bg-surface"
+                      className="group flex gap-[14px] rounded-[8px] px-[4px] py-[10px] transition-colors hover:bg-surface data-[active]:bg-surface"
                     >
                       <ImageBox src={p.image} alt="" label={p.name} className="size-[56px] shrink-0" sizes="56px" rounded="rounded-[6px]" />
                       <span className="min-w-0 flex-1">
                         <span className="block text-[13px] leading-[16px] text-muted">
                           Код: <span className="text-g333 tnum">{p.code}</span>
                         </span>
-                        <span className="mt-[3px] line-clamp-2 text-[14px] leading-[18px] text-g333">{p.name}</span>
+                        <span className="mt-[3px] line-clamp-2 text-[14px] leading-[18px] text-g333 transition-colors group-hover:text-black group-data-[active]:text-black">{p.name}</span>
                         <span className="mt-[4px] flex items-baseline gap-[8px]">
                           <span className="text-[15px] font-bold leading-[18px] text-black tnum">{money(p.price)}</span>
                           {p.in_stock ? null : <span className="text-[12px] leading-[15px] text-muted">нет в наличии</span>}

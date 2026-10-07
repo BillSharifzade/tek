@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { DataTable, cellPad, type Column } from "./DataTable";
 import { PeriodFilter, periodFromParams, periodKey, type Period } from "./PeriodFilter";
-import { Card, CardTitle, ErrorLine, errorMessage } from "./shared";
+import { Card, CardTitle, ErrorLine, btnCls, errorMessage, labelCls } from "./shared";
 
 type Entry = ReconciliationEntry & { doc_type_label?: string; note?: string | null; due_date?: string | null };
 type Statement = Reconciliation & { entries: Entry[]; company?: string; overdue?: number };
@@ -105,31 +105,32 @@ export function BalanceView() {
 
   return (
     <div className="flex flex-col gap-[16px] lg:gap-[27px]">
+      {/* как «Баланс» в 9085:497: колонки с шагом 257px, подпись 15/20 #555, через 6px сумма Bold 17/20 */}
       <Card className="lg:min-h-[167px]">
         <CardTitle>Баланс</CardTitle>
         {loaded ? (
-          <div className="mt-[21px] grid grid-cols-1 gap-[16px] sm:grid-cols-[repeat(2,minmax(0,257px))_minmax(0,1fr)] sm:gap-[20px]">
+          <div className="mt-[21px] grid grid-cols-1 gap-[16px] sm:grid-cols-[257px_minmax(0,1fr)] sm:gap-x-0 xl:grid-cols-[257px_257px_minmax(0,1fr)]">
             <div className="flex flex-col gap-[6px]">
-              <span className="text-[14px] leading-[20px] text-sub">Дебиторская задолженность</span>
-              <span className="text-[18px] font-bold leading-[22px] tnum">{money(receivable)}</span>
+              <span className={labelCls}>Дебиторская задолженность</span>
+              <span className="text-[17px] font-bold leading-[20px] tnum">{money(receivable)}</span>
             </div>
             <div className="flex flex-col gap-[6px]">
-              <span className="text-[14px] leading-[20px] text-sub">Просроченная задолженность</span>
-              <span className={cn("text-[18px] font-bold leading-[22px] tnum", overdue > 0 ? "text-[#D13B3E]" : "text-black")}>{money(overdue)}</span>
+              <span className={labelCls}>Просроченная задолженность</span>
+              <span className={cn("text-[17px] font-bold leading-[20px] tnum", overdue > 0 ? "text-[#D13B3E]" : "text-black")}>{money(overdue)}</span>
             </div>
-            <p className="self-end text-[13px] leading-[18px] text-muted">
+            <p className="text-[13px] leading-[18px] text-muted sm:col-span-2 xl:col-span-1 xl:self-end">
               {overdue > 0 ? "Оплатите просроченную задолженность, чтобы сохранить персональные условия." : "Просроченной задолженности нет."}
             </p>
           </div>
         ) : (
-          <Skeleton className="mt-[21px] h-[48px] rounded-[10px]" />
+          <Skeleton className="mt-[21px] h-[48px] rounded-[7px]" />
         )}
       </Card>
 
       <Card>
         <CardTitle
           right={
-            <Button variant="secondary" icon={<Download className="size-4" aria-hidden />} loading={downloading} onClick={download} disabled={!data}>
+            <Button variant="secondary" className={btnCls} icon={<Download className="size-4" aria-hidden />} loading={downloading} onClick={download} disabled={!data}>
               Скачать в Excel
             </Button>
           }
@@ -138,9 +139,9 @@ export function BalanceView() {
         </CardTitle>
         <PeriodFilter key={key} value={period} onApply={apply} busy={busy && result !== null} className="mt-[22px]" />
         <ErrorLine error={error} className="mt-[20px]" />
-        <div className="mt-[37px]">
+        <div className="mt-[38px]">
           {data === null && !error ? (
-            <Skeleton className="h-[200px] rounded-[10px]" />
+            <Skeleton className="h-[200px] rounded-[7px]" />
           ) : data ? (
             <DataTable
               columns={columns}
@@ -149,7 +150,7 @@ export function BalanceView() {
               empty="За выбранный период движений нет"
               prepend={
                 <tr className="border-b border-line bg-surface-2">
-                  <td colSpan={5} className={cn(cellPad, "text-sub")}>
+                  <td colSpan={5} className={cn(cellPad, "text-[#555]")}>
                     Сальдо на {date(data.period.from)}
                   </td>
                   <td className={cn(cellPad, "text-right font-medium tnum")}>{moneyBare(data.opening_balance)}</td>
@@ -158,7 +159,7 @@ export function BalanceView() {
               footer={
                 <>
                   <tr className="border-b border-line">
-                    <td colSpan={3} className={cn(cellPad, "text-sub")}>
+                    <td colSpan={3} className={cn(cellPad, "text-[#555]")}>
                       Обороты за период
                     </td>
                     <td className={cn(cellPad, "text-right tnum")}>{moneyBare(data.turnover.debit)}</td>

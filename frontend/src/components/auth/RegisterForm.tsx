@@ -5,6 +5,7 @@ import { CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
 import { passwordValid } from "@/lib/password";
+import { isValidPhone, PHONE_ERROR, phoneInputProps } from "@/lib/phone";
 import { cn } from "@/lib/cn";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Input";
@@ -12,10 +13,11 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { PasswordRules } from "./PasswordRules";
 import { AuthAlert } from "./AuthShell";
 
-const TYPES: { value: "retail" | "electrician" | "purchaser"; label: string; hint: string }[] = [
-  { value: "retail", label: "Физическое лицо", hint: "Розница" },
-  { value: "electrician", label: "Электрик", hint: "B2B / B2C, средний и крупный опт" },
-  { value: "purchaser", label: "Закупщик", hint: "B2B, средний и крупный опт" },
+type CustomerType = "retail" | "legal";
+
+const TYPES: { value: CustomerType; label: string }[] = [
+  { value: "retail", label: "Физическое лицо" },
+  { value: "legal", label: "Юридическое лицо" },
 ];
 
 interface State {
@@ -25,8 +27,7 @@ interface State {
   phone: string;
   password: string;
   password2: string;
-  customer_type: "retail" | "electrician" | "purchaser";
-  withCompany: boolean;
+  customer_type: CustomerType;
   company_name: string;
   inn: string;
   address: string;
@@ -44,7 +45,6 @@ export function RegisterForm() {
     password: "",
     password2: "",
     customer_type: "retail",
-    withCompany: false,
     company_name: "",
     inn: "",
     address: "",
@@ -65,12 +65,12 @@ export function RegisterForm() {
     const e: Errors = {};
     if (!s.first_name.trim()) e.first_name = "Укажите имя";
     if (!s.last_name.trim()) e.last_name = "Укажите фамилию";
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email.trim())) e.email = "Укажите корректный e-mail";
-    if (!/^\+?\d[\d\s()-]{6,}$/.test(s.phone.trim())) e.phone = "Укажите корректный телефон";
+    // e-mail не обязателен (вход — по телефону); если указан — проверяем формат
+    if (s.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email.trim())) e.email = "Укажите корректный e-mail";
+    if (!isValidPhone(s.phone)) e.phone = PHONE_ERROR;
     if (!passwordValid(s.password, s.email)) e.password = "Пароль не соответствует требованиям";
     if (s.password !== s.password2) e.password2 = "Пароли не совпадают";
-    const needCompany = s.withCompany || s.customer_type === "purchaser";
-    if (needCompany) {
+    if (s.customer_type === "legal") {
       if (!s.company_name.trim()) e.company_name = "Укажите наименование";
       if (!/^\d{9,12}$/.test(s.inn.trim())) e.inn = "ИНН: 9–12 цифр";
       if (!s.address.trim()) e.address = "Укажите адрес";
@@ -85,13 +85,13 @@ export function RegisterForm() {
     setServerError(null);
     if (!validate()) return;
     setBusy(true);
-    const needCompany = s.withCompany || s.customer_type === "purchaser";
+    const needCompany = s.customer_type === "legal";
     try {
       await api("/auth/register", {
         method: "POST",
         body: {
-          email: s.email.trim(),
-          phone: s.phone.trim(),
+          email: s.email.trim() || undefined,
+          phone: s.phone,
           password: s.password,
           first_name: s.first_name.trim(),
           last_name: s.last_name.trim(),
@@ -114,7 +114,7 @@ export function RegisterForm() {
         <CheckCircle2 className="size-[56px] text-[#00BA00]" strokeWidth={1.5} aria-hidden />
         <h2 className="mt-[16px] text-[20px] font-semibold leading-[24px]">Заявка отправлена на одобрение</h2>
         <p className="mt-[8px] max-w-[420px] text-[14px] leading-[20px] text-sub">
-          Регистрация новых аккаунтов проходит через одобрение компании. Как только доступ будет открыт, мы сообщим на <span className="font-medium text-black">{s.email}</span>.
+          Регистрация новых аккаунтов проходит через одобрение компании. Как только доступ будет открыт, мы сообщим {s.email.trim() ? "на" : "по телефону"} <span className="font-medium text-black">{s.email.trim() || s.phone}</span>.
         </p>
         <ButtonLink href="/" className="mt-[24px]">
           На главную
@@ -123,7 +123,7 @@ export function RegisterForm() {
     );
   }
 
-  const needCompany = s.withCompany || s.customer_type === "purchaser";
+  const needCompany = s.customer_type === "legal";
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-[20px]">
@@ -131,7 +131,7 @@ export function RegisterForm() {
 
       <div>
         <p className="mb-[8px] text-[14px] leading-[18px] text-sub">Тип клиента</p>
-        <div className="grid grid-cols-1 gap-[9px] sm:grid-cols-3" role="radiogroup" aria-label="Тип клиента">
+        <div className="grid grid-cols-1 gap-[9px] sm:grid-cols-2" role="radiogroup" aria-label="Тип клиента">
           {TYPES.map((t) => {
             const active = s.customer_type === t.value;
             return (
@@ -147,7 +147,6 @@ export function RegisterForm() {
                 )}
               >
                 <span className="text-[14px] font-medium leading-[18px] text-black">{t.label}</span>
-                <span className="mt-[2px] text-[12px] leading-[15px] text-g333">{t.hint}</span>
               </button>
             );
           })}
@@ -161,11 +160,11 @@ export function RegisterForm() {
         <Field label="Фамилия" htmlFor="rg-last" required error={errors.last_name}>
           <Input id="rg-last" value={s.last_name} onChange={(e) => set("last_name", e.target.value)} invalid={Boolean(errors.last_name)} autoComplete="family-name" />
         </Field>
-        <Field label="E-mail" htmlFor="rg-email" required error={errors.email}>
+        <Field label="E-mail" htmlFor="rg-email" error={errors.email}>
           <Input id="rg-email" type="email" value={s.email} onChange={(e) => set("email", e.target.value)} invalid={Boolean(errors.email)} autoComplete="email" />
         </Field>
         <Field label="Номер телефона" htmlFor="rg-phone" required error={errors.phone}>
-          <Input id="rg-phone" type="tel" value={s.phone} onChange={(e) => set("phone", e.target.value)} invalid={Boolean(errors.phone)} placeholder="+992" autoComplete="tel" />
+          <Input id="rg-phone" {...phoneInputProps(s.phone, (v) => set("phone", v))} invalid={Boolean(errors.phone)} placeholder="+992" />
         </Field>
         <Field label="Пароль" htmlFor="rg-pass" required error={errors.password}>
           <Input
@@ -188,19 +187,9 @@ export function RegisterForm() {
         <PasswordRules password={s.password} userName={s.email} className="-mt-[8px] sm:col-span-2" />
       </div>
 
-      <div className="rounded-[10px] bg-surface-2 px-[16px] py-[14px]">
-        <Checkbox
-          checked={needCompany}
-          disabled={s.customer_type === "purchaser"}
-          onChange={(e) => set("withCompany", e.target.checked)}
-          label={
-            <span className="font-medium text-black">
-              Данные компании
-              {s.customer_type === "purchaser" ? <span className="ml-[6px] text-[13px] font-normal text-sub">(обязательно для закупщиков)</span> : null}
-            </span>
-          }
-        />
-        {needCompany ? (
+      {needCompany ? (
+        <div className="rounded-[10px] bg-surface-2 px-[16px] py-[14px]">
+          <p className="text-[14px] font-medium leading-[18px] text-black">Данные компании</p>
           <div className="mt-[14px] grid grid-cols-1 gap-x-[12px] gap-y-[14px] sm:grid-cols-2">
             <Field label="Наименование" htmlFor="rg-company" required error={errors.company_name} className="sm:col-span-2">
               <Input id="rg-company" value={s.company_name} onChange={(e) => set("company_name", e.target.value)} invalid={Boolean(errors.company_name)} placeholder="ООО «Компания»" autoComplete="organization" />
@@ -212,8 +201,8 @@ export function RegisterForm() {
               <Input id="rg-address" value={s.address} onChange={(e) => set("address", e.target.value)} invalid={Boolean(errors.address)} autoComplete="street-address" />
             </Field>
           </div>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
       <div>
         <Checkbox checked={s.agree} onChange={(e) => set("agree", e.target.checked)} className="items-start" label={<span className="text-[13px] leading-[18px] text-sub">Я согласен(а) на обработку персональных данных и с условиями обслуживания</span>} />

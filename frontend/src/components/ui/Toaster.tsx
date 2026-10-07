@@ -27,8 +27,9 @@ function icon(t: Toast) {
 }
 
 /**
- * Всплывающие сообщения — Figma «Инфа о товаре / Property 1=Default»:
- * 274×57, #FFCC33, r10, иконка слева (20px), текст Regular 15/24 чёрный с x=56.
+ * Всплывающие сообщения — Figma 10444:246 «Инфа о товаре / Property 1=Default / Variant2»:
+ * 274×57, #FFCC33, r10, иконка слева (сердце 22×20 с x=20, корзина 24×19.5 с x=19), текст Regular 15/24 чёрный
+ * с x=56 в блоке шириной 186 (справа 32px), сообщения друг под другом через 20px.
  */
 export function Toaster() {
   const toasts = useToast((s) => s.toasts);
@@ -38,7 +39,7 @@ export function Toaster() {
     <div className="pointer-events-none fixed right-4 top-[130px] z-[120] flex flex-col items-end gap-[20px]" aria-live="polite">
       {toasts.map((t) => {
         const cls = cn(
-          "pointer-events-auto flex min-h-[57px] w-[274px] max-w-[calc(100vw-32px)] items-center gap-[14px] rounded-[10px] py-[16px] pl-[20px] pr-[16px] text-[15px] leading-[24px] text-black animate-toast-in",
+          "pointer-events-auto flex min-h-[57px] w-[274px] max-w-[calc(100vw-32px)] items-center gap-[14px] rounded-[10px] py-[16px] pl-[20px] pr-[32px] text-[15px] leading-[24px] text-black animate-toast-in",
           t.kind === "error" ? "bg-sale-bg text-sale-text" : "bg-brand",
         );
         const body = (

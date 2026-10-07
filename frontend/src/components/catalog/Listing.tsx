@@ -34,6 +34,9 @@ export function CatalogTitle({ title, count, className }: { title: React.ReactNo
 /**
  * Сетка 4×N (ProductGrid cols=4, ряды через 82px) с разделителем #EBEDF8 посередине между рядами
  * (макет: линия 1018px на 523px ниже верха ряда; карточка — фиксированные 483px).
+ * Колонки макета: x 376 / 637 / 898 / 1159 — зазор ровно 35px (сетка 1009px в колонке 1010px), поэтому на xl зазор
+ * min(35px, (ширина − 4×226)/3) от левого края, а не justify-between (тот сдвигал 2–4-ю колонки на 0.3–1px вправо);
+ * в узком xl-окне (1280–1291px) зазор ужимается и сетка не вылезает за колонку.
  */
 export function ProductRows({ products, className }: { products: ProductCardT[]; className?: string }) {
   return (
@@ -43,7 +46,7 @@ export function ProductRows({ products, className }: { products: ProductCardT[];
         className="pointer-events-none absolute inset-y-0 left-0 hidden w-[calc(100%+8px)] xl:block"
         style={{ backgroundImage: "repeating-linear-gradient(to bottom, transparent 0 523px, #EBEDF8 523px 524px, transparent 524px 565px)" }}
       />
-      <ProductGrid products={products} cols={4} priorityCount={4} className="relative" />
+      <ProductGrid products={products} cols={4} priorityCount={4} className="relative xl:justify-start xl:gap-x-[min(35px,calc((100%_-_904px)/3))]" />
     </div>
   );
 }

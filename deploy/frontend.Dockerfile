@@ -12,7 +12,9 @@ COPY frontend/ .
 # встраиваются при сборке: подпуть сайта (пусто — корень домена) и адрес API для браузера (относительный — тот же домен)
 ARG NEXT_PUBLIC_BASE_PATH=
 ARG NEXT_PUBLIC_API_URL=/api/v1
-ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL NEXT_TELEMETRY_DISABLED=1
+# ключ Static API Яндекс.Карт (необязателен: без него — открытая версия 1.x)
+ARG NEXT_PUBLIC_YANDEX_MAPS_KEY=
+ENV NEXT_PUBLIC_BASE_PATH=$NEXT_PUBLIC_BASE_PATH NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL NEXT_PUBLIC_YANDEX_MAPS_KEY=$NEXT_PUBLIC_YANDEX_MAPS_KEY NEXT_TELEMETRY_DISABLED=1
 RUN bun run build
 
 FROM oven/bun:1-slim

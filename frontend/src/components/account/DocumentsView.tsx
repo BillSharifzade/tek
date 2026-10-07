@@ -11,7 +11,7 @@ import { useCart } from "@/store/cart";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { DataTable, type Column } from "./DataTable";
-import { Card, CardTitle, EmptyState, ErrorLine, apiPath, errorMessage } from "./shared";
+import { Card, CardTitle, EmptyState, ErrorLine, apiPath, btnCls, errorMessage } from "./shared";
 
 type Doc = AccountDocument & { id: string | number; kind_label?: string; note?: string | null; url: string | null; order_number?: string | null };
 
@@ -103,7 +103,7 @@ export function DocumentsView() {
             type="button"
             onClick={() => download(d)}
             disabled={downloadingId === String(d.id)}
-            className="inline-flex items-center gap-[6px] text-[14px] leading-[20px] text-sub transition-colors hover:text-black disabled:opacity-50"
+            className="inline-flex items-center gap-[6px] text-[15px] leading-[20px] text-[#555] transition-colors hover:text-black disabled:opacity-50"
           >
             <Download className="size-4" aria-hidden />
             {downloadingId === String(d.id) ? "Загрузка…" : "Скачать"}
@@ -120,7 +120,7 @@ export function DocumentsView() {
         <CardTitle>Документы</CardTitle>
         <ErrorLine error={error} className="mt-[20px]" />
         <div className="mt-[28px]">
-          {docs === null && !error ? <Skeleton className="h-[200px] rounded-[10px]" /> : docs ? <DataTable columns={columns} rows={docs} rowKey={(d) => String(d.id)} empty="Документов пока нет" /> : null}
+          {docs === null && !error ? <Skeleton className="h-[200px] rounded-[7px]" /> : docs ? <DataTable columns={columns} rows={docs} rowKey={(d) => String(d.id)} empty="Документов пока нет" /> : null}
         </div>
       </Card>
 
@@ -128,28 +128,29 @@ export function DocumentsView() {
         <CardTitle>Сохранённые сметы</CardTitle>
         <div className="mt-[21px]">
           {estimates === null ? (
-            error ? null : <Skeleton className="h-[120px] rounded-[10px]" />
+            error ? null : <Skeleton className="h-[120px] rounded-[7px]" />
           ) : estimates.length === 0 ? (
             <EmptyState>Сохраняйте корзину как смету кнопкой «Сохранить смету» — она появится здесь.</EmptyState>
           ) : (
             <ul className="flex flex-col divide-y divide-line border-y border-line">
               {estimates.map((e) => (
                 <li key={e.id} className="flex flex-wrap items-center gap-x-[16px] gap-y-[12px] py-[14px]">
-                  <span className="flex size-[44px] shrink-0 items-center justify-center rounded-[6px] bg-surface-2 text-black">
+                  <span className="flex size-[44px] shrink-0 items-center justify-center rounded-[7px] bg-surface-2 text-black">
                     <FileSpreadsheet className="size-[22px]" strokeWidth={1.6} aria-hidden />
                   </span>
                   <span className="min-w-[200px] flex-1">
-                    <span className="block text-[14px] font-medium leading-[20px]">{e.name}</span>
-                    <span className="block text-[13px] leading-[18px] text-sub tnum">
+                    <span className="block text-[15px] font-medium leading-[20px]">{e.name}</span>
+                    <span className="block text-[13px] leading-[18px] text-[#555] tnum">
                       {date(e.created_at)} · позиций: {e.items_count} · {money(e.total)}
                     </span>
                   </span>
                   <div className="flex gap-[10px]">
-                    <Button variant="secondary" loading={busyId === e.id} onClick={() => restore(e)}>
+                    <Button variant="secondary" className={btnCls} loading={busyId === e.id} onClick={() => restore(e)}>
                       Восстановить в корзину
                     </Button>
                     <Button
                       variant={armedId === e.id ? "danger" : "outline"}
+                      className={btnCls}
                       disabled={busyId === e.id}
                       onClick={() => (armedId === e.id ? void remove(e) : setArmedId(e.id))}
                       onBlur={() => setArmedId((id) => (id === e.id ? null : id))}

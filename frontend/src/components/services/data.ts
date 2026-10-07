@@ -180,9 +180,9 @@ const DGU: ServiceConfig = {
       { name: "Моторное масло", marks: [true, true, true, true, true, true, true, true, true] },
       { name: "Масляный фильтр", marks: [true, true, true, true, true, true, true, true, true] },
       { name: "Топливный фильтр тонкой очистки", marks: [false, true, true, true, true, true, true, true, true] },
-      { name: "Фильтр-сепаратор топлива", sup: "¹", marks: [false, true, true, true, true, true, true, true, true] },
-      { name: "Воздушный фильтр", sup: "²", marks: [false, false, true, false, true, false, true, false, true] },
-      { name: "Охлаждающая жидкость", sup: "³", marks: [false, false, false, false, true, false, false, false, true] },
+      { name: "Фильтр-сепаратор топлива", marks: [false, true, true, true, true, true, true, true, true] },
+      { name: "Воздушный фильтр", marks: [false, false, true, false, true, false, true, false, true] },
+      { name: "Охлаждающая жидкость", marks: [false, false, false, false, true, false, false, false, true] },
     ],
   },
   faq: [
@@ -575,13 +575,6 @@ export const SERVICE_CONFIGS: Record<string, ServiceConfig> = {
   [DESIGN.slug]: DESIGN,
 };
 
-/** Порядок и подписи плиток на /services (как на лендинге) */
-export const TILE_TEXT: Record<string, { title: string; text: string }> = {
-  "obsluzhivanie-dgu-ibp": { title: "Сервис центр генераторов", text: "Установка, обслуживание, диагностика и ремонт генераторов" },
-  "solnechnye-elektrostantsii": { title: "Солнечная энергетика", text: "Проектирование, комплектация и монтаж солнечных электростанций" },
-  "podderzhka-v-proektirovanii": { title: "Для проектировщиков", text: "Помощь в проектировании, чертежи, конфигураторы, обучение" },
-};
-
 // ─── услуги только из CMS: тот же шаблон, данные из /content/services/{slug} ─────────
 
 interface ApiService {
@@ -593,15 +586,10 @@ interface ApiService {
   image_url?: string | null;
 }
 
-const FALLBACK_HERO: Record<string, string> = {
-  "internet-magazin": "/figma/tray.webp",
-  konfiguratory: "/figma/tray-joint.webp",
-};
-
 export function configFromApi(s: ApiService): ServiceConfig {
   const img = s.image ?? s.image_url ?? null;
   const raster = img && /\.(webp|jpe?g|png|avif)$/i.test(img) ? img : null;
-  const hero = raster ?? FALLBACK_HERO[s.slug] ?? "/figma/hero-nurek.webp";
+  const hero = raster ?? "/figma/hero-nurek.webp";
   return {
     slug: s.slug,
     title: s.title,

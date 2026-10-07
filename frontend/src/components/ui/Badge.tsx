@@ -6,7 +6,8 @@ const styles: Record<BadgeKind | "discount", string> = {
   sale: "bg-sale-bg text-sale-text",
   hit: "bg-hit-bg text-hit",
   new: "bg-new-bg text-new",
-  discount: "bg-[#00ba00] text-white",
+  /** скидка — как плашка «-12%» в макете корзины (10757:5979): #0FB500, белый */
+  discount: "bg-[#0FB500] text-white",
 };
 
 export const BADGE_LABELS: Record<BadgeKind, string> = {

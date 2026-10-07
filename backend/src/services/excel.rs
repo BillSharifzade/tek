@@ -52,7 +52,7 @@ pub fn cart_estimate(company: Option<&str>, customer: &str, date: &str, cart: &C
     ws.set_column_width(7, 16)?;
 
     ws.merge_range(0, 0, 0, 7, "ООО «Точикэлектрокомплект» — смета", &s.title)?;
-    ws.merge_range(1, 0, 1, 7, "г. Душанбе, ул. Академика Акобира Адхамова 43 · +992 (44) 620 60 60 · info@tec.tj", &s.sub)?;
+    ws.merge_range(1, 0, 1, 7, "г. Душанбе, ул. Бохтар 37/1, офис 704 · +992 446 20 60 60 · sales@tec.tj", &s.sub)?;
     ws.write_string(3, 0, "Покупатель:")?;
     ws.write_string(3, 2, if let Some(c) = company { format!("{c} ({customer})") } else { customer.to_string() })?;
     ws.write_string(4, 0, "Дата:")?;
@@ -133,14 +133,14 @@ pub fn invoice(number: &str, date: &str, due: Option<&str>, buyer: &InvoiceBuyer
     if let Some(inn) = env("SELLER_INN") {
         info.push(("ИНН:", inn));
     }
-    info.push(("Адрес:", env("SELLER_ADDRESS").unwrap_or_else(|| "г. Душанбе, ул. Академика Акобира Адхамова 43".into())));
+    info.push(("Адрес:", env("SELLER_ADDRESS").unwrap_or_else(|| "г. Душанбе, ул. И. Сомони 68/13".into())));
     if let Some(bank) = env("SELLER_BANK") {
         info.push(("Банк:", bank));
     }
     if let Some(acc) = env("SELLER_ACCOUNT") {
         info.push(("Р/с:", acc));
     }
-    info.push(("Телефон:", "+992 (44) 620 60 60 · info@tec.tj".into()));
+    info.push(("Телефон:", "+992 446 20 60 60 · sales@tec.tj".into()));
     info.push(("", String::new()));
     info.push((
         "Покупатель:",

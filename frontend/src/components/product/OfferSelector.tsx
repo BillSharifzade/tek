@@ -18,7 +18,7 @@ const CHIP: Record<VariantOption["state"], string> = {
   other: "border border-dashed border-[#C5CAD3] px-[14.5px] text-[#78797A] hover:border-outline-hover hover:text-g333",
 };
 
-/** Свотч цвета 40×40: выбранный — жёлтая рамка, остальные — как кнопки. */
+/** Свотч цвета 40×40 (внутри квадрат 28×28 без скругления и обводки): выбранный — жёлтая рамка, остальные — как кнопки. */
 const SWATCH: Record<VariantOption["state"], string> = {
   active: "border border-brand",
   available: "border border-line-3 hover:border-outline-hover",
@@ -42,7 +42,7 @@ function hint(o: VariantOption, sides: string): string {
 
 /**
  * «Динамическое торговое предложение» (Figma) для товара с несколькими исполнениями, как у Петровича:
- * по каждой оси — подпись «Ширина, мм: 100» (14/15, #666 + #000) и кнопки значений под ней через 13px.
+ * по каждой оси — подпись «Ширина, мм: 100» (14/15, #666 + #000) и кнопки значений под ней через 13px; оси — через 26px.
  * Клик открывает соседнее исполнение (свой URL, код, фото, цена, остатки) без перезагрузки и прокрутки;
  * если нужного сочетания нет — ближайшее по остальным осям. Наведение/фокус заранее подгружают исполнение и его фото.
  */
@@ -66,7 +66,7 @@ export function OfferSelector({ product, className }: { product: Product; classN
   };
 
   return (
-    <div className={cn("flex flex-col gap-[20px]", className)}>
+    <div className={cn("flex flex-col gap-[26px]", className)}>
       {v.axes.map((axis, i) => {
         const isColor = /цвет/i.test(axis.name);
         return (
@@ -99,7 +99,7 @@ export function OfferSelector({ product, className }: { product: Product; classN
                     >
                       {colors.length > 0 ? (
                         <>
-                          <span className="flex size-[28px] overflow-hidden rounded-[2px] shadow-[inset_0_0_0_1px_rgba(0,0,0,0.14)] transition-opacity">
+                          <span className="flex size-[28px] overflow-hidden transition-opacity">
                             {colors.map((c) => (
                               <span key={c} className="h-full flex-1" style={{ background: c }} />
                             ))}

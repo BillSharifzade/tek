@@ -1,12 +1,13 @@
 import type { ApiErrorBody } from "./types";
 
+// `||`, а не `??`: пустая переменная из .env («API_URL=») означает «не задана»
 export const API_URL =
-  (typeof window === "undefined" ? process.env.API_URL : undefined) ??
-  process.env.NEXT_PUBLIC_API_URL ??
+  (typeof window === "undefined" ? process.env.API_URL : undefined) ||
+  process.env.NEXT_PUBLIC_API_URL ||
   "http://127.0.0.1:8181/api/v1";
 
 /** Адрес API для ссылок в HTML (скачивание документов): публичный, а не внутренний адрес контейнера. */
-export const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8181/api/v1";
+export const PUBLIC_API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8181/api/v1";
 
 /** Серверный рендер не ждёт зависший API дольше этого (браузерные запросы — без ограничения). */
 const SERVER_TIMEOUT_MS = 10_000;

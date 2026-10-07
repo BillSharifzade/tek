@@ -43,7 +43,7 @@ export function MobileNav() {
     { href: "/catalog", label: "Каталог", Icon: IconCatalog, count: 0, match: (p: string) => p.startsWith("/catalog") || p.startsWith("/product") || p.startsWith("/brands") },
     { href: hydrated && user ? "/account/favorites" : "/favorites", label: "Избранное", Icon: IconHeart, count: hydrated ? favCount : 0, match: (p: string) => p.startsWith("/account/favorites") || p === "/favorites" },
     { href: "/cart", label: "Корзина", Icon: IconBasket, count: hydrated ? cartCount : 0, match: (p: string) => p.startsWith("/cart") || p.startsWith("/checkout") },
-    { href: user ? "/account" : "/login", label: "Профиль", Icon: IconProfile, count: 0, match: (p: string) => (p.startsWith("/account") && !p.startsWith("/account/favorites")) || p === "/login" || p === "/register" },
+    { href: hydrated && user ? "/account" : "/login", label: "Профиль", Icon: IconProfile, count: 0, match: (p: string) => (p.startsWith("/account") && !p.startsWith("/account/favorites")) || p === "/login" || p === "/register" },
   ];
 
   return (

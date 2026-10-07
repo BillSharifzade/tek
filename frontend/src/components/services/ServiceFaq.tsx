@@ -4,7 +4,10 @@ import { useId, useState } from "react";
 import { cn } from "@/lib/cn";
 import { IconFaqCaret } from "./icons";
 
-/** Аккордеон (Figma «Вопросы» 10888:3805): 584×49, r6; открытый — #FFCC33, закрытые — #EEF0F2; ответ 16/24 #333. */
+/**
+ * Аккордеон (Figma «Вопросы» 10888:3805): 584×49, r6; открытый — #FFCC33, закрытые — #EEF0F2; ответ 16/24 #333.
+ * Вопрос 14/16 на 16px от верха: 16 + 16 + 17 = 49 ровно (кнопка центрирует содержимое, поэтому без «добивки» min-h).
+ */
 export function ServiceFaq({ items }: { items: { q: string; a: string }[] }) {
   const [open, setOpen] = useState<number | null>(0);
   const uid = useId();
@@ -20,7 +23,7 @@ export function ServiceFaq({ items }: { items: { q: string; a: string }[] }) {
               aria-controls={`${uid}-${i}`}
               onClick={() => setOpen(isOpen ? null : i)}
               className={cn(
-                "relative block min-h-[49px] w-full rounded-[6px] pb-[13px] pl-[16px] pr-[48px] pt-[16px] text-left text-[14px] font-bold leading-[16px] text-black transition-colors",
+                "relative block min-h-[49px] w-full rounded-[6px] pb-[17px] pl-[16px] pr-[48px] pt-[16px] text-left text-[14px] font-bold leading-[16px] text-black transition-colors",
                 isOpen ? "bg-brand hover:bg-brand-hover" : "bg-btn hover:bg-btn-hover",
               )}
             >

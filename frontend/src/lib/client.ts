@@ -1,6 +1,6 @@
 "use client";
 
-import { api, ApiError, type Query, type RequestOptions } from "./api";
+import { api, apiUrl, ApiError, toApiError, type Query, type RequestOptions } from "./api";
 import { readAuth, readCartToken, writeAuth, writeCartToken } from "./auth-storage";
 
 type Method = NonNullable<RequestOptions["method"]>;
@@ -86,6 +86,21 @@ export function rememberCartToken(token: string | null | undefined) {
   if (token && token !== readCartToken()) writeCartToken(token);
 }
 
+/** POST multipart/form-data (загрузка файлов) с тем же обновлением токена, что и у `client`. */
+export async function uploadForm<T>(path: string, form: FormData, query?: Query, retry = true): Promise<T> {
+  const auth = readAuth();
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (auth?.access) headers.Authorization = `Bearer ${auth.access}`;
+  const res = await fetch(apiUrl(path, query), { method: "POST", body: form, headers, cache: "no-store" });
+  if (res.status === 401 && auth && retry) {
+    const token = await refreshAccessToken();
+    if (token) return uploadForm<T>(path, form, query, false);
+  }
+  if (!res.ok) throw await toApiError(res);
+  const ct = res.headers.get("content-type") ?? "";
+  return (ct.includes("json") ? await res.json() : undefined) as T;
+}
+
 /** Download a file through fetch (so Authorization/X-Cart-Token headers are sent) and save it. */
 export async function downloadFile(path: string, filename: string, query?: Query): Promise<void> {
   const auth = readAuth();
@@ -93,7 +108,7 @@ export async function downloadFile(path: string, filename: string, query?: Query
   const headers: Record<string, string> = {};
   if (auth?.access) headers.Authorization = `Bearer ${auth.access}`;
   if (cartToken) headers["X-Cart-Token"] = cartToken;
-  const base = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8181/api/v1";
+  const base = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8181/api/v1";
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined && v !== null) sp.set(k, String(v));
   const s = sp.toString();

@@ -57,6 +57,9 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       CRM_WEBHOOK_URL: ${CRM_WEBHOOK_URL:-}
       ONEC_WEBHOOK_URL: ${ONEC_WEBHOOK_URL:-}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-ТЭК <noreply@tec.tj>}
+      MANAGER_NOTIFY_EMAIL: ${MANAGER_NOTIFY_EMAIL:-}
       TRUST_PROXY: "true"
       CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-forwarded-for}
       SELLER_NAME: ${SELLER_NAME:-}
@@ -79,6 +82,7 @@ services:
       args:
         NEXT_PUBLIC_BASE_PATH: ${BASE_PATH:-}
         NEXT_PUBLIC_API_URL: ${BASE_PATH:-}/api/v1
+        NEXT_PUBLIC_YANDEX_MAPS_KEY: ${YANDEX_MAPS_KEY:-}
     restart: unless-stopped
     environment:
       API_URL: http://tek-api:8181/api/v1

@@ -27,7 +27,7 @@ async fn list(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Re
         .cached_json("brands".to_string(), &headers, |state| async move {
             let rows = sqlx::query_as::<_, BrandListRow>(
                 r#"SELECT b.slug, b.name, b.logo_url, b.country_brand, b.country_origin, b.is_featured,
-                          (SELECT count(*) FROM products p WHERE p.brand_id = b.id) AS product_count
+                          (SELECT count(*) FROM products p WHERE p.brand_id = b.id AND p.is_active) AS product_count
                    FROM brands b ORDER BY b.sort, b.name"#,
             )
             .fetch_all(&state.pool)
@@ -57,7 +57,7 @@ async fn one(State(state): State<AppState>, Path(slug): Path<String>, headers: H
             let categories = sqlx::query_as::<_, BrandCategory>(
                 r#"SELECT c.slug, c.name, count(*) AS product_count
                    FROM products p JOIN categories c ON c.id = p.category_id
-                   WHERE p.brand_id = $1 GROUP BY c.slug, c.name ORDER BY product_count DESC, c.name"#,
+                   WHERE p.brand_id = $1 AND p.is_active GROUP BY c.slug, c.name ORDER BY product_count DESC, c.name"#,
             )
             .bind(brand.id)
             .fetch_all(&state.pool)

@@ -14,7 +14,7 @@ use crate::{
     models::ProductRow,
     services::{
         catalog::{products_by_ids, to_card},
-        outbox,
+        mail, outbox,
         pricing::PriceCtx,
     },
     state::AppState,
@@ -194,7 +194,7 @@ async fn stores(State(state): State<AppState>, headers: HeaderMap) -> AppResult<
     state
         .cached_json("stores".to_string(), &headers, |state| async move {
             let rows: Vec<Value> = sqlx::query_scalar(
-                "SELECT to_jsonb(t) FROM (SELECT id, city, name, address, phone, hours, delivery_hint FROM stores ORDER BY sort, id) t",
+                "SELECT to_jsonb(t) FROM (SELECT id, city, name, address, phone, hours, delivery_hint, lat, lon FROM stores ORDER BY sort, id) t",
             )
             .fetch_all(&state.pool)
             .await?;
@@ -262,6 +262,11 @@ async fn post_lead(State(state): State<AppState>, OptionalUser(user): OptionalUs
         "assignee": user.as_ref().and_then(|u| u.manager_id).map(|m| m.to_string()).unwrap_or_else(|| "lead_manager".into()),
     });
     outbox::enqueue(&mut tx, "crm", "lead.created", payload).await?;
+    // письмо менеджеру: закреплённому за клиентом → MANAGER_NOTIFY_EMAIL → лид-менеджеру
+    if let Some(to) = mail::manager_recipient(&mut tx, &state.cfg, user.as_ref().and_then(|u| u.manager_id)).await? {
+        let lead = mail::LeadMail { id, kind: &kind, name: &name, phone: &phone, email: email.as_deref(), note: &note, service: service.as_deref(), page: page.as_deref() };
+        mail::enqueue(&mut tx, "email.lead_new", mail::lead_manager(&state.cfg, to, &lead), None).await?;
+    }
     tx.commit().await?;
     Ok((StatusCode::CREATED, Json(json!({ "id": id, "created_at": created_at }))).into_response())
 }

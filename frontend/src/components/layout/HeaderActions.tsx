@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LayoutDashboard } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useHydrated } from "@/lib/hooks";
 import { useCart, selectCartCount } from "@/store/cart";
@@ -65,9 +66,22 @@ export function HeaderActions() {
   const cartCount = useCart(selectCartCount);
   const user = useAuth((s) => s.user);
   const pathname = usePathname();
+  const staff = hydrated && (user?.role === "manager" || user?.role === "admin");
 
   return (
     <nav aria-label="Пользователь" className="flex items-start">
+      {staff ? (
+        // только для менеджеров и администраторов (в макете пункта нет — клиенты видят шапку 1:1)
+        <Action
+          href="/admin"
+          label="Панель"
+          width={50}
+          iconTop={4}
+          icon={<LayoutDashboard className="size-[24px]" strokeWidth={1.5} aria-hidden />}
+          active={pathname.startsWith("/admin")}
+          className="mr-[22px] hidden sm:block"
+        />
+      ) : null}
       <Action
         href={hydrated && user ? "/account/favorites" : "/favorites"}
         label="Избранное"

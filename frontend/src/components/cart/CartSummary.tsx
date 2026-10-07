@@ -53,7 +53,7 @@ function CouponField({ onApply }: { onApply: (code: string) => Promise<unknown> 
         onChange={(e) => setCode(e.target.value)}
         placeholder="Купон или промокод"
         aria-label="Купон или промокод"
-        className="block h-full w-full rounded-[7px] border border-line-3 bg-white px-[12px] text-center text-[13px] uppercase leading-[24px] text-black outline-none transition-colors placeholder:normal-case placeholder:text-[#78797A] hover:border-outline focus:border-outline-hover"
+        className="block h-full w-full rounded-[7px] border border-line-3 bg-white px-[12px] pt-[2px] text-center text-[13px] uppercase leading-[24px] text-black outline-none transition-colors placeholder:normal-case placeholder:text-[#78797A] hover:border-outline focus:border-outline-hover"
       />
       {code.trim() ? (
         <button
@@ -108,7 +108,8 @@ export function CartSummary({ cart, deliveryPrice, onApplyCoupon, onRemoveCoupon
       </div>
 
       <p className={cn("mt-[19px] h-[20px] text-right text-[16px] font-medium leading-[20px] text-muted line-through tnum", before <= total + 0.004 && "invisible")}>{money(before)}</p>
-      <div className="-mx-[1px] flex h-[32px] items-start justify-between gap-3 border-b border-outline px-[1px] pt-[1px] text-[20px] font-bold leading-[25px] text-black tnum">
+      {/* Figma: «Итого» 20/700 — базовая линия @410 (глифы 396–409), линия Line 32 @420 */}
+      <div className="-mx-[1px] flex h-[32px] items-start justify-between gap-3 border-b border-outline px-[1px] pt-[2px] text-[20px] font-bold leading-[25px] text-black tnum">
         <span>Итого</span>
         <span className="whitespace-nowrap">{money(total)}</span>
       </div>
@@ -117,8 +118,9 @@ export function CartSummary({ cart, deliveryPrice, onApplyCoupon, onRemoveCoupon
 
       {cart.cashback_total > 0 ? (
         <div className="mt-[14px] flex h-[36px] items-center justify-center gap-[7px] rounded-[4px] bg-[#4938F8] text-[15px] font-semibold leading-[20px] text-white tnum">
-          <IconCashback className="shrink-0" />
-          Кэшбэк {money(cart.cashback_total)}
+          {/* Figma 10512:1816: иконка @+10 от верха плашки (на 1px выше центра), текст по центру */}
+          <IconCashback className="mb-[2px] shrink-0" />
+          Кешбэк {money(cart.cashback_total)}
         </div>
       ) : null}
 

@@ -23,7 +23,8 @@ import { asset } from "@/lib/asset";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 
-const actionCls = "link-hover flex items-center text-[14px] leading-[12px] text-sub disabled:pointer-events-none disabled:opacity-50";
+/** Действия над списком (Figma Group 54–57): строка 18px, иконка и текст по вертикали — как в макете (текст +4px). */
+const actionCls = "link-hover flex h-[18px] items-start text-[14px] leading-[12px] text-sub disabled:pointer-events-none disabled:opacity-50";
 
 function CartSkeleton() {
   return (
@@ -71,7 +72,7 @@ export function CartView() {
           <div className="mt-[27px] flex flex-col items-center rounded-[7px] bg-surface px-6 py-[56px] text-center">
             <p className="text-[20px] font-bold leading-[24px]">Корзина пуста</p>
             <p className="mt-[8px] max-w-[420px] text-[14px] leading-[20px] text-sub">
-              Найдите товар по коду или названию выше либо перейдите в каталог — персональные цены и кэшбэк рассчитаются автоматически.
+              Найдите товар по коду или названию выше либо перейдите в каталог — персональные цены и кешбэк рассчитаются автоматически.
             </p>
             <Link href="/catalog" className={cn(bigYellowBtn, "mt-[24px] w-auto px-[32px]")}>
               Перейти в каталог
@@ -127,7 +128,7 @@ export function CartView() {
     setBusy("save");
     try {
       await client.post("/cart/estimates", { name: name.trim() || `Смета от ${new Date().toLocaleDateString("ru-RU")}` });
-      toast.success("Смета сохранена", { actionLabel: "Мои сметы", actionHref: "/account/estimates" });
+      toast.success("Смета сохранена", { actionLabel: "Мои сметы", actionHref: "/account/documents#estimates" });
       setSaveOpen(false);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Не удалось сохранить смету");
@@ -151,27 +152,28 @@ export function CartView() {
               className="ml-[1px] hover:[&>span:last-child]:text-black"
             />
             <button type="button" disabled={!someSelected || loading} onClick={() => setConfirmDelete(true)} className={cn(actionCls, "ml-[21px] gap-[4px]")}>
-              <IconTrash className="shrink-0" />
-              <span className="mt-[2px]">Удалить выбранные ({selectedCount})</span>
+              <IconTrash className="mt-[2px] shrink-0" />
+              <span className="mt-[4px]">Удалить выбранные ({selectedCount})</span>
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-x-[18px] gap-y-2">
             <button type="button" onClick={exportXlsx} disabled={busy === "export"} className={cn(actionCls, "gap-[5px]")}>
-              <IconDownload className="mt-[2px] shrink-0" />
-              <span className="mt-[2px]">Скачать смету</span>
+              <IconDownload className="mt-[3px] shrink-0" />
+              <span className="mt-[4px]">Скачать смету</span>
             </button>
             <button
               type="button"
               onClick={() => (user ? setSaveOpen(true) : router.push("/login?next=/cart"))}
               title={user ? undefined : "Войдите, чтобы сохранить смету"}
-              className={cn(actionCls, "gap-[5px]")}
+              className={cn(actionCls, "ml-[1px] gap-[6px]")}
             >
-              <IconEstimate className="shrink-0" />
-              <span className="mt-[2px]">Сохранить смету</span>
+              {/* Figma Group 55 @710: иконка 14×14 (было 16×16 @709), текст @730 */}
+              <IconEstimate className="mt-[3px] shrink-0" />
+              <span className="mt-[4px]">Сохранить смету</span>
             </button>
             <button type="button" onClick={share} disabled={busy === "share"} className={cn(actionCls, "gap-[4px]")}>
-              <IconShare className="mt-[1px] shrink-0" />
-              <span className="mt-[2px]">Поделиться</span>
+              <IconShare className="mt-[3px] shrink-0" />
+              <span className="mt-[4px]">Поделиться</span>
             </button>
           </div>
         </div>
@@ -213,7 +215,7 @@ export function CartView() {
                 <Link href="/login?next=/cart" className="link-hover text-link">
                   Войдите
                 </Link>
-                , чтобы увидеть персональные цены и кэшбэк.
+                , чтобы увидеть персональные цены и кешбэк.
               </>
             ) : null
           }
