@@ -51,8 +51,8 @@ export function ShareCartModal({ url, onClose }: { url: string | null; onClose: 
 }
 
 /**
- * «Комплектующие» → модалка «Вам может понадобиться» (референс 10522:1969): панель справа,
- * жёлтая шапка, чипсы-категории (выбранная — жёлтая), сетка карточек товара.
+ * «Комплектующие» → модалка «Вам может понадобиться» (референс 10522:1969): жёлтая шапка, чипсы-категории
+ * (выбранная — жёлтая), сетка карточек товара. Доработки R3: мини-окно по центру экрана, как у Петровича (не панель справа).
  */
 export function AccessoriesModal({ data, onClose }: { data: { name: string; items: Accessory[] } | null; onClose: () => void }) {
   const groups = useMemo(() => {
@@ -72,7 +72,7 @@ export function AccessoriesModal({ data, onClose }: { data: { name: string; item
         onClose();
       }}
       title="Вам может понадобиться"
-      drawer
+      size="xl"
       className="max-w-[1010px]"
       bodyClassName="px-[24px] pt-[20px] pb-[32px]"
     >

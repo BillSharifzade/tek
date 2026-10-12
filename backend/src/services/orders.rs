@@ -422,11 +422,8 @@ pub async fn create_order(
     if user.is_none() && (email_given.len() < 5 || !email_given.contains('@')) {
         return Err(AppError::unprocessable("invalid_email", "Укажите e-mail — на него придёт информация о заказе"));
     }
-    if let Some(d) = input.delivery.date {
-        let ok = delivery::delivery_dates().iter().any(|x| x.date == d && x.available);
-        if !ok {
-            return Err(AppError::unprocessable("invalid_date", "Выбранная дата доставки недоступна"));
-        }
+    if input.delivery.date.is_some_and(|d| !delivery::is_delivery_date(d)) {
+        return Err(AppError::unprocessable("invalid_date", "Выбранная дата доставки недоступна"));
     }
     let company_id = user.and_then(|u| u.company_id);
     match input.payment.method.as_str() {

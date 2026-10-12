@@ -101,8 +101,9 @@ export default async function ProductRoute({ params }: Props) {
 
         {product.short_description ? (
           <p className="mt-[20px] flex items-start text-[14px] font-semibold leading-[15px] text-[#F9AD42] xl:pl-[1.2px]">
+            {/* Figma 8612:168: звезда 20×20, текст 14/15 по её центру (на 0.7px выше) — доработки R3 «выровнять иконку и текст» */}
             <Image src="/figma/star-2.png" alt="" width={20} height={20} className="relative top-[-1.3px] size-[20px] shrink-0" />
-            <span className="relative top-[2.5px] ml-[7.8px]">{product.short_description}</span>
+            <span className="relative top-[0.5px] ml-[7.8px]">{product.short_description}</span>
           </p>
         ) : null}
 
@@ -164,13 +165,13 @@ export default async function ProductRoute({ params }: Props) {
 
         {/* всё ниже в макете сдвинуто на 1px вправо (127…1387) */}
         <div className="xl:-mr-px xl:ml-px">
-          <ProductTabsBar tabs={tabs} product={product} className="mt-10 lg:mt-[46px]" />
+          <ProductTabsBar tabs={tabs} className="mt-10 lg:mt-[46px]" />
 
-          <section id="specs" className="mt-[25px] scroll-mt-[140px] lg:scroll-mt-[287px] grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,906px)_305px] lg:justify-between lg:gap-0">
+          <section id="specs" className="mt-[25px] scroll-mt-[140px] lg:scroll-mt-[208px] grid grid-cols-1 gap-8 lg:grid-cols-[minmax(0,906px)_305px] lg:justify-between lg:gap-0">
             <div className="min-w-0">
               <Features product={product} />
               {paragraphs.length > 0 ? (
-                <div id="description" className="mt-[38px] scroll-mt-[140px] lg:scroll-mt-[287px] flex flex-col gap-[6px] text-[15px] leading-[25px] text-black first:mt-0">
+                <div id="description" className="mt-[38px] scroll-mt-[140px] lg:scroll-mt-[208px] flex flex-col gap-[6px] text-[15px] leading-[25px] text-black first:mt-0">
                   {paragraphs.map((p, i) => (
                     <p key={i} className="whitespace-pre-line">
                       {p}
@@ -195,17 +196,17 @@ export default async function ProductRoute({ params }: Props) {
           </section>
 
           {/* Figma: последняя строка характеристик — базовая линия 2208, заголовок с y=2287 (строка 14/21 кончается на 2214) */}
-          <section id="accessories" className="mt-16 scroll-mt-[140px] lg:mt-[73px] lg:scroll-mt-[287px]">
+          <section id="accessories" className="mt-16 scroll-mt-[140px] lg:mt-[73px] lg:scroll-mt-[208px]">
             <SectionTitle>Комплектующие</SectionTitle>
             <ProductAccessories items={product.accessories} />
           </section>
 
-          <section id="reviews" className="mt-16 scroll-mt-[140px] lg:mt-[63px] lg:scroll-mt-[287px]">
+          <section id="reviews" className="mt-16 scroll-mt-[140px] lg:mt-[63px] lg:scroll-mt-[208px]">
             <SectionTitle>Отзывы</SectionTitle>
             <Reviews slug={product.slug} initial={reviews} />
           </section>
 
-          <section id="questions" className="mt-16 scroll-mt-[140px] lg:mt-[55px] lg:scroll-mt-[287px]">
+          <section id="questions" className="mt-16 scroll-mt-[140px] lg:mt-[55px] lg:scroll-mt-[208px]">
             <SectionTitle>Вопросы и ответы</SectionTitle>
             <Questions slug={product.slug} initial={questions} />
           </section>

@@ -34,6 +34,7 @@ export function AsideHead({ children }: { children: React.ReactNode }) {
 /**
  * Карточка «Документация» (Figma 8612:301): 305 шириной, r10, тень; группы 16/20 600,
  * документы — иконка скачивания 24×24 (#EEF0F2, r6) + название 14/16, шаг 33. Скачивание по клику.
+ * Иконка по центру названия (доработки R3), в т.ч. двухстрочного.
  */
 export function Documents({ documents }: { documents: ProductDocument[] }) {
   if (documents.length === 0) return null;
@@ -60,10 +61,10 @@ export function Documents({ documents }: { documents: ProductDocument[] }) {
                     target="_blank"
                     rel="noopener noreferrer"
                     title={`Скачать PDF${d.size_kb ? `, ${sizeLabel(d.size_kb)}` : ""}`}
-                    className="group flex items-start"
+                    className="group flex items-center"
                   >
                     <IconDownload className="ml-px shrink-0 rounded-[6px] transition-colors [&>rect]:transition-colors group-hover:[&>rect]:fill-[#D9DDE3]" />
-                    <span className="ml-[9px] mt-[3px] text-[14px] leading-[16px] text-black">{d.title}</span>
+                    <span className="ml-[9px] text-[14px] leading-[16px] text-black">{d.title}</span>
                   </a>
                 </li>
               ))}

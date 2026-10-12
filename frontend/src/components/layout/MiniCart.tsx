@@ -12,7 +12,7 @@ import { packStep, snapQty } from "@/lib/qty";
 
 /**
  * Мини-корзина под иконкой «Корзина» в шапке (референс — «Прочие дополнительные элементы» 10522:1897, как у Петровича):
- * «Корзина: N товаров», «Всего», кнопка «Перейти в корзину», строки товаров (фото, код, название, цена, количество, «Удалить»).
+ * «Корзина: N товаров», «Всего», кнопка «Перейти в корзину», строки товаров (фото, код и «Удалить» справа, название, цена, количество).
  * Открывается наведением мыши (задержка 150 мс, закрытие 200 мс) и фокусом с клавиатуры; Escape закрывает.
  * На сенсорных экранах не показывается — только устройства с (hover: hover) and (pointer: fine).
  */
@@ -110,7 +110,14 @@ function MiniCartRow({ item }: { item: CartItem }) {
         <ImageBox src={p.image} alt={p.name} className="size-[56px] bg-white" sizes="56px" rounded="rounded-[5px]" />
       </Link>
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] leading-[15px] text-muted tnum">Код: {p.code}</p>
+        {/* доработки R3: «Удалить» — в правом верхнем углу строки, на уровне кода */}
+        <div className="flex items-start justify-between gap-[10px]">
+          <p className="text-[13px] leading-[15px] text-muted tnum">Код: {p.code}</p>
+          <button type="button" onClick={() => void remove(item.id).catch(() => {})} className="link-hover flex shrink-0 items-center gap-[4px] text-[13px] leading-[15px] text-sub">
+            <IconTrash className="-mt-px size-[14px] shrink-0" />
+            Удалить
+          </button>
+        </div>
         <Link href={href} className="link-hover mt-[4px] line-clamp-2 text-[14px] leading-[18px] text-black">
           {p.name}
         </Link>
@@ -130,10 +137,6 @@ function MiniCartRow({ item }: { item: CartItem }) {
             В наличии {stockQty(shortage.available)} {p.unit}
           </p>
         ) : null}
-        <button type="button" onClick={() => void remove(item.id).catch(() => {})} className="link-hover mt-[8px] flex items-center gap-[4px] text-[13px] leading-[15px] text-sub">
-          <IconTrash className="-mt-px size-[14px] shrink-0" />
-          Удалить
-        </button>
       </div>
     </li>
   );

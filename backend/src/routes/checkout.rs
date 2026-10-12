@@ -46,6 +46,7 @@ async fn options(State(state): State<AppState>, OptionalUser(user): OptionalUser
             { "code": "pickup", "label": "Самовывоз", "price": 0, "description": "Бесплатно из магазинов ТЭК в Душанбе и Худжанде." },
         ],
         "delivery_dates": delivery::delivery_dates(),
+        "delivery_max_date": delivery::delivery_max_date(),
         "payment_methods": payment_methods,
         "stores": stores.iter().map(|s| json!({ "id": s.id, "city": s.city, "name": s.name, "address": s.address, "phone": s.phone, "hours": s.hours })).collect::<Vec<_>>(),
         "note": "Подъем/спуск на этажи и разгрузка товара не входят в услугу доставки",

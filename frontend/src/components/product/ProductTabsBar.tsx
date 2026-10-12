@@ -1,13 +1,7 @@
 "use client";
 
-import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { Product } from "@/lib/types";
-import { money } from "@/lib/format";
 import { cn } from "@/lib/cn";
-import { FavoriteButton } from "./FavoriteButton";
-import { priceLabel } from "./ProductCard";
-import { useBuy } from "./BuyContext";
 import { FADE_X, useScrollFade } from "@/components/layout/ScrollFade";
 
 export interface TabAnchor {
@@ -37,12 +31,12 @@ function useActive(fallback: string) {
   return v || fallback;
 }
 
-/** Высота шапки сайта (113 + линия) — плавающая панель товара прилипает под неё. */
+/** Высота шапки сайта (113 + линия) — плавающие табы прилипают под неё. */
 function headerHeight(): number {
   const h = document.getElementById("site-header");
   return h ? h.getBoundingClientRect().height : 0;
 }
-const STICKY_H = 148; // полоса товара 78 + табы 70 (Figma 10444:276: 114…262)
+const STICKY_H = 70; // плавающие табы: 13 + 43 + 13 + линия (полосу товара 78px убрали — доработки R3)
 const CONTENT_GAP = 25; // табы → контент, как в макете (1097 → 1122)
 
 function scrollToSection(id: string) {
@@ -114,10 +108,10 @@ function useScrollSpy(ids: string[]) {
 }
 
 /**
- * Табы в потоке страницы + плавающая шапка товара (Figma 10444:276), которая появляется,
- * когда табы уходят под шапку сайта (прокрутка ниже характеристик).
+ * Табы в потоке страницы + их плавающая копия под шапкой сайта, которая появляется,
+ * когда табы уходят под шапку (прокрутка ниже характеристик).
  */
-export function ProductTabsBar({ tabs, product, className }: { tabs: TabAnchor[]; product: Product; className?: string }) {
+export function ProductTabsBar({ tabs, className }: { tabs: TabAnchor[]; className?: string }) {
   const key = tabs.map((t) => t.id).join(",");
   const ids = useMemo(() => key.split(","), [key]);
   useScrollSpy(ids);
@@ -151,31 +145,13 @@ export function ProductTabsBar({ tabs, product, className }: { tabs: TabAnchor[]
       <div ref={anchorRef} className={className}>
         <SegmentTabs tabs={tabs} active={active} onSelect={select} />
       </div>
-      <StickyProductBar product={product} tabs={tabs} active={active} onSelect={select} visible={stuck} top={top} />
+      <StickyTabs tabs={tabs} active={active} onSelect={select} visible={stuck} top={top} />
     </>
   );
 }
 
-function StickyProductBar({
-  product,
-  tabs,
-  active,
-  onSelect,
-  visible,
-  top,
-}: {
-  product: Product;
-  tabs: TabAnchor[];
-  active: string;
-  onSelect: (id: string) => void;
-  visible: boolean;
-  top: number;
-}) {
-  const { addToCart, busy, inCartQty } = useBuy();
-  const oos = !product.in_stock;
-  const sale = product.price.sale && !oos;
-  const img = product.images[0] ?? product.image;
-
+/** Плавающие табы под шапкой сайта; полосу с фото, названием, ценой и кнопками убрали (доработки R3). */
+function StickyTabs({ tabs, active, onSelect, visible, top }: { tabs: TabAnchor[]; active: string; onSelect: (id: string) => void; visible: boolean; top: number }) {
   return (
     <div
       aria-hidden={!visible}
@@ -186,44 +162,6 @@ function StickyProductBar({
         visible ? "translate-y-0 opacity-100" : "pointer-events-none -translate-y-3 opacity-0",
       )}
     >
-      <div className="hidden border-b border-line-2 lg:block">
-        <div className="container-page flex h-[77px] items-start">
-          {img ? (
-            <span className="relative mt-[15px] size-[45px] shrink-0 overflow-hidden rounded-[5px] xl:ml-px">
-              <Image src={img} alt="" fill sizes="45px" className="object-cover" />
-            </span>
-          ) : null}
-          <p className="ml-[17px] mt-[28.7px] line-clamp-2 min-w-0 flex-1 pr-6 text-[14px] font-semibold leading-[15px] text-black">{product.name}</p>
-          <div className="ml-auto w-[150px] shrink-0">
-            <p className="mt-[18.7px] text-[14px] leading-[15px] text-sub">{priceLabel(product)}</p>
-            <p className={cn("mt-[2.7px] whitespace-nowrap text-[20px] font-semibold leading-[20px] tnum", sale ? "text-sale" : "text-black")}>
-              {oos ? "–" : money(product.price.price)}
-            </p>
-          </div>
-          <FavoriteButton product={product} box={45} boxH={44} glyph={20} className="mt-[16px]" />
-          {oos ? (
-            <span className="ml-[11px] mt-[16px] flex h-[44px] w-[188px] items-center justify-center rounded-[7px] bg-surface text-[14px] font-medium leading-[24px] text-black">
-              Нет в наличии
-            </span>
-          ) : inCartQty > 0 ? (
-            <a
-              href="/cart"
-              className="ml-[11px] mt-[16px] flex h-[44px] w-[188px] items-center justify-center rounded-[7px] text-[14px] font-medium leading-[24px] text-brand shadow-[inset_0_0_0_2px_#FFCC33] transition-colors hover:bg-brand hover:text-black"
-            >
-              В корзине
-            </a>
-          ) : (
-            <button
-              type="button"
-              onClick={addToCart}
-              disabled={busy}
-              className="ml-[11px] mt-[16px] flex h-[44px] w-[188px] items-center justify-center rounded-[7px] bg-brand text-[14px] font-medium leading-[24px] text-black transition-colors hover:bg-brand-hover disabled:opacity-70"
-            >
-              В корзину
-            </button>
-          )}
-        </div>
-      </div>
       <div className="container-page py-[8px] lg:py-[13px]">
         <SegmentTabs tabs={tabs} active={active} onSelect={onSelect} />
       </div>

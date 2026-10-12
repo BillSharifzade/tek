@@ -36,7 +36,10 @@ export interface NavItem {
   clickable?: boolean;
 }
 
-/** Верхнее меню шапки (О компании ▾ · Услуги ▾ · Проекты · Поддержка · Покупателям ▾); доработки R2: «Услуги» — ссылка на все услуги */
+/**
+ * Верхнее меню шапки (О компании ▾ · Услуги ▾ · Проекты · Поддержка · Покупателям ▾); доработки R2: «Услуги» — ссылка на все услуги;
+ * R4: в «Покупателям» — все разделы, как во вкладках страницы.
+ */
 export const TOP_NAV: NavItem[] = [
   {
     href: "/about",
@@ -71,7 +74,9 @@ export const TOP_NAV: NavItem[] = [
     children: [
       { href: "/help", label: "Как купить?" },
       { href: "/help/delivery", label: "Доставка" },
+      { href: "/help/payment", label: "Оплата" },
       { href: "/help/warranty", label: "Гарантия" },
+      { href: "/help/faq", label: "Вопросы и ответы" },
     ],
   },
 ];

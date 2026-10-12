@@ -92,7 +92,7 @@ docker compose -f docker-compose.prod.yml -f deploy/edge-network.override.yml up
 * IP клиента для лимитов берётся из правого адреса заголовка `CLIENT_IP_HEADER` (по умолчанию `x-forwarded-for`, который дописывает
   reverse proxy). Пример Caddy передаёт исходный `X-Forwarded-For` внешнего балансировщика в `X-Tek-Client-Ip` — с ним задайте
   `CLIENT_IP_HEADER=x-tek-client-ip`.
-* Карта на «Контактах» — Static API Яндекс.Карт; ключ (`YANDEX_MAPS_KEY`) необязателен.
+* Карты на «Контактах» и в оформлении заказа — встроенный виджет Яндекс.Карт (ключ не нужен).
 * База — только во внутренней сети; ежедневный `pg_dump` в том `tek-backups` (14 последних).
 * Онлайн-оплата Алиф / ДС выключена до подключения эквайринга (callback без подписи в production отключён).
   События в CRM / 1С копятся в очереди, пока не заданы `CRM_WEBHOOK_URL` / `ONEC_WEBHOOK_URL`; письма — пока не задан `SMTP_URL`

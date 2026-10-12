@@ -13,8 +13,8 @@ import { countLabel } from "@/lib/format";
 import { SITE, TOP_NAV } from "@/lib/site";
 
 /**
- * Figma «Group 43»: 107×44, #FFCC33, r5; три линии 10.5px (stroke 1.3) + «Каталог» 14/12 Medium.
- * Линии в рендере макета лежат на y 16.7–18.0 / 21.7–23.0 / 26.7–28.0 от верха кнопки (обводка над осью линии).
+ * Figma «Group 43»: 107×44, #FFCC33, r5; три линии 10.5px + «Каталог» 14/12 Medium.
+ * Линии лежат на y 16.7 / 21.7 / 26.7 от верха кнопки (как в макете), толщина 1.5 (доработки R4: в макете 1.3).
  */
 export function CatalogMenuButton({ categories }: { categories: CategoryNode[] }) {
   // меню открыто «на странице», где его открыли: переход по ссылке из шапки (логотип, поиск, корзина) его закрывает
@@ -42,21 +42,15 @@ export function CatalogMenuButton({ categories }: { categories: CategoryNode[] }
         aria-expanded={open}
         className="relative block h-[44px] w-[107px] shrink-0 rounded-[5px] bg-brand text-left text-black transition-colors hover:bg-brand-hover"
       >
-        <span aria-hidden className="absolute left-[17px] top-[16.7px] block h-[11.3px] w-[10.5px]">
+        {/* Доработки R4: линии чуть толще (1.5 вместо 1.3), крест — обычный, той же толщины, в квадрате 10.5×10.5
+            по центру трёх линий; SVG вместо повёрнутых span — без искажений при сглаживании */}
+        <svg aria-hidden width={10.5} height={11.5} viewBox="0 0 10.5 11.5" fill="none" className="absolute left-[17px] top-[16.7px]">
           {open ? (
-            // классический крест высотой с заглавную «К» (10px): две линии по диагонали квадрата 10×10
-            <>
-              <span className="absolute left-1/2 top-1/2 h-[1.3px] w-[14.1px] -translate-x-1/2 -translate-y-1/2 rotate-45 bg-black" />
-              <span className="absolute left-1/2 top-1/2 h-[1.3px] w-[14.1px] -translate-x-1/2 -translate-y-1/2 -rotate-45 bg-black" />
-            </>
+            <path d="M0.75 1.25 9.75 10.25M9.75 1.25 0.75 10.25" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />
           ) : (
-            <>
-              <span className="absolute left-0 top-0 h-[1.3px] w-full bg-black" />
-              <span className="absolute left-0 top-[5px] h-[1.3px] w-full bg-black" />
-              <span className="absolute left-0 top-[10px] h-[1.3px] w-full bg-black" />
-            </>
+            <path d="M0 0.75h10.5M0 5.75h10.5M0 10.75h10.5" stroke="currentColor" strokeWidth={1.5} />
           )}
-        </span>
+        </svg>
         <span className="absolute left-[35.2px] top-[16px] text-[14px] font-medium leading-[12px]">Каталог</span>
       </button>
       <CatalogMenu open={open} onClose={() => setOpenAt(null)} categories={categories} />

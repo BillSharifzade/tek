@@ -1,32 +1,32 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Product } from "@/lib/types";
+import { asset } from "@/lib/asset";
 import { AsideHead } from "./Documents";
 import { IconSetting } from "./icons";
 
-/** Флаги 17×12 (три полосы по 4px, как в макете). */
-const FLAGS: Record<string, [string, string, string]> = {
-  Россия: ["#FFFFFF", "#0039A6", "#D52B1E"],
-  Германия: ["#000000", "#DD0000", "#FFCE00"],
-  Италия: ["#009246", "#FFFFFF", "#CE2B37"],
-  Франция: ["#0055A4", "#FFFFFF", "#EF4135"],
-  Беларусь: ["#C8313E", "#C8313E", "#4AA657"],
-  Таджикистан: ["#CC0000", "#FFFFFF", "#006600"],
-  Узбекистан: ["#1EB53A", "#FFFFFF", "#0099B5"],
-  Казахстан: ["#00AFCA", "#00AFCA", "#00AFCA"],
-  Турция: ["#E30A17", "#E30A17", "#E30A17"],
-  Китай: ["#DE2910", "#DE2910", "#DE2910"],
+/** Страна (как в карточке бренда) → ISO-код флага в /public/flags (SVG 4×3 из flag-icons, MIT). Доработки R3: «настоящие флаги». */
+const FLAG_ISO: Record<string, string> = {
+  Россия: "ru", Германия: "de", Италия: "it", Франция: "fr", Беларусь: "by", Таджикистан: "tj", Узбекистан: "uz",
+  Казахстан: "kz", Кыргызстан: "kg", Киргизия: "kg", Турция: "tr", Китай: "cn", Польша: "pl", Чехия: "cz", Испания: "es",
+  Швеция: "se", Швейцария: "ch", Австрия: "at", Япония: "jp", Корея: "kr", "Южная Корея": "kr", США: "us",
+  Великобритания: "gb", Англия: "gb", Индия: "in", Финляндия: "fi", Дания: "dk", Нидерланды: "nl", Голландия: "nl",
+  Бельгия: "be", Иран: "ir", Венгрия: "hu", Словения: "si", Словакия: "sk", Португалия: "pt", Норвегия: "no",
+  Тайвань: "tw", Вьетнам: "vn", Малайзия: "my", Таиланд: "th", Сингапур: "sg", Израиль: "il", ОАЭ: "ae",
+  Украина: "ua", Литва: "lt", Латвия: "lv", Эстония: "ee", Румыния: "ro", Болгария: "bg", Греция: "gr",
+  Бразилия: "br", Канада: "ca", Австралия: "au", Индонезия: "id", Пакистан: "pk", Египет: "eg", Азербайджан: "az",
+  Армения: "am", Грузия: "ge", "Саудовская Аравия": "sa", Гонконг: "hk", Ирландия: "ie", Люксембург: "lu",
+  "Новая Зеландия": "nz", ЮАР: "za",
 };
 
+/** Флаг 17×12 (как в макете); страны без флага — серая плашка. */
 function Flag({ country }: { country: string }) {
-  const f = FLAGS[country] ?? ["#D9DDE4", "#B3BAC7", "#808080"];
-  const vertical = country === "Италия" || country === "Франция";
+  const iso = FLAG_ISO[country.trim()];
+  if (!iso) return <span aria-hidden className="h-[12px] w-[17px] shrink-0 bg-line-3" />;
   return (
-    <span aria-hidden className={vertical ? "flex h-[12px] w-[17px] shrink-0 shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)]" : "flex h-[12px] w-[17px] shrink-0 flex-col shadow-[inset_0_0_0_0.5px_rgba(0,0,0,0.12)]"}>
-      {f.map((c, i) => (
-        <span key={i} className="flex-1" style={{ background: c }} />
-      ))}
-    </span>
+    // маленькая статичная SVG из /public — next/image не нужен
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={asset(`/flags/${iso}.svg`)} alt="" width={17} height={12} loading="lazy" className="h-[12px] w-[17px] shrink-0 object-cover shadow-[0_0_0_0.5px_rgba(0,0,0,0.12)]" />
   );
 }
 

@@ -442,7 +442,9 @@ export interface Store {
 
 export interface CheckoutOptions {
   delivery_methods: { code: string; label: string; price: number; free_from?: number | null; description: string }[];
+  /** ближние дни-кнопки (сегодня + 3); в календаре можно выбрать любой день до delivery_max_date, кроме воскресенья */
   delivery_dates: { date: string; label: string; day_label: string; available: boolean }[];
+  delivery_max_date?: string;
   payment_methods: { code: string; label: string; sublabel: string; available: boolean }[];
   stores: { id: number; city: string; name: string; address: string }[];
   note: string;

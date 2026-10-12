@@ -2,8 +2,7 @@
 
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/cn";
-import { useFavorites } from "@/store/favorites";
-import { useHydrated } from "@/lib/hooks";
+import { FavoriteButton } from "@/components/product/FavoriteButton";
 import type { ProductCard } from "@/lib/types";
 
 /** Жёлтая кнопка итога (Figma Group 111: 342×44, r4, Medium 15/24). */
@@ -90,31 +89,12 @@ export function Chip({
   );
 }
 
-const HEART_OUTLINE =
-  "M16.8767 7.73293C16.277 7.13317 15.4956 6.80286 14.6767 6.80286C13.8578 6.80286 13.0765 7.13317 12.4767 7.73291L12.0003 8.20936L11.5239 7.73293C10.9241 7.13317 10.1428 6.80286 9.32389 6.80286C8.50497 6.80286 7.72364 7.13317 7.1239 7.73291C6.52413 8.33268 6.19385 9.13009 6.19385 9.97826C6.19385 10.8257 6.5235 11.6223 7.12222 12.2219L12.0003 17.1972L16.8784 12.2219C17.4771 11.6223 17.8068 10.8257 17.8068 9.97826C17.8068 9.13009 17.4765 8.33268 16.8767 7.73293ZM16.2352 11.5821L12.0003 15.9013L7.76545 11.5821C7.33704 11.1537 7.10111 10.5841 7.10111 9.97828C7.10111 9.37246 7.33704 8.80286 7.76545 8.37445C8.19383 7.94605 8.7473 7.71011 9.32389 7.71011C9.90047 7.71011 10.4539 7.94605 10.8823 8.37443L12.0003 9.4924L13.1183 8.37445C13.5467 7.94607 14.1001 7.71014 14.6767 7.71014C15.2533 7.71014 15.8068 7.94607 16.2352 8.37445C16.6636 8.80284 16.8995 9.37244 16.8995 9.97828C16.8995 10.5841 16.6636 11.1537 16.2352 11.5821Z";
-const HEART_FILLED =
-  "M16.8767 7.73293C16.277 7.13317 15.4956 6.80286 14.6767 6.80286C13.8578 6.80286 13.0765 7.13317 12.4767 7.73291L12.0003 8.20936L11.5239 7.73293C10.9241 7.13317 10.1428 6.80286 9.32389 6.80286C8.50497 6.80286 7.72364 7.13317 7.1239 7.73291C6.52413 8.33268 6.19385 9.13009 6.19385 9.97826C6.19385 10.8257 6.5235 11.6223 7.12222 12.2219L12.0003 17.1972L16.8784 12.2219C17.4771 11.6223 17.8068 10.8257 17.8068 9.97826C17.8068 9.13009 17.4765 8.33268 16.8767 7.73293Z";
-
-/** «Избранное» в строке корзины (Figma 10461:787): розовый квадрат 24×24 r6 #FDE9E8, красное сердце #D13B3E. */
+/**
+ * «Избранное» в строке корзины: квадрат 24×24 r6. Доработки R3 — не в избранном такая же, как в остальных местах
+ * (серый #EEF0F2 + чёрный контур сердца), в избранном — розовый #FDE9E8 и красное сердце.
+ */
 export function CartFavorite({ product, className }: { product: ProductCard; className?: string }) {
-  const hydrated = useHydrated();
-  const active = useFavorites((s) => s.ids.includes(product.id));
-  const toggle = useFavorites((s) => s.toggle);
-  const on = hydrated && active;
-  return (
-    <button
-      type="button"
-      onClick={() => void toggle(product)}
-      aria-pressed={on}
-      aria-label={on ? "Убрать из избранного" : "В избранное"}
-      title={on ? "Убрать из избранного" : "В избранное"}
-      className={cn("flex size-[24px] shrink-0 items-center justify-center rounded-[6px] bg-[#FDE9E8] text-[#D13B3E] transition-colors hover:bg-[#FBD8D6]", className)}
-    >
-      <svg width={24} height={24} viewBox="0 0 24 24" aria-hidden>
-        <path d={on ? HEART_FILLED : HEART_OUTLINE} fill="currentColor" />
-      </svg>
-    </button>
-  );
+  return <FavoriteButton product={product} box={24} glyph={13} className={className} />;
 }
 
 /** −12% → «−12%» по цене прайса и фактической цене. */

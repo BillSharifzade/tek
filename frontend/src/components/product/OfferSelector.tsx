@@ -13,17 +13,15 @@ import { useOfferNav } from "./OfferScope";
 const CHIP: Record<VariantOption["state"], string> = {
   active: "text-g333 shadow-[inset_0_0_0_2px_#FFCC33]",
   available: "text-g333 shadow-[inset_0_0_0_1px_#D9DDE4] hover:shadow-[inset_0_0_0_1px_#4F5A6D]",
-  out: "bg-btn text-[#78797A] hover:bg-btn-hover",
-  // сочетания с остальными параметрами нет — пунктир, клик переключит и их
-  other: "border border-dashed border-[#C5CAD3] px-[14.5px] text-[#78797A] hover:border-outline-hover hover:text-g333",
+  // доработки R3: сочетания с остальными параметрами нет — серая кнопка без обводки, клик переключит и их
+  other: "bg-btn text-[#78797A] hover:bg-btn-hover hover:text-g333",
 };
 
 /** Свотч цвета 40×40 (внутри квадрат 28×28 без скругления и обводки): выбранный — жёлтая рамка, остальные — как кнопки. */
 const SWATCH: Record<VariantOption["state"], string> = {
   active: "border border-brand",
   available: "border border-line-3 hover:border-outline-hover",
-  out: "bg-btn hover:bg-btn-hover",
-  other: "border border-dashed border-[#C5CAD3] hover:border-outline-hover [&>span:first-child]:opacity-45 hover:[&>span:first-child]:opacity-100",
+  other: "bg-btn hover:bg-btn-hover [&>span:first-child]:opacity-60 hover:[&>span:first-child]:opacity-100",
 };
 
 function hint(o: VariantOption, sides: string): string {
@@ -33,8 +31,6 @@ function hint(o: VariantOption, sides: string): string {
       return `Выбрано · код ${t.code}`;
     case "available":
       return `Код ${t.code} · ${money(t.price)}/${t.unit}`;
-    case "out":
-      return `Нет в наличии · код ${t.code}`;
     case "other":
       return `Нет в сочетании с выбранными параметрами. Будет выбрано: ${sides}`;
   }
@@ -44,7 +40,7 @@ function hint(o: VariantOption, sides: string): string {
  * «Динамическое торговое предложение» (Figma) для товара с несколькими исполнениями, как у Петровича:
  * по каждой оси — подпись «Ширина, мм: 100» (14/15, #666 + #000) и кнопки значений под ней через 13px; оси — через 26px.
  * Клик открывает соседнее исполнение (свой URL, код, фото, цена, остатки) без перезагрузки и прокрутки;
- * если нужного сочетания нет — ближайшее по остальным осям. Наведение/фокус заранее подгружают исполнение и его фото.
+ * если нужного сочетания нет — ближайшее в наличии по остальным осям (серая кнопка). Наведение/фокус заранее подгружают исполнение и его фото.
  */
 export function OfferSelector({ product, className }: { product: Product; className?: string }) {
   const nav = useOfferNav();

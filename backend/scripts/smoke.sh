@@ -108,7 +108,10 @@ check "POST /account/favorites"           200 "$(req POST /account/favorites '{"
 echo "== checkout =="
 stock() { req GET "/catalog/products/$SLUG" '' -H "$AUTHV" >/dev/null; jqv "['stock_total']"; }
 S0=$(stock)
-DATE=$(req GET /checkout/options >/dev/null; jqv "['delivery_dates'][1]['date']")
+# календарь доставки (доработки R4): любой день от сегодня, кроме воскресенья — берём даты через 8 недель
+SUNDAY=$(python3 -c "import datetime as d; t=d.date.today(); print(t+d.timedelta(days=(6-t.weekday())%7+56))")
+DATE=$(python3 -c "import datetime as d; t=d.date.today(); print(t+d.timedelta(days=(6-t.weekday())%7+57))")
+check "POST /checkout Sunday -> 422"      422 "$(req POST /checkout '{"contact":{"first_name":"Фаррух","last_name":"Назаров","phone":"+992900000001","email":"client@tec.tj"},"delivery":{"method":"courier","address":"Душанбе, Сомони 68","date":"'"$SUNDAY"'"},"payment":{"method":"invoice"}}' -H "$AUTHV")"
 check "POST /checkout (invoice, courier)" 201 "$(req POST /checkout '{"contact":{"first_name":"Фаррух","last_name":"Назаров","phone":"+992900000001","email":"client@tec.tj"},"delivery":{"method":"courier","address":"Душанбе, Сомони 68","date":"'"$DATE"'"},"payment":{"method":"invoice"},"comment":"smoke"}' -H "$AUTHV")"
 ORDER=$(jqv "['order']['number']")
 S1=$(stock)

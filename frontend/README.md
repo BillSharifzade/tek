@@ -20,7 +20,6 @@ bun run dev -p 3010          # http://127.0.0.1:3010 (API должен рабо�
 | `API_URL` | запуск | адрес API для серверного рендера (внутри docker-сети); пусто — `NEXT_PUBLIC_API_URL` |
 | `SITE_URL` / `NEXT_PUBLIC_SITE_URL` | запуск | публичный адрес сайта: canonical, sitemap, robots |
 | `NEXT_PUBLIC_BASE_PATH` | сборка | подпуть сайта на домене (например `/tek`) |
-| `NEXT_PUBLIC_YANDEX_MAPS_KEY` | сборка | ключ Static API Яндекс.Карт (карта на «Контактах»); пусто — открытая версия 1.x |
 
 `NEXT_PUBLIC_*` встраиваются при сборке (в Docker — build args, см. `../deploy/frontend.Dockerfile`).
 

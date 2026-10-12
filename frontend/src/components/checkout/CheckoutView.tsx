@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Cart, CheckoutOptions, CheckoutPayload, CheckoutResult } from "@/lib/types";
 import { client } from "@/lib/client";
 import { ApiError } from "@/lib/api";
-import { dayMonth, money } from "@/lib/format";
+import { money } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { isValidPhone, PHONE_ERROR, phoneForField, phoneInputProps } from "@/lib/phone";
 import { useCart } from "@/store/cart";
@@ -20,6 +20,7 @@ import { SummaryRow } from "@/components/cart/CartSummary";
 import { Chip, DashLine, Leader } from "@/components/cart/parts";
 import { IconAlif, IconCoins, IconDcBank, IconLift, IconLocateBtn } from "@/components/cart/icons";
 import { DUSHANBE, DeliveryMap, geocode, reverseGeocode } from "./DeliveryMap";
+import { DateField } from "./DeliveryCalendar";
 
 interface FormState {
   first_name: string;
@@ -78,51 +79,6 @@ function IconInvoice(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
-/** Поле «Дата» (Figma Group 106, 166×56): открывает нативный календарь в пределах доступных дат. */
-function DateField({ value, options, onChange, invalid }: { value: string; options: CheckoutOptions["delivery_dates"]; onChange: (d: string) => void; invalid?: boolean }) {
-  const ref = useRef<HTMLInputElement>(null);
-  const available = options.filter((d) => d.available).map((d) => d.date);
-  return (
-    <div className="relative shrink-0">
-      <button
-        type="button"
-        onClick={() => {
-          const el = ref.current;
-          if (!el) return;
-          try {
-            el.showPicker();
-          } catch {
-            el.focus();
-          }
-        }}
-        className={cn(
-          "flex h-[56px] w-[166px] items-center rounded-[7px] border bg-white pb-[4px] pl-[12px] text-left text-[14px] leading-[12px] transition-colors hover:border-outline",
-          invalid ? "border-sale" : "border-line",
-          value ? "text-black" : "text-sub",
-        )}
-      >
-        {value ? dayMonth(value) : "Дата"}
-      </button>
-      <input
-        ref={ref}
-        type="date"
-        tabIndex={-1}
-        aria-label="Дата доставки"
-        value={value}
-        min={available[0]}
-        max={available[available.length - 1]}
-        onChange={(e) => {
-          const d = e.target.value;
-          if (!d) return;
-          if (available.includes(d)) onChange(d);
-          else toast.error("На эту дату доставка недоступна");
-        }}
-        className="pointer-events-none absolute bottom-0 left-0 h-px w-px opacity-0"
-      />
-    </div>
-  );
-}
-
 export function CheckoutView() {
   const router = useRouter();
   const hydrated = useHydrated();
@@ -130,6 +86,8 @@ export function CheckoutView() {
   const { cart, loaded, setCart } = useCart();
   const [options, setOptions] = useState<CheckoutOptions | null>(null);
   const [form, setForm] = useState<FormState>({ first_name: "", last_name: "", phone: "", email: "", method: "courier", address: "", date: "", store_id: null, payment: "", comment: "" });
+  /** поле даты и кнопки дней: клик внутри не закрывает календарь */
+  const datesRef = useRef<HTMLDivElement>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [busy, setBusy] = useState(false);
   const [prefilled, setPrefilled] = useState(false);
@@ -352,8 +310,15 @@ export function CheckoutView() {
 
             <section className="px-[16px] pb-[23px] pt-[25px] sm:pl-[38px] sm:pr-[35px]">
               <SectionTitle>Дата доставки</SectionTitle>
-              <div className="mt-[20px] flex flex-wrap gap-[9px]" role="radiogroup" aria-label="Дата доставки">
-                <DateField value={form.date} options={options.delivery_dates} onChange={(d) => set("date", d)} invalid={Boolean(errors.date)} />
+              <div ref={datesRef} className="mt-[20px] flex flex-wrap gap-[9px]" role="radiogroup" aria-label="Дата доставки">
+                <DateField
+                  value={form.date}
+                  min={options.delivery_dates[0]?.date ?? form.date}
+                  max={options.delivery_max_date ?? options.delivery_dates[options.delivery_dates.length - 1]?.date ?? form.date}
+                  onChange={(d) => set("date", d)}
+                  invalid={Boolean(errors.date)}
+                  area={datesRef}
+                />
                 {options.delivery_dates.map((d) => (
                   <Chip
                     key={d.date}

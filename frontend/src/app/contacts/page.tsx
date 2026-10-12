@@ -8,7 +8,7 @@ import { PageHead, SectionTitle } from "@/components/content/PageHead";
 import { ContactForm } from "@/components/content/ContactForm";
 import { IconArrowSmall } from "@/components/content/icons";
 import { SOCIAL_LINKS } from "@/components/content/company";
-import { StaticMap, yandexMapsHref } from "@/components/content/StaticMap";
+import { YandexMap, yandexMapsHref } from "@/components/content/YandexMap";
 import type { CmsPage, StoreItem } from "@/components/content/types";
 import Link from "next/link";
 
@@ -85,7 +85,7 @@ export default async function ContactsPage() {
             </a>
           </div>
         </div>
-        <StaticMap lat={SITE.officeCoords[0]} lon={SITE.officeCoords[1]} title={`Главный офис ТЭК на карте: ${SITE.address1}`} className="h-[320px] md:h-[420px] lg:h-auto lg:min-h-[480px]" />
+        <YandexMap lat={SITE.officeCoords[0]} lon={SITE.officeCoords[1]} title={`Главный офис ТЭК на карте: ${SITE.address1}`} className="h-[320px] md:h-[420px] lg:h-auto lg:min-h-[480px]" />
       </section>
 
       {/* Магазины и филиалы */}

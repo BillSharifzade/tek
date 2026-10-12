@@ -82,6 +82,19 @@ pub fn today_local() -> NaiveDate {
     (Utc::now() + Duration::hours(5)).date_naive()
 }
 
+/// Насколько вперёд можно выбрать дату доставки в календаре.
+pub const DELIVERY_HORIZON_DAYS: i64 = 365;
+
+/// Последняя дата, которую можно выбрать в календаре.
+pub fn delivery_max_date() -> NaiveDate {
+    today_local() + Duration::days(DELIVERY_HORIZON_DAYS)
+}
+
+/// Доставка возможна в любой день с сегодняшнего, кроме воскресенья (доработки R4: календарь не ограничивает будущие даты).
+pub fn is_delivery_date(d: NaiveDate) -> bool {
+    d >= today_local() && d <= delivery_max_date() && d.weekday() != Weekday::Sun
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,5 +106,16 @@ mod tests {
         assert_eq!(add_working_days(d(2026, 10, 5), 3), d(2026, 10, 8));
         assert_eq!(add_working_days(d(2026, 10, 9), 3), d(2026, 10, 14));
         assert_eq!(add_working_days(d(2026, 10, 10), 3), d(2026, 10, 14));
+    }
+
+    #[test]
+    fn delivery_date_any_future_day_but_sunday() {
+        let today = today_local();
+        let next_sunday = (1..=7).map(|i| today + Duration::days(i)).find(|d| d.weekday() == Weekday::Sun).unwrap();
+        assert!(!is_delivery_date(today - Duration::days(1)));
+        assert!(!is_delivery_date(next_sunday));
+        assert!(is_delivery_date(next_sunday + Duration::days(1)));
+        assert!(is_delivery_date(next_sunday + Duration::days(57)));
+        assert!(!is_delivery_date(today + Duration::days(DELIVERY_HORIZON_DAYS + 1)));
     }
 }

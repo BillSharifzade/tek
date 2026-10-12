@@ -157,7 +157,7 @@ export function CartView() {
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-x-[18px] gap-y-2">
-            <button type="button" onClick={exportXlsx} disabled={busy === "export"} className={cn(actionCls, "gap-[5px]")}>
+            <button type="button" onClick={exportXlsx} disabled={busy === "export"} className={cn(actionCls, "gap-[6px]")}>
               <IconDownload className="mt-[3px] shrink-0" />
               <span className="mt-[4px]">Скачать смету</span>
             </button>
