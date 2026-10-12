@@ -5,8 +5,9 @@ const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/+$/, "") || undef
 
 const nextConfig: NextConfig = {
   basePath,
-  // картинки — готовые SVG/webp из /public и /art: отдаём как есть; под basePath их префиксует свой loader
-  images: basePath ? { loader: "custom", loaderFile: "./src/lib/image-loader.ts" } : { unoptimized: true },
+  // картинки — готовые SVG/webp из /public и /art: отдаём как есть; свой loader добавляет basePath и ведёт
+  // загруженные в панели картинки («/api/v1/files/…») на адрес API
+  images: { loader: "custom", loaderFile: "./src/lib/image-loader.ts" },
   // dev server is reached through 127.0.0.1 / docker bridge as well as localhost
   allowedDevOrigins: ["127.0.0.1", "localhost", "172.17.0.1"],
   output: "standalone",

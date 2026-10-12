@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { Roboto } from "next/font/google";
 import "./globals.css";
 import type { CategoryNode } from "@/lib/types";
-import { publicGet, safe } from "@/lib/server";
+import { publicGet, safe, siteFlags } from "@/lib/server";
 import { AppInit } from "@/components/layout/AppInit";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
@@ -41,7 +41,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // всё приложение рендерится по запросу: шапка и страницы берут живые данные из API (цены, остатки, каталог),
   // а при сборке образа API недоступен. Ответы API кешируются в Data Cache (publicGet → revalidate).
   await connection();
-  const categories = await safe(publicGet<CategoryNode[]>("/catalog/tree", undefined, 120), []);
+  const [categories, flags] = await Promise.all([safe(publicGet<CategoryNode[]>("/catalog/tree", undefined, 120), []), siteFlags()]);
   return (
     <html lang="ru" data-scroll-behavior="smooth" className={`${roboto.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col pb-16 md:pb-0">
@@ -56,7 +56,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <main id="main" className="flex-1">
           {children}
         </main>
-        <Footer />
+        <Footer onlinePayment={flags.online_payment} />
         <MobileNav />
         <Toaster />
       </body>

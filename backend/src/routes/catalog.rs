@@ -341,7 +341,7 @@ async fn build_product(state: &AppState, p: &ProductRow, ctx: &PriceCtx) -> AppR
     let pool = &state.pool;
     let cats = all_categories(state).await?;
     let breadcrumbs = breadcrumbs_for(&cats, &p.category_path);
-    let brand: Option<Value> = match p.brand_id {
+    let mut brand: Option<Value> = match p.brand_id {
         Some(id) => sqlx::query_scalar(
             "SELECT to_jsonb(t) FROM (SELECT slug, name, country_brand, country_origin, logo_url AS logo FROM brands WHERE id = $1) t",
         )
@@ -350,6 +350,11 @@ async fn build_product(state: &AppState, p: &ProductRow, ctx: &PriceCtx) -> AppR
         .await?,
         None => None,
     };
+    // страна производства конкретного товара (панель, импорт) важнее общей страны бренда
+    let own_origin: Option<String> = sqlx::query_scalar("SELECT country_origin FROM products WHERE id = $1").bind(p.id).fetch_one(pool).await?;
+    if let (Some(b), Some(origin)) = (brand.as_mut(), own_origin) {
+        b["country_origin"] = json!(origin);
+    }
     let stock = sqlx::query_as::<_, StockRow>(
         r#"SELECT st.id AS store_id, st.city, st.name, COALESCE(s.qty, 0) AS qty, st.delivery_hint
            FROM stores st LEFT JOIN stock s ON s.store_id = st.id AND s.product_id = $1 ORDER BY st.sort, st.id"#,

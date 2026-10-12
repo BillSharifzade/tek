@@ -157,6 +157,22 @@ export interface OrderEvent {
   at: string;
 }
 
+/** Позиция запроса на изменение заказа: `qty` — новое количество (0 — товар убран), `old_qty` — сейчас в заказе (0 — товар добавлен). */
+export interface EditRequestItem {
+  product: ProductCard;
+  qty: number;
+  old_qty: number;
+}
+
+/** Запрос клиента на изменение состава заказа — ждёт подтверждения менеджером; заказ до этого не меняется. */
+export interface EditRequest {
+  created_at: string;
+  comment: string | null;
+  total: number;
+  delivery_price: number;
+  items: EditRequestItem[];
+}
+
 export interface Order {
   id: string;
   number: string;
@@ -191,6 +207,7 @@ export interface Order {
   events: OrderEvent[];
   can_cancel: boolean;
   can_edit: boolean;
+  edit_request?: EditRequest | null;
 }
 
 export interface OrderListItem {

@@ -312,9 +312,16 @@ struct EditInput {
     comment: Option<String>,
 }
 
+/// Изменение состава — запросом: заказ изменится после одобрения менеджером (ответ — заказ с `edit_request`).
 async fn edit_order(State(state): State<AppState>, AuthUser(user): AuthUser, Path(number): Path<String>, Json(body): Json<EditInput>) -> AppResult<Json<Value>> {
     let o = own_order(&state, user.id, &number).await?;
-    let o = orders::edit_order(&state, &o, &user, body.items, body.comment).await?;
+    let o = orders::request_edit(&state, &o, &user, body.items, body.comment).await?;
+    Ok(Json(json!(orders::order_json(&state, &o).await?)))
+}
+
+async fn withdraw_edit(State(state): State<AppState>, AuthUser(user): AuthUser, Path(number): Path<String>) -> AppResult<Json<Value>> {
+    let o = own_order(&state, user.id, &number).await?;
+    let o = orders::withdraw_edit(&state, &o).await?;
     Ok(Json(json!(orders::order_json(&state, &o).await?)))
 }
 
@@ -485,6 +492,7 @@ pub fn routes() -> Router<AppState> {
         .route("/account/orders", get(list_orders))
         .route("/account/orders/{number}", get(get_order).put(edit_order))
         .route("/account/orders/{number}/cancel", post(cancel_order))
+        .route("/account/orders/{number}/edit-request", axum::routing::delete(withdraw_edit))
         .route("/account/reconciliation", get(reconciliation))
         .route("/account/reconciliation.xlsx", get(reconciliation_xlsx))
         .route("/account/bonus", get(bonus))

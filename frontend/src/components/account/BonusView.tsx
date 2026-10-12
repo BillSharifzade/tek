@@ -124,7 +124,7 @@ export function BonusView() {
             </span>
           </div>
           <div className="flex flex-col justify-center gap-[6px] text-[15px] leading-[20px] text-[#555]">
-            <p className="text-black">Кешбэк начисляется на бонусный счёт после оплаты заказа и доступен для оплаты следующих заказов.</p>
+            <p className="text-black">Кешбэк начисляется на бонусный счёт после получения заказа.</p>
             {data ? (
               <p className="tnum">
                 За период: начислено <span className="font-medium text-[#00A000]">{money(accrued)}</span>, списано <span className="font-medium text-black">{money(spent)}</span>

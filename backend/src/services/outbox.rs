@@ -3,7 +3,11 @@ use std::time::Duration;
 use serde_json::Value;
 use sqlx::{PgPool, Postgres, Transaction};
 
-use crate::{error::AppResult, services::mail::SendError, state::AppState};
+use crate::{
+    error::AppResult,
+    services::mail::{SendError, PASSWORD_RESET_EVENT},
+    state::AppState,
+};
 
 /// Queue an integration event (CRM / 1C / e-mail) inside the caller's transaction.
 pub async fn enqueue(tx: &mut Transaction<'_, Postgres>, target: &str, event: &str, payload: Value) -> AppResult<()> {
@@ -60,7 +64,7 @@ pub fn spawn_worker(state: AppState) {
     });
 }
 
-/// Пустые гостевые корзины старше 30 дней, брошенные гостевые старше 90, истёкшие refresh-токены,
+/// Пустые гостевые корзины старше 30 дней, брошенные гостевые старше 90, истёкшие refresh-токены и ссылки смены пароля,
 /// ссылки «поделиться корзиной» старше 90 дней.
 async fn cleanup(pool: &PgPool) -> AppResult<()> {
     let carts = sqlx::query(
@@ -73,8 +77,9 @@ async fn cleanup(pool: &PgPool) -> AppResult<()> {
     .rows_affected();
     let tokens = sqlx::query("DELETE FROM refresh_tokens WHERE expires_at < now()").execute(pool).await?.rows_affected();
     let shares = sqlx::query("DELETE FROM cart_shares WHERE created_at < now() - interval '90 days'").execute(pool).await?.rows_affected();
-    if carts + tokens + shares > 0 {
-        tracing::info!(carts, tokens, shares, "cleanup");
+    let resets = sqlx::query("DELETE FROM password_resets WHERE expires_at < now()").execute(pool).await?.rows_affected();
+    if carts + tokens + shares + resets > 0 {
+        tracing::info!(carts, tokens, shares, resets, "cleanup");
     }
     Ok(())
 }
@@ -148,9 +153,14 @@ async fn tick(state: &AppState) -> AppResult<()> {
         match result {
             Ok(mock) => {
                 let mut tx = state.pool.begin().await?;
-                sqlx::query("UPDATE integration_outbox SET status = 'sent', mock = $2, sent_at = now(), attempts = attempts + 1 WHERE id = $1")
+                // письмо со ссылкой на смену пароля после отправки в базе не храним — ссылка даёт вход в аккаунт
+                sqlx::query(
+                    r#"UPDATE integration_outbox SET status = 'sent', mock = $2, sent_at = now(), attempts = attempts + 1,
+                       payload = CASE WHEN event = $3 THEN payload - 'html' - 'text' ELSE payload END WHERE id = $1"#,
+                )
                     .bind(row.id)
                     .bind(mock)
+                    .bind(PASSWORD_RESET_EVENT)
                     .execute(&mut *tx)
                     .await?;
                 if row.target != "email"
@@ -177,12 +187,14 @@ async fn tick(state: &AppState) -> AppResult<()> {
                 }
                 sqlx::query(
                     r#"UPDATE integration_outbox SET attempts = attempts + 1, last_error = $2, status = $3,
-                       next_attempt_at = now() + make_interval(secs => $4) WHERE id = $1"#,
+                       next_attempt_at = now() + make_interval(secs => $4),
+                       payload = CASE WHEN $3 = 'failed' AND event = $5 THEN payload - 'html' - 'text' ELSE payload END WHERE id = $1"#,
                 )
                 .bind(row.id)
                 .bind(err)
                 .bind(if failed { "failed" } else { "pending" })
                 .bind(backoff_secs(row.attempts) as f64)
+                .bind(PASSWORD_RESET_EVENT)
                 .execute(&state.pool)
                 .await?;
             }

@@ -19,6 +19,8 @@ check "$API/brands" 200
 check "$API/checkout/options" 200
 check "$API/content/projects" 200
 check "$API/content/services" 200
+check "$API/content/vacancies" 200
+check "$API/content/site" 200
 PROD=$(curl -s "$API/catalog/products?per_page=1" | grep -oE '"slug":"[^"]+"' | head -1 | cut -d'"' -f4)
 CAT=$(curl -s "$API/catalog/tree" | grep -oE '"slug":"[^"]+"' | head -1 | cut -d'"' -f4)
 echo "  product=$PROD category=$CAT"
@@ -26,7 +28,9 @@ check "$API/catalog/products/$PROD" 200
 check "$API/catalog/categories/$CAT" 200
 echo "== WEB =="
 for p in / /catalog "/catalog/$CAT" "/product/$PROD" /brands /cart /checkout /login /register /about /vacancies /services /projects /news /contacts /support \
-  /help /help/delivery /help/payment /help/warranty /help/faq /configurators /favorites "/search?q=%D0%BA%D0%B0%D0%B1%D0%B5%D0%BB%D1%8C" /account; do
+  /help /help/delivery /help/payment /help/warranty /help/faq /configurators /favorites "/search?q=%D0%BA%D0%B0%D0%B1%D0%B5%D0%BB%D1%8C" /account \
+  /forgot-password "/reset-password?token=x" /admin /admin/documents /admin/brands /admin/news /admin/news/new /admin/projects /admin/projects/new \
+  /admin/vacancies /admin/stores; do
   check "$WEB$p" 200
 done
 # удалённые по доработкам R2 страницы услуг

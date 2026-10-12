@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Boxes, Pencil } from "lucide-react";
+import { Boxes, FileText, Pencil } from "lucide-react";
 import { useState } from "react";
 import { adminApi } from "@/lib/admin-api";
 import type { AdminProduct, ProductPatch, Store } from "@/lib/admin-types";
@@ -166,7 +166,7 @@ export function ProductsView() {
       key: "actions",
       header: "",
       align: "right",
-      className: "w-[100px]",
+      className: "w-[136px]",
       cell: (p) =>
         editId === p.id ? (
           <span className="inline-flex flex-col items-end gap-[4px]">
@@ -199,6 +199,9 @@ export function ProductsView() {
             <button type="button" className={iconBtn} onClick={() => setStockFor(p)} aria-label={`Остатки: ${p.name}`} title="Остатки по складам">
               <Boxes className="size-4" />
             </button>
+            <Link href={`/admin/products/${p.id}`} className={iconBtn} aria-label={`Карточка: ${p.name}`} title="Документы, комплектующие, предложение, страна">
+              <FileText className="size-4" />
+            </Link>
           </span>
         ),
     },

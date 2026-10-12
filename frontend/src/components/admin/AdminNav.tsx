@@ -11,7 +11,7 @@ import { isAdmin } from "./shared";
 
 /**
  * Меню панели управления — та же карточка, что и меню ЛК (246px, r7, пункты 56px, активный — #FBFCFD SemiBold).
- * «Импорт каталога» — только для администратора.
+ * «Импорт каталога» — только для администратора; товары, документы, бренды и контент сайта — менеджерам и администратору.
  */
 export const ADMIN_MENU: { href: string; label: string; exact?: boolean; adminOnly?: boolean }[] = [
   { href: "/admin", label: "Обзор", exact: true },
@@ -21,6 +21,12 @@ export const ADMIN_MENU: { href: string; label: string; exact?: boolean; adminOn
   { href: "/admin/reviews", label: "Отзывы и вопросы" },
   { href: "/admin/coupons", label: "Купоны" },
   { href: "/admin/products", label: "Товары" },
+  { href: "/admin/documents", label: "Документы" },
+  { href: "/admin/brands", label: "Бренды" },
+  { href: "/admin/news", label: "Новости" },
+  { href: "/admin/projects", label: "Проекты" },
+  { href: "/admin/vacancies", label: "Вакансии" },
+  { href: "/admin/stores", label: "Магазины и склады" },
   { href: "/admin/import", label: "Импорт каталога", adminOnly: true },
   { href: "/admin/outbox", label: "Интеграции" },
 ];
@@ -39,6 +45,11 @@ export function adminTitle(pathname: string): string {
   const order = pathname.match(/^\/admin\/orders\/([^/]+)/);
   if (order) return `Заказ №${decodeURIComponent(order[1])}`;
   if (/^\/admin\/users\/[^/]+/.test(pathname)) return "Карточка пользователя";
+  if (/^\/admin\/products\/[^/]+/.test(pathname)) return "Карточка товара";
+  if (/^\/admin\/news\/new$/.test(pathname)) return "Новая новость";
+  if (/^\/admin\/news\/[^/]+/.test(pathname)) return "Новость";
+  if (/^\/admin\/projects\/new$/.test(pathname)) return "Новый проект";
+  if (/^\/admin\/projects\/[^/]+/.test(pathname)) return "Проект";
   return section(pathname)?.label ?? "Панель управления";
 }
 

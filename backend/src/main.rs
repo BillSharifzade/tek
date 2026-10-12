@@ -70,9 +70,12 @@ async fn main() -> anyhow::Result<()> {
     if seeded {
         tracing::info!(mode = ?cfg.seed, "database seeded");
     }
-    // досев контента и группировка торговых предложений — только для базы из сида, не для выгрузки 1С
+    // досев контента и группировка торговых предложений — только для базы из сида, не для выгрузки 1С;
+    // без демо-данных — только контент сайта (склады, тексты страниц, услуги…) в пустые таблицы
     if cfg.seed != config::SeedMode::Off {
         seed::enrich(&pool).await?;
+    } else {
+        seed::site_content(&pool).await?;
     }
     seed::bootstrap_admin(&pool, &cfg).await?;
 
@@ -122,7 +125,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Смена пароля пользователя из консоли сервера (восстановления по e-mail пока нет):
+/// Смена пароля пользователя из консоли сервера (клиенты восстанавливают пароль сами — «Забыли пароль?»):
 /// `NEW_PASSWORD='…' tek-api set-password user@example.com` — все сессии пользователя завершаются.
 async fn cli_set_password(cfg: &Config, email: Option<&str>) -> anyhow::Result<()> {
     let email = email.map(|e| e.trim().to_lowercase()).filter(|e| e.contains('@')).ok_or_else(|| anyhow::anyhow!("usage: NEW_PASSWORD=... tek-api set-password <email>"))?;

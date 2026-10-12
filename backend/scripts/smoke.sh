@@ -80,6 +80,14 @@ check "POST /auth/login by phone"         200 "$(req POST /auth/login '{"login":
 check "GET /admin/users?status=pending"   200 "$(req GET '/admin/users?status=pending' '' -H "$ADMIN")"
 check "PUT /admin/users/{id}/pricing"     200 "$(req PUT "/admin/users/$NEW_ID/pricing" '{"discount_pct":7,"cashback_pct":2,"rules":[{"category_slug":"kabelenesushchie-sistemy","discount_pct":12,"cashback_pct":4}]}' -H "$ADMIN")"
 check "GET /admin/users forbidden for client" 403 "$(req GET /admin/users '' -H "$AUTHV")"
+# «Забыли пароль?»: ответ одинаковый для любого логина, письмо — только существующему одобренному аккаунту с e-mail;
+# ссылку из письма не видно в списке очереди (в нём вход в чужой аккаунт)
+check "POST /auth/password/forgot unknown" 202 "$(req POST /auth/password/forgot '{"login":"nobody-'"$RND"'@example.com"}')"
+check "POST /auth/password/forgot"        202 "$(req POST /auth/password/forgot '{"login":"smoke'"$RND"'@test.tj"}')"
+check "password reset e-mail hidden"      True "$(req GET /admin/outbox '' -H "$ADMIN" >/dev/null; jqv " is not None and [r for r in d if r['event']=='email.password_reset' and r['payload'].get('to')=='smoke$RND@test.tj'] != [] and all('text' not in r['payload'] and 'html' not in r['payload'] for r in d if r['event']=='email.password_reset')")"
+check "POST /auth/password/forgot empty"  422 "$(req POST /auth/password/forgot '{"login":" "}')"
+check "POST /auth/password/check bad"     422 "$(req POST /auth/password/check '{"token":"nope"}')"
+check "POST /auth/password/reset bad"     422 "$(req POST /auth/password/reset '{"token":"nope","password":"Newpass123"}')"
 
 echo "== guest cart =="
 check "GET /cart (guest, no cart created)" 200 "$(req GET /cart)"
@@ -134,7 +142,23 @@ check "GET /account/company"              200 "$(req GET /account/company '' -H 
 check "GET /account/orders"               200 "$(req GET /account/orders '' -H "$AUTHV")"
 check "GET /account/orders?from&to"       200 "$(req GET '/account/orders?from=2025-01-01&to=2030-01-01' '' -H "$AUTHV")"
 check "GET /account/orders/{number}"      200 "$(req GET "/account/orders/$ORDER" '' -H "$AUTHV")"
-check "PUT /account/orders/{number}"      200 "$(req PUT "/account/orders/$ORDER" '{"items":[{"product_id":"'"$PID"'","qty":'"$PACK"'}],"comment":"edited"}' -H "$AUTHV")"
+# изменение заказа — запросом: заказ меняется только после одобрения менеджером (ТЗ), отгрузить с запросом нельзя
+EDIT='{"items":[{"product_id":"'"$PID"'","qty":'"$PACK"'}],"comment":"edited"}'
+check "PUT /account/orders/{number}"      200 "$(req PUT "/account/orders/$ORDER" "$EDIT" -H "$AUTHV")"
+check "edit request pending, order kept"  True "$(jqv "['edit_request'] is not None and d['edit_request']['comment']=='edited' and d['comment']=='smoke' and any(i['qty']==$PACK for i in d['edit_request']['items'])")"
+check "edit request too many -> 422"      422 "$(req PUT "/account/orders/$ORDER" '{"items":[{"product_id":"'"$PID"'","qty":99999900}]}' -H "$AUTHV")"
+check "GET /admin/orders?edit_pending=1"  True "$(req GET '/admin/orders?edit_pending=1' '' -H "$ADMIN" >/dev/null; jqv " is not None and any(o['number']=='$ORDER' and o['edit_pending'] for o in d)")"
+check "ship with pending edit -> 409"     409 "$(req PUT "/admin/orders/$ORDER/status" '{"status":"shipped"}' -H "$ADMIN")"
+check "POST edit-request/reject"          200 "$(req POST "/admin/orders/$ORDER/edit-request/reject" '{"note":"нет на складе"}' -H "$ADMIN")"
+check "rejected: order unchanged"         True "$(jqv "['edit_request'] is None and d['comment']=='smoke' and any('нет на складе' in e['label'] for e in d['events'])")"
+check "reject again -> 409"               409 "$(req POST "/admin/orders/$ORDER/edit-request/reject" '{}' -H "$ADMIN")"
+check "PUT edit (second request)"         200 "$(req PUT "/account/orders/$ORDER" "$EDIT" -H "$AUTHV")"
+check "DELETE edit-request (withdraw)"    200 "$(req DELETE "/account/orders/$ORDER/edit-request" '' -H "$AUTHV")"
+check "withdrawn: no request"             True "$(jqv "['edit_request'] is None")"
+req PUT "/account/orders/$ORDER" "$EDIT" -H "$AUTHV" >/dev/null
+check "approve as client -> 403"          403 "$(req POST "/admin/orders/$ORDER/edit-request/approve" '' -H "$AUTHV")"
+check "POST edit-request/approve"         200 "$(req POST "/admin/orders/$ORDER/edit-request/approve" '' -H "$ADMIN")"
+check "approved: order changed"           True "$(jqv "['edit_request'] is None and d['comment']=='edited' and len(d['items'])==1 and d['items'][0]['qty']==$PACK")"
 check "POST /account/orders/{n}/cancel"   200 "$(req POST "/account/orders/$ORDER/cancel" '' -H "$AUTHV")"
 check "POST cancel again -> 409"          409 "$(req POST "/account/orders/$ORDER/cancel" '' -H "$AUTHV")"
 # отмена вернула резерв клиента; остался только 1 шт. гостевого заказа
@@ -284,6 +308,88 @@ IPID=$(jqv "['items'][0]['id']")
 # тестовый товар импорта на витрине не нужен — снимаем с продажи
 check "hide imported smoke product"       200 "$(req PUT "/admin/products/$IPID" '{"is_active":false}' -H "$ADMIN")"
 rm -f "$TPL" "$CSV"
+
+echo "== catalog admin: documents, accessories, variants, countries =="
+form() { # path auth [curl -F args...]
+  local p=$1 a=$2; shift; shift; curl -s -o "$TMP" -w '%{http_code}' -X POST "$BASE$p" -H "$a" "$@"
+}
+DOCF=$(mktemp -d)/smoke-passport.pdf; printf '%%PDF-1.4\nsmoke document\n%%%%EOF\n' > "$DOCF"
+check "GET /admin/products/{id} extras"     True "$(req GET "/admin/products/$PID" '' -H "$MANAGER" >/dev/null; jqv "['id']=='$PID' and all(k in d for k in ['documents','accessories','variant','country_origin','brand_info'])")"
+check "PUT product country_origin"          True "$(req PUT "/admin/products/$PID" '{"country_origin":"Китай"}' -H "$MANAGER" >/dev/null; jqv "['country_origin']=='Китай'")"
+check "storefront shows product origin"     True "$(req GET "/catalog/products/$SLUG" >/dev/null; jqv "['brand']['country_origin']=='Китай'")"
+req PUT "/admin/products/$PID" '{"country_origin":null}' -H "$MANAGER" >/dev/null
+check "POST /admin/documents (file)"        201 "$(form /admin/documents "$MANAGER" -F "file=@$DOCF;type=application/pdf" -F "title=Паспорт smoke" -F "product_id=$PID")"
+DOCID=$(jqv "['id']")
+check "document kind guessed, file stored"  True "$(jqv "['kind']=='passport' and d['has_file'] and d['products']==1")"
+check "GET /documents/{id}/download file"   True "$(curl -s "$BASE/documents/$DOCID/download" | grep -c 'smoke document' | python3 -c "import sys; print(sys.stdin.read().strip()=='1')")"
+check "POST /admin/documents (url)"         201 "$(form /admin/documents "$MANAGER" -F "url=https://example.com/smoke-$RND.pdf" -F "title=Сертификат smoke")"
+UDOC=$(jqv "['id']")
+check "download redirects to url"           307 "$(curl -s -o /dev/null -w '%{http_code}' "$BASE/documents/$UDOC/download")"
+check "duplicate document url -> 409"       409 "$(form /admin/documents "$MANAGER" -F "url=https://example.com/smoke-$RND.pdf")"
+check "POST /admin/documents svg -> 422"    422 "$(form /admin/documents "$MANAGER" -F "file=@$DOCF;filename=logo.svg")"
+check "PUT /admin/documents/{id}"           200 "$(req PUT "/admin/documents/$UDOC" '{"title":"Сертификат smoke 2","kind":"certificate"}' -H "$MANAGER")"
+check "GET /admin/documents?q="             True "$(req GET '/admin/documents?q=smoke' '' -H "$MANAGER" >/dev/null; jqv "['total'] >= 2")"
+check "PUT /admin/products/{id}/documents"  True "$(req PUT "/admin/products/$PID/documents" '{"document_ids":['"$DOCID"','"$UDOC"']}' -H "$MANAGER" >/dev/null; jqv " is not None and len(d['documents'])==2")"
+check "unknown document -> 422"             422 "$(req PUT "/admin/products/$PID/documents" '{"document_ids":[99999999]}' -H "$MANAGER")"
+req GET '/catalog/products?category=kabelnye-lotki-dks&per_page=3' >/dev/null; ACODE=$(jqv "['items'][1]['code']")
+check "PUT /admin/products/{id}/accessories" True "$(req PUT "/admin/products/$PID/accessories" '{"items":[{"code":"'"$ACODE"'","group":"Smoke"}]}' -H "$MANAGER" >/dev/null; jqv " is not None and len(d['accessories'])==1 and d['accessories'][0]['group']=='Smoke'")"
+check "accessory unknown code -> 422"       422 "$(req PUT "/admin/products/$PID/accessories" '{"items":[{"code":"NO-SUCH-CODE","group":"Smoke"}]}' -H "$MANAGER")"
+check "storefront shows accessory group"    True "$(req GET "/catalog/products/$SLUG" >/dev/null; jqv " is not None and any(a['group']=='Smoke' for a in d['accessories']) and len(d['documents'])==2")"
+check "PUT /admin/products/{id}/variant"    True "$(req PUT "/admin/products/$IPID/variant" '{"group":"Smoke group '"$RND"'","axes":["Длина, м"],"values":[{"axis":"Длина, м","value":"3"}]}' -H "$MANAGER" >/dev/null; jqv " is not None and d['variant']['group']=='Smoke group $RND' and d['variant']['values']=={'Длина, м':'3'}")"
+check "variant missing value -> 422"        422 "$(req PUT "/admin/products/$IPID/variant" '{"group":"Smoke group '"$RND"'","axes":["Длина, м","Цвет"],"values":[{"axis":"Длина, м","value":"3"}]}' -H "$MANAGER")"
+check "GET /admin/brands"                   200 "$(req GET /admin/brands '' -H "$MANAGER")"
+BID=$(jqv "[0]['id']"); BCOUNTRY=$(jqv "[0]['country_brand'] or ''")
+check "PUT /admin/brands/{id} country"      True "$(req PUT "/admin/brands/$BID" '{"country_brand":"Германия"}' -H "$MANAGER" >/dev/null; jqv "['country_brand']=='Германия'")"
+req PUT "/admin/brands/$BID" '{"country_brand":"'"$BCOUNTRY"'"}' -H "$MANAGER" >/dev/null
+IMG=$(mktemp -d)/smoke.png; printf '\x89PNG\r\n\x1a\nsmoke' > "$IMG"
+check "POST /admin/files image"             201 "$(form /admin/files "$MANAGER" -F "kind=image" -F "file=@$IMG")"
+FURL=$(jqv "['url']")
+check "GET uploaded file"                   200 "$(curl -s -o /dev/null -w '%{http_code}' "${BASE%/api/v1}$FURL")"
+check "POST /admin/files pdf as image -> 422" 422 "$(form /admin/files "$MANAGER" -F "kind=image" -F "file=@$DOCF")"
+check "POST /admin/files as client -> 403"  403 "$(form /admin/files "$AUTHV" -F "file=@$IMG")"
+# импорт: страна производства, документы по ссылке и номеру, комплектующие (код ниже в файле), торговое предложение
+printf 'Код;Страна производства;Документы;Комплектующие;Предложение;Вар: Длина, м\nSMOKE-IMPORT-1;Турция;"Каталог | https://example.com/smoke-cat-%s.pdf; #%s";Крепёж: %s;Smoke group %s;6\n' "$RND" "$DOCID" "$ACODE" "$RND" > "$CSV"
+check "import with new columns"             True "$(upload '' "$ADMIN" "$CSV" >/dev/null; jqv "['updated']==1 and d['errors']==[]")"
+check "import applied extras"               True "$(req GET "/admin/products/$IPID" '' -H "$ADMIN" >/dev/null; jqv " is not None and d['country_origin']=='Турция' and len(d['documents'])==2 and d['accessories'][0]['group']=='Крепёж' and d['variant']['values']=={'Длина, м':'6'}")"
+printf 'Код;Комплектующие;Вар: Длина, м\nSMOKE-IMPORT-1;NOPE-%s;-\n' "$RND" > "$CSV"
+check "import unknown accessory reported"   True "$(upload '' "$ADMIN" "$CSV" >/dev/null; jqv " is not None and any('NOPE' in e['message'] for e in d['errors'])")"
+check "variant: leave group"                True "$(req PUT "/admin/products/$IPID/variant" '{"group":null,"values":[]}' -H "$MANAGER" >/dev/null; jqv "['variant'] is None")"
+req PUT "/admin/products/$PID/accessories" '{"items":[]}' -H "$MANAGER" >/dev/null
+req PUT "/admin/products/$PID/documents" '{"document_ids":[]}' -H "$MANAGER" >/dev/null
+check "DELETE /admin/documents/{id}"        204 "$(req DELETE "/admin/documents/$DOCID" '' -H "$MANAGER")"
+req DELETE "/admin/documents/$UDOC" '' -H "$MANAGER" >/dev/null
+# документ, созданный импортом по ссылке, тоже убираем
+req GET "/admin/documents?q=smoke-cat-$RND" '' -H "$MANAGER" >/dev/null
+for d in $(jqv "['items']" | python3 -c "import sys,ast; print(' '.join(str(x['id']) for x in ast.literal_eval(sys.stdin.read() or '[]')))"); do req DELETE "/admin/documents/$d" '' -H "$MANAGER" >/dev/null; done
+rm -rf "$(dirname "$DOCF")" "$(dirname "$IMG")"; rm -f "$CSV"
+
+echo "== content admin: news, projects, vacancies, stores =="
+check "GET /content/site"                   200 "$(req GET /content/site)"
+check "GET /content/vacancies"              True "$(req GET /content/vacancies >/dev/null; jqv " is not None and len(d) >= 1 and all('blocks' in v for v in d)")"
+check "GET /admin/news as client -> 403"    403 "$(req GET /admin/news '' -H "$AUTHV")"
+check "POST /admin/news"                    201 "$(req POST /admin/news '{"title":"Смоук новость '"$RND"'","excerpt":"анонс","body_text":"Текст **важно**\n\n- пункт\n\n<script>alert(1)</script>","tags":["Смоук"]}' -H "$MANAGER")"
+NID=$(jqv "['id']"); NSLUG=$(jqv "['slug']")
+check "news body is safe html"              True "$(req GET "/content/news/$NSLUG" >/dev/null; jqv " is not None and '<strong>важно</strong>' in d['body'] and '<li>пункт</li>' in d['body'] and '<script>' not in d['body'] and '&lt;script&gt;' in d['body']")"
+check "GET /admin/news/{id} body_text"      True "$(req GET "/admin/news/$NID" '' -H "$MANAGER" >/dev/null; jqv "['body_text'].startswith('Текст **важно**')")"
+check "PUT /admin/news/{id}"                200 "$(req PUT "/admin/news/$NID" '{"title":"Смоук новость '"$RND"' 2","slug":"'"$NSLUG"'","body_text":"Новый текст"}' -H "$MANAGER")"
+check "news slug taken -> 409"              409 "$(req POST /admin/news '{"title":"Дубль","slug":"'"$NSLUG"'"}' -H "$MANAGER")"
+check "DELETE /admin/news/{id}"             204 "$(req DELETE "/admin/news/$NID" '' -H "$MANAGER")"
+check "POST /admin/projects"                201 "$(req POST /admin/projects '{"title":"Смоук проект '"$RND"'","project_date":"2025-01-02","object":"Объект","service":"Поставка","brands":["dks"],"products":["'"$ACODE"'"],"body_text":"Описание"}' -H "$MANAGER")"
+PJID=$(jqv "['id']"); PJSLUG=$(jqv "['slug']")
+check "project on site with brand/product"  True "$(req GET "/content/projects/$PJSLUG" >/dev/null; jqv " is not None and d['brands'][0]['slug']=='dks' and len(d['products'])==1 and d['year']=='2025'")"
+check "project unknown brand -> 422"        422 "$(req PUT "/admin/projects/$PJID" '{"title":"x","brands":["no-such-brand"]}' -H "$MANAGER")"
+check "DELETE /admin/projects/{id}"         204 "$(req DELETE "/admin/projects/$PJID" '' -H "$MANAGER")"
+check "POST /admin/vacancies"               201 "$(req POST /admin/vacancies '{"title":"Смоук вакансия '"$RND"'","dept":"Тест","city":"Душанбе","experience":"","schedule":"","salary":"","is_active":false,"blocks":[{"title":"Обязанности","items":["Тестировать"]}]}' -H "$MANAGER")"
+VID=$(jqv "['id']")
+check "hidden vacancy not on site"          True "$(req GET /content/vacancies >/dev/null; jqv " is not None and not any(v['title']=='Смоук вакансия $RND' for v in d)")"
+check "DELETE /admin/vacancies/{id}"        204 "$(req DELETE "/admin/vacancies/$VID" '' -H "$MANAGER")"
+check "POST /admin/stores"                  201 "$(req POST /admin/stores '{"code":"smoke-'"$RND"'","city":"Вахдат","name":"Смоук склад","address":"ул. Тестовая, 1","phone":null,"hours":null,"delivery_hint":"завтра","lat":38.5,"lon":69.0}' -H "$MANAGER")"
+SID=$(jqv "['id']")
+check "store code taken -> 409"             409 "$(req POST /admin/stores '{"code":"smoke-'"$RND"'","city":"Вахдат","name":"Дубль","address":"ул. Тестовая, 1","delivery_hint":"","lat":null,"lon":null}' -H "$MANAGER")"
+check "PUT /admin/stores/{id}"              200 "$(req PUT "/admin/stores/$SID" '{"code":"smoke-'"$RND"'","city":"Вахдат","name":"Смоук склад 2","address":"ул. Тестовая, 2","delivery_hint":"завтра","lat":null,"lon":null}' -H "$MANAGER")"
+check "DELETE /admin/stores/{id}"           204 "$(req DELETE "/admin/stores/$SID" '' -H "$MANAGER")"
+check "DELETE store with stock -> 409"      409 "$(req DELETE /admin/stores/1 '' -H "$MANAGER")"
+
 # письма: регистрация, заказы, заявки, ответы — в outbox (target=email)
 check "email events queued in outbox"     True "$(req GET /admin/outbox '' -H "$ADMIN" >/dev/null; jqv " is not None and all(e in [r['event'] for r in d if r['target']=='email'] for e in ['email.order_created','email.order_new','email.registration_received','email.lead_new','email.order_status'])")"
 check "PUT /account/password wrong"       422 "$(req PUT /account/password '{"current_password":"bad","new_password":"Newpass123"}' -H "$AUTHV")"

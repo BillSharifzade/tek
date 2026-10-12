@@ -58,7 +58,8 @@ function Col({ title, links, className }: { title: string; links: { href: string
   );
 }
 
-export function Footer() {
+/** `onlinePayment` — подключена ли онлайн-оплата Алиф / ДС (`GET /content/site`): пока нет, в строке оплаты её нет. */
+export function Footer({ onlinePayment }: { onlinePayment: boolean }) {
   const year = new Date().getFullYear();
   return (
     <footer className="border-t border-line-2 bg-white">
@@ -128,7 +129,7 @@ export function Footer() {
             © {year} {SITE.company}. Все права защищены.
           </span>
           <div className="flex flex-wrap items-center gap-x-[20px] gap-y-2">
-            <span>Оплата: Алиф Банк · Душанбе Сити · наличные · по счёту</span>
+            <span>{onlinePayment ? "Оплата: Алиф Банк · Душанбе Сити · наличные · по счёту" : "Оплата: наличные · по счёту"}</span>
           </div>
         </div>
       </div>

@@ -68,7 +68,9 @@ Order        { id, number, status, status_label, created_at, delivery: {method, 
                payment: {method, method_label, status, status_label}, subtotal, discount_total, coupon_discount,
                delivery_price, total, cashback_total, paid_amount, remaining, due_date, comment,
                items: [{product: ProductCard, qty, price: Price, line_total}], events: [{kind, label, at}],
-               can_cancel: bool, can_edit: bool }
+               can_cancel: bool, can_edit: bool, edit_request: EditRequest | null }
+EditRequest  { created_at, comment|null, total, delivery_price,                  // client's change request awaiting the manager;
+               items: [{product: ProductCard, qty, old_qty}] }                    // qty 0 = removed, old_qty 0 = added
 User         { id, email, phone, first_name, last_name, role: "customer"|"manager"|"admin",
                status: "pending"|"approved"|"blocked", customer_type: "retail"|"legal"|"electrician"|"purchaser", email: "" when not given,
                discount_pct, cashback_pct, bonus_balance, company: Company|null,
@@ -107,7 +109,10 @@ Delivery methods: `courier` (Доставка, 30.00 с., Душанбе/Худ�
 | GET | `/content/pages/{slug}` | `{slug,title,body_html}` for `about`, `contacts`, `support`, `help`, `delivery`, `payment` |
 | GET | `/content/configurators` | `[{slug,name,description,url,image}]` |
 | GET | `/content/stores` | `[{id,city,name,address,phone,hours,delivery_hint,lat,lon}]` |
-| GET | `/documents/{id}/download` | streams the file (Content-Disposition attachment) |
+| GET | `/content/vacancies` | `[{id (slug, anchor), dept, title, city, experience, schedule, salary, blocks:[{title, items:string[]}]}]` — active vacancies (admin panel «Вакансии») |
+| GET | `/content/site` | `{online_payment: bool}` — whether Alif / DC online payment is enabled; while it is not, the site texts (footer, «Оплата», FAQ) don't promise it |
+| GET | `/documents/{id}/download` | the uploaded file (Content-Disposition attachment, Cyrillic name via `filename*`), or 307 to the document's external `url`, or (demo documents without either) a generated PDF |
+| GET | `/files/{id}/{name}` | a file uploaded in the admin panel (news / project images): images and PDF inline, other types as attachment; `Cache-Control: immutable` |
 
 ## Auth
 
@@ -118,6 +123,9 @@ Delivery methods: `courier` (Доставка, 30.00 с., Душанбе/Худ�
 | POST | `/auth/refresh` | `{refresh_token}` → `{access_token, refresh_token}` (rotation) |
 | POST | `/auth/logout` | `{refresh_token}` → 204 |
 | GET | `/auth/me` | `User` |
+| POST | `/auth/password/forgot` | `{login}` (e-mail or phone) → 202 `{message}` — always the same answer (no account enumeration). An approved account with an e-mail gets the e-mail `email.password_reset` with a one-time link `{FRONTEND_URL}/reset-password?token=…` valid for 1 hour; at most one e-mail per minute per account, a new link cancels the previous one. 422 `invalid_login` (empty) |
+| POST | `/auth/password/check` | `{token}` → 204 if the link is valid, else 422 `invalid_reset_token` |
+| POST | `/auth/password/reset` | `{token, password}` → 204; the link is single-use, all sessions of the user are ended. 422 `invalid_reset_token` (unknown / expired / used / account not approved) or `weak_password` (link stays valid) |
 
 Register → 202 `{message, user_id}`; 409 `already_registered`, 422 `invalid_email` / `invalid_phone` / `invalid_name` / `company_required` (legal entity without company) / `weak_password`.
 
@@ -165,7 +173,8 @@ Password policy (validated server-side, message ru): ≥8 chars, latin letters +
 | GET | `/account/orders?from&to&page` | default last 30 days → `{items:[{number,id,date,status,status_label,total,paid_amount,remaining,due_date}], total}` |
 | GET | `/account/orders/{number}` | `Order` |
 | POST | `/account/orders/{number}/cancel` | allowed while status ∉ {shipped, delivered, cancelled} → `Order`; emits CRM update |
-| PUT | `/account/orders/{number}` | `{items:[{product_id, qty}], comment?}` while editable → `Order`; items already in the order keep their order prices (new ones — current personal price), the coupon used by the order stays applied (min total still checked), delivery price is recalculated; emits CRM update |
+| PUT | `/account/orders/{number}` | `{items:[{product_id, qty}], comment?}` while editable (not shipped, not paid) → `Order` with `edit_request`. **Change request** (ТЗ: the shipping order changes only after the manager's approval): the order, stock reservation, reconciliation and CRM stay as they are until a manager approves it. The new composition is validated at once exactly as on approval (stock, pack multiples, «below paid») — 422 / 409 right away. A new request replaces a pending one. Emits CRM `order.edit_requested`, e-mails the manager (`email.order_edit_requested`). On approval: items already in the order keep their order prices (new ones — current personal price), the coupon stays applied, delivery price is recalculated, CRM `order.updated` + 1C `stock.reserve` |
+| DELETE | `/account/orders/{number}/edit-request` | withdraw the pending request → `Order`; 409 `no_edit_request` |
 | GET | `/account/reconciliation?from&to` | Акт сверки: `{ period:{from,to}, opening_balance, entries:[{date, doc_type, doc_number, debit, credit, balance, order_number}], turnover:{debit,credit}, closing_balance }` ; `.xlsx` variant at `/account/reconciliation.xlsx` |
 | GET | `/account/bonus?from&to` | `{ balance, opening, entries:[{date, order_number, kind:"accrual"|"spend"|"adjust", amount, balance, note}], closing }` ; `.xlsx` variant at `/account/bonus.xlsx` |
 | GET | `/account/reviews` | `[{product:{slug,name}, rating, text, date, reply}]` ; `/account/questions` similar |
@@ -186,7 +195,8 @@ AdminUser    { id, email|null, phone|null, first_name, last_name, role, status, 
                manager_id|null, manager_name|null, is_lead_manager, company_name|null, company_inn|null, company_verified|null, created_at }
 AdminOrder   { id, number, created_at, status, status_label, total, paid_amount, remaining, payment_method, payment_method_label,
                payment_status, payment_status_label, delivery_method, delivery_method_label, first_name, last_name, phone, email,
-               company_name|null, crm_status, reservation_status, manager_id|null, manager_name|null, manager_email|null }
+               company_name|null, crm_status, reservation_status, manager_id|null, manager_name|null, manager_email|null,
+               edit_pending: bool }                                                 // a client's change request awaits a decision
 Lead         { id (number), kind, name, phone, email|null, note, service|null, page|null, status: "new"|"in_progress"|"done",
                manager_note|null, user_id|null, created_at }
 AdminReview  { id, product:{id,slug,name}, user_id|null, author, rating, pros, cons, text, created_at, reply_text|null, replied_at|null, status }
@@ -194,7 +204,12 @@ AdminQuestion{ id, product:{id,slug,name}, user_id|null, author, text, created_a
 Coupon       { code, kind: "percent"|"fixed", value, min_total, active, expires_at|null, usage_limit|null, used_count }
 AdminProduct { id, code, slug, name, category:{slug,name}, brand:{slug,name}|null, unit, list_price, sale_price|null, pack_qty|null,
                stock_total, stock:[{store_id, city, name, qty}] (every store, 0 when none), is_active, is_hit, is_new,
-               badges:["sale"|"hit"|"new"], image|null, created_at }
+               badges:["sale"|"hit"|"new"], image|null, created_at,
+               // GET/PUT /admin/products/{id}… also return:
+               country_origin|null, brand_info:{id,slug,name,country_brand,country_origin}|null,
+               documents: AdminDocument[], accessories:[{group, product_id, code, name, is_active}],
+               variant: {group, axes:string[], values:{[axis]:value}, siblings:[{id,code,name,values,is_active}]}|null }
+AdminDocument{ id, title, kind, file_name, size_kb, url|null, has_file: bool, created_at, products: number }
 ImportSummary{ dry_run, rows, created, updated, skipped, categories_created, brands_created, stock_rows,
                errors:[{row, message}] (row = line number in the file, header = 1; max 1000 listed), ignored_columns:[string] }
 ```
@@ -208,12 +223,14 @@ ImportSummary{ dry_run, rows, created, updated, skipped, categories_created, bra
 | GET | `/admin/users/{id}/pricing` | `{discount_pct, cashback_pct, manager_id, rules:[{category_slug, brand_slug, product_id, discount_pct, cashback_pct, category_name, brand_name, product_code, product_name}]}` |
 | PUT | `/admin/users/{id}/pricing` | `{discount_pct, cashback_pct, manager_id?, rules?:[{category_slug?, brand_slug?, product_id?, discount_pct, cashback_pct}]}` (a manager — only for own clients: 403 `not_your_client`; nobody for himself: 403 `self_pricing`) |
 | GET | `/admin/managers` | `[{id, name, email, phone, role, is_lead_manager}]` — active (not blocked) managers and admins, lead manager first; for assignment dropdowns |
-| GET | `/admin/orders?status=&q=&mine=1` | `AdminOrder[]`; `q` — number / customer name / phone / e-mail / company; `mine=1` — orders assigned to me |
-| PUT | `/admin/orders/{number}/status` | `{status}` → `Order` (e-mail «Заказ N: статус» to the customer) |
+| GET | `/admin/orders?status=&q=&mine=1&edit_pending=1` | `AdminOrder[]`; `q` — number / customer name / phone / e-mail / company; `mine=1` — orders assigned to me; `edit_pending=1` — with a pending change request |
+| PUT | `/admin/orders/{number}/status` | `{status}` → `Order` (e-mail «Заказ N: статус» to the customer); 409 `edit_pending` when shipping / delivering an order with a pending change request (cancelling is allowed and closes the request) |
+| POST | `/admin/orders/{number}/edit-request/approve` | applies the client's request to the order → `Order` (event «Изменение состава подтверждено менеджером», notification + e-mail `email.order_edit_decision`); 409 `no_edit_request`, `not_editable` (shipped / paid — reject instead), 422 / 409 if stock or prices no longer allow it |
+| POST | `/admin/orders/{number}/edit-request/reject` | `{note?}` (shown to the client) → `Order`; the order stays as it was; CRM `order.edit_rejected`, notification + e-mail |
 | PUT | `/admin/orders/{number}/manager` | `{manager_id: uuid\|null}` → `Order`; reassigns `assigned_manager_id` (`null` — unassign), emits CRM `order.updated {manager: {...}\|null}`, e-mails the new manager; 422 `invalid_manager` (unknown / blocked manager, or the field is missing) |
 | POST | `/admin/orders/{number}/payments` | `{amount?, note?}` — payment received (bank transfer for an invoice, partial allowed); no `amount` = the whole remainder → `Order`; 409 `already_paid` / `order_cancelled`, 422 `invalid_amount` |
 | GET | `/orders/{number}` | full `Order` (managers may open any order) |
-| GET | `/admin/outbox` | last 200 integration / e-mail events `{id, target: crm\|onec\|email, event, status, attempts, mock, last_error, created_at, sent_at, payload}` (for e-mails the HTML part is omitted: `payload {to, subject, text, number?}`) |
+| GET | `/admin/outbox` | last 200 integration / e-mail events `{id, target: crm\|onec\|email, event, status, attempts, mock, last_error, created_at, sent_at, payload}` (for e-mails the HTML part is omitted: `payload {to, subject, text, number?}`; for `email.password_reset` the text is omitted too — it holds a login link — and the text is erased from the database once the e-mail is sent or failed) |
 | GET | `/admin/leads?status=new\|in_progress\|done&kind=&q=&page=1&per_page=50` | `{items: Lead[], total, page, per_page, pages}` |
 | PUT | `/admin/leads/{id}` | `{status?, manager_note?: string\|null}` → `Lead`; 422 `invalid_status`, 404 |
 | GET | `/admin/reviews?unanswered=1&page=&per_page=` | `{items: AdminReview[], total, page, per_page, pages}` |
@@ -227,8 +244,26 @@ ImportSummary{ dry_run, rows, created, updated, skipped, categories_created, bra
 | PUT | `/admin/coupons/{code}` | same fields, all optional (`null` clears `expires_at` / `usage_limit`; the code itself can't be changed — 422) → `Coupon` |
 | DELETE | `/admin/coupons/{code}` | → 204 (404 when missing) |
 | GET | `/admin/products?q=&category=<slug, with subcategories>&brand=<slug>&active=1\|0&page=&per_page=50` | `{items: AdminProduct[], total, page, per_page, pages}` — includes products taken off sale; exact code match first |
-| GET | `/admin/products/{id}` | `AdminProduct` |
-| PUT | `/admin/products/{id}` | `{list_price?, sale_price?: number\|null (null = no sale), is_active?, is_hit?, is_new?}` → `AdminProduct`; 422 `invalid_price` (list > 0; 0 < sale < list). Clears public caches; `is_active` recounts category counters |
+| GET | `/admin/products/{id}` | `AdminProduct` with documents, accessories, variant, countries |
+| PUT | `/admin/products/{id}` | `{list_price?, sale_price?: number\|null (null = no sale), is_active?, is_hit?, is_new?, country_origin?: string\|null}` → `AdminProduct`; 422 `invalid_price` (list > 0; 0 < sale < list), `invalid_country` (> 60 chars). `country_origin` — the product's own country of production (shown instead of the brand's on the product page). Clears public caches; `is_active` recounts category counters |
+| PUT | `/admin/products/{id}/documents` | `{document_ids: int[]}` → `AdminProduct` — replaces the product's documents (from the shared library); 422 `unknown_document` |
+| PUT | `/admin/products/{id}/accessories` | `{items:[{code, group}]}` → `AdminProduct` — replaces accessories (tab «Комплектующие»), in list order; 422 `unknown_product` (codes listed) / `invalid_accessory` |
+| PUT | `/admin/products/{id}/variant` | `{group: string\|null, axes?: string[], values:[{axis, value}]}` → `AdminProduct`. Trade offer: group found by name or created; `axes` set the group's axes (default — the group's current axes); a value for every axis is required; 422 `invalid_variant` (≤ 5 axes, duplicate values in the group, unknown axis). `group: null` — leave the group. Empty groups are deleted |
+| GET | `/admin/documents?q=&page=&per_page=` | `{items: AdminDocument[], …}` — shared document library |
+| POST | `/admin/documents` | `multipart/form-data`: `file` (PDF, JPG, PNG, WebP, GIF, DOC(X), XLS(X), DWG, DXF, ZIP, RAR, 7Z — no SVG; up to 20 MB) **or** `url` (https), `title?` (default — file name), `kind?` (default — guessed from the title), `product_id?` (link to a product) → 201 `AdminDocument`; 409 `duplicate_document` (same url), 422 `unsupported_file` / `file_required` |
+| PUT | `/admin/documents/{id}` | `{title?, kind?, url?}` → `AdminDocument` |
+| DELETE | `/admin/documents/{id}` | → 204; removed from every product, the uploaded file is deleted |
+| GET | `/admin/brands` | `[{id, slug, name, country_brand, country_origin, description, logo_url, is_featured, products}]` |
+| PUT | `/admin/brands/{id}` | `{name?, country_brand?, country_origin?, description?}` (`null` clears) → brand row |
+| POST | `/admin/files` | `multipart`: `file`, `kind?: "image"` (then only images) → 201 `{id, url: "/api/v1/files/{id}/{name}", name, content_type, size_bytes}` — for news / project images (the frontend maps `/api/v1/files/…` to the API address) |
+| GET/POST | `/admin/news?q=&page=` | list `{items:[{id, slug, title, published_at, excerpt, image_url, tags}], …}` / create `{title, slug?, published_at?: "YYYY-MM-DD" (default today), excerpt?, body_text?, image_url?, tags?: string[]}` → 201 with `body_text` |
+| GET/PUT/DELETE | `/admin/news/{id}` | `body_text` — text in the panel markup (blank line = paragraph, `- ` list, `1. ` numbered, `## `/`### ` heading, `**bold**`, `[text](https://…)`); the site gets HTML generated from it with everything else escaped (no scripts). Existing HTML is converted back for editing. 409 `slug_taken` (explicit slug in use) |
+| GET/POST | `/admin/projects?q=&page=` | list / create `{title, slug?, project_date?, year? (default — year of the date), object?, service?, image_url?, excerpt?, body_text?, photos?: string[], video_url? (https), sort?, brands?: string[] (slugs), products?: string[] (codes)}`; 422 `invalid_content` with unknown brands / codes listed |
+| GET/PUT/DELETE | `/admin/projects/{id}` | same fields; `GET` returns `brands` (slugs), `products:[{code,name}]`, `body_text` |
+| GET/POST | `/admin/vacancies` | all vacancies (incl. hidden) / create `{title, slug?, dept, city, experience, schedule, salary, blocks:[{title, items}], sort?, is_active?}` |
+| PUT/DELETE | `/admin/vacancies/{id}` | `is_active: false` hides it from the site |
+| GET/POST | `/admin/stores` | `[{id, code, city, name, address, phone, hours, delivery_hint, lat, lon, sort, stock_total, products}]` / create `{code ([a-z0-9-], used in import headers «Остаток <code>»), city, name, address, phone?, hours?, delivery_hint?, lat?, lon?, sort?}`; 409 `code_taken` |
+| PUT/DELETE | `/admin/stores/{id}` | delete only a store without stock and orders — 409 `store_in_use` |
 | PUT | `/admin/products/{id}/stock` | `{stores:[{store_id, qty}]}` → `AdminProduct`; sets the absolute sellable quantity per store (order reservations are already subtracted); 422 `invalid_store` / `invalid_qty` |
 | POST | `/admin/import/catalog?dry_run=1` | **ADMIN**. `multipart/form-data`, field `file` (.xlsx / .xls / .ods or CSV UTF-8 / Windows-1251, `;` `,` or tab separated), up to **20 MB** (413 `payload_too_large`), timeout 10 min → 200 `ImportSummary`. One transaction; `dry_run` rolls it back. Row errors are skipped and listed, not fatal; header errors → 422 `invalid_header` `{details:{problems, headers}}`; unreadable file → 422 `invalid_file`; no `file` field → 422 `file_required`. Format: [`docs/IMPORT.md`](IMPORT.md). Also from the server console: `tek-api import <file> [--dry-run]` |
 | GET | `/admin/import/template.xlsx` | **ADMIN**. Template: sheet «Каталог» (headers incl. one `Остаток <store code>` column per current store, one example row taken from the catalog) + sheet «Инструкция» |
@@ -256,6 +291,9 @@ unreachable the rest of the batch waits a minute (CRM / 1C events are not delaye
 | `email.order_assigned` | the new manager (not when assigning to yourself) | `PUT /admin/orders/{n}/manager` |
 | `email.review_reply` / `email.question_answer` | author, first reply only, if `notify_replies` | `POST /admin/reviews/{id}/reply`, `/admin/questions/{id}/answer` |
 | `email.lead_new` | manager recipient¹ | `POST /leads` |
+| `email.password_reset` | the account's e-mail | `POST /auth/password/forgot` |
+| `email.order_edit_requested` | manager recipient¹ (the order's manager) | `PUT /account/orders/{n}` |
+| `email.order_edit_decision` | `order.email` | approve / reject of a change request |
 
 ¹ Manager recipient: the customer's personal manager (`users.manager_id`) → `MANAGER_NOTIFY_EMAIL` → the lead manager. No e-mail → not queued.
 Links to the admin UI in manager e-mails: `{FRONTEND_URL}/admin/orders?q={number}`, `/admin/users?status=pending`, `/admin/leads`.
@@ -266,7 +304,7 @@ invalid `SMTP_URL` / `MAIL_FROM` stops the start-up with an explanation.
 
 ## Integrations (backend internal)
 
-* `integration_outbox(target: crm|onec|email, event, payload, status, attempts)`. A tokio background worker POSTs to `CRM_WEBHOOK_URL` / `ONEC_WEBHOOK_URL` if configured (e-mails — via SMTP, see above); otherwise (outside production) marks rows `sent` with `mock=true`, in production keeps them queued. Events: `order.created`, `order.updated` (status, payment, items, `manager` on reassignment), `order.cancelled`, `stock.reserve`, `stock.release`, `user.registered`, `lead.created`. Events of one order are delivered in order (a later one waits while an earlier one is pending a retry). The catalog import sends nothing to CRM / 1C.
+* `integration_outbox(target: crm|onec|email, event, payload, status, attempts)`. A tokio background worker POSTs to `CRM_WEBHOOK_URL` / `ONEC_WEBHOOK_URL` if configured (e-mails — via SMTP, see above); otherwise (outside production) marks rows `sent` with `mock=true`, in production keeps them queued. Events: `order.created`, `order.updated` (status, payment, items, `manager` on reassignment), `order.cancelled`, `order.edit_requested` / `order.edit_rejected` / `order.edit_withdrawn` (client's change request; the approved change comes as `order.updated` with items), `stock.reserve`, `stock.release`, `user.registered`, `lead.created`. Events of one order are delivered in order (a later one waits while an earlier one is pending a retry). The catalog import sends nothing to CRM / 1C.
 * Order routing: `assigned_manager_id = user.manager_id ?? lead manager (users.role='manager' AND is_lead)`; a manager can reassign it (`PUT /admin/orders/{n}/manager`).
 
 ## Seed accounts (dev)

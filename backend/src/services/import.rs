@@ -202,6 +202,12 @@ enum Col {
     Image,
     Stock(i32),
     Attr(String),
+    BrandCountry,
+    CountryOrigin,
+    Documents,
+    Accessories,
+    VariantGroup,
+    VariantAxis(String),
     Ignored,
 }
 
@@ -227,6 +233,14 @@ fn column(header: &str, stores: &[StoreRef]) -> Result<Col, String> {
             return Err(format!("Столбец «{header}»: после «Хар:» укажите название характеристики"));
         }
         return Ok(Col::Attr(name.chars().take(100).collect()));
+    }
+    // «Вар: Номинальный ток, А» / «Исполнение: Цоколь» — значение товара по оси его торгового предложения
+    if (n.starts_with("вар") || n.starts_with("исполнение")) && n.contains(':') {
+        let name = header.split_once(':').map(|(_, v)| v.split_whitespace().collect::<Vec<_>>().join(" ")).unwrap_or_default();
+        if name.is_empty() || name.chars().count() > 100 {
+            return Err(format!("Столбец «{header}»: после «Вар:» укажите название оси (до 100 символов)"));
+        }
+        return Ok(Col::VariantAxis(name));
     }
     if let Some(rest) = n.strip_prefix("остаток") {
         let key = norm(rest.trim_start_matches([':', '-', ' ']));
@@ -254,6 +268,11 @@ fn column(header: &str, stores: &[StoreRef]) -> Result<Col, String> {
         "кратность" | "кратностьупаковки" => Col::Pack,
         "описание" => Col::Description,
         "изображение" | "изображения" | "фото" | "картинка" => Col::Image,
+        "странабренда" => Col::BrandCountry,
+        "странапроизводства" | "странапроисхождения" | "странаизготовления" => Col::CountryOrigin,
+        "документы" | "документация" => Col::Documents,
+        "комплектующие" | "аксессуары" | "сопутствующиетовары" => Col::Accessories,
+        "предложение" | "торговоепредложение" | "группапредложений" | "группаисполнений" => Col::VariantGroup,
         c if c.starts_with("цена") && (c.contains("распрод") || c.contains("акци") || c.contains("скидк")) => Col::SalePrice,
         c if c.starts_with("цена") || c == "прайс" => Col::Price,
         _ => Col::Ignored,
@@ -326,6 +345,86 @@ struct RowData {
     stock: Vec<(i32, Decimal)>,
     /// None — удалить характеристику («-»)
     attrs: Vec<(String, Option<String>)>,
+    brand_country: Option<Opt<String>>,
+    country_origin: Option<Opt<String>>,
+    /// Some(пусто) — отвязать все документы («-»)
+    documents: Option<Vec<DocRef>>,
+    /// группы комплектующих: (группа, коды); Some(пусто) — убрать все («-»)
+    accessories: Option<AccessoryGroups>,
+    variant_group: Option<Opt<String>>,
+    /// (ось, значение); None — убрать значение («-»)
+    variant_values: Vec<(String, Option<String>)>,
+}
+
+/// Группы комплектующих из ячейки: (группа, коды товаров).
+type AccessoryGroups = Vec<(String, Vec<String>)>;
+/// Комплектующие строки, отложенные до конца импорта: (строка файла, товар, группы).
+type PendingAccessories = (usize, Uuid, AccessoryGroups);
+
+/// Документ из ячейки «Документы»: существующий по номеру (`#12`) или ссылка (с названием или без).
+#[derive(Debug, Clone, PartialEq)]
+enum DocRef {
+    Id(i32),
+    Url { title: Option<String>, url: String },
+}
+
+/// «Сертификат соответствия | https://…; https://…/pasport.pdf; #12» → документы товара.
+fn parse_documents(raw: &str) -> Result<Vec<DocRef>, String> {
+    let mut out = Vec::new();
+    for entry in raw.split([';', '\n']).map(str::trim).filter(|e| !e.is_empty()) {
+        let (title, target) = match entry.rsplit_once('|') {
+            Some((t, u)) => (Some(t.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|t| !t.is_empty()), u.trim()),
+            None => (None, entry),
+        };
+        if let Some(id) = target.strip_prefix('#') {
+            out.push(DocRef::Id(id.trim().parse().map_err(|_| format!("Документы: «{entry}» — номер документа, например #12"))?));
+        } else if (target.starts_with("https://") || target.starts_with("http://")) && target.len() <= 1000 && !target.contains(char::is_whitespace) {
+            if title.as_ref().is_some_and(|t| t.chars().count() > 300) {
+                return Err("Документы: название — не длиннее 300 символов".into());
+            }
+            out.push(DocRef::Url { title, url: target.to_string() });
+        } else {
+            return Err(format!("Документы: «{entry}» — укажите ссылку https://… (можно «Название | ссылка») или номер документа #12"));
+        }
+    }
+    if out.len() > 50 {
+        return Err("Документы: не больше 50 у товара".into());
+    }
+    Ok(out)
+}
+
+/// «Крышки: 35001, 35002; Крепёж: 37001» → группы комплектующих (без «Группа:» — группа «Комплектующие»).
+fn parse_accessories(raw: &str) -> Result<AccessoryGroups, String> {
+    let mut out: AccessoryGroups = Vec::new();
+    for part in raw.split([';', '\n']).map(str::trim).filter(|p| !p.is_empty()) {
+        let (group, codes) = match part.split_once(':') {
+            Some((g, c)) => (g.split_whitespace().collect::<Vec<_>>().join(" "), c),
+            None => ("Комплектующие".to_string(), part),
+        };
+        if group.is_empty() || group.chars().count() > 100 {
+            return Err(format!("Комплектующие: «{part}» — название группы до 100 символов"));
+        }
+        let codes: Vec<String> = codes.split(',').map(str::trim).filter(|c| !c.is_empty()).map(str::to_string).collect();
+        if codes.is_empty() {
+            return Err(format!("Комплектующие: «{part}» — укажите коды товаров через запятую"));
+        }
+        out.push((group, codes));
+    }
+    if out.iter().map(|g| g.1.len()).sum::<usize>() > 300 {
+        return Err("Комплектующие: не больше 300 товаров".into());
+    }
+    Ok(out)
+}
+
+fn country_cell(label: &str, raw: &str) -> Result<Opt<String>, String> {
+    if matches!(raw, "-" | "—") {
+        return Ok(Opt::Clear);
+    }
+    let v = raw.split_whitespace().collect::<Vec<_>>().join(" ");
+    if v.chars().count() > 60 {
+        return Err(format!("{label}: не длиннее 60 символов"));
+    }
+    Ok(Opt::Set(v))
 }
 
 fn money_cell(label: &str, raw: &str) -> Result<Decimal, String> {
@@ -350,6 +449,12 @@ fn parse_row(cols: &[Col], cells: &[String]) -> Result<RowData, String> {
         images: None,
         stock: Vec::new(),
         attrs: Vec::new(),
+        brand_country: None,
+        country_origin: None,
+        documents: None,
+        accessories: None,
+        variant_group: None,
+        variant_values: Vec::new(),
     };
     for (col, raw) in cols.iter().zip(cells.iter()) {
         let v = raw.trim();
@@ -378,6 +483,27 @@ fn parse_row(cols: &[Col], cells: &[String]) -> Result<RowData, String> {
                 d.stock.push((*store, q.max(Decimal::ZERO).min(Decimal::from(1_000_000_000)).round_dp(3)));
             }
             Col::Attr(name) => d.attrs.push((name.clone(), if matches!(v, "-" | "—") { None } else { Some(v.chars().take(300).collect()) })),
+            Col::BrandCountry => d.brand_country = Some(country_cell("Страна бренда", v)?),
+            Col::CountryOrigin => d.country_origin = Some(country_cell("Страна производства", v)?),
+            Col::Documents if matches!(v, "-" | "—") => d.documents = Some(Vec::new()),
+            Col::Documents => d.documents = Some(parse_documents(v)?),
+            Col::Accessories if matches!(v, "-" | "—") => d.accessories = Some(Vec::new()),
+            Col::Accessories => d.accessories = Some(parse_accessories(v)?),
+            Col::VariantGroup if matches!(v, "-" | "—") => d.variant_group = Some(Opt::Clear),
+            Col::VariantGroup => {
+                let g = v.split_whitespace().collect::<Vec<_>>().join(" ");
+                if g.chars().count() > 200 {
+                    return Err("Предложение: название группы — не длиннее 200 символов".into());
+                }
+                d.variant_group = Some(Opt::Set(g));
+            }
+            Col::VariantAxis(axis) => {
+                let value = if matches!(v, "-" | "—") { None } else { Some(v.split_whitespace().collect::<Vec<_>>().join(" ")) };
+                if value.as_ref().is_some_and(|v| v.chars().count() > 100) {
+                    return Err(format!("Вар: {axis}: значение — не длиннее 100 символов"));
+                }
+                d.variant_values.push((axis.clone(), value));
+            }
             Col::Ignored => {}
         }
     }
@@ -415,6 +541,8 @@ struct Existing {
     sale_price: Option<Decimal>,
     brand_id: Option<i32>,
     attributes: Value,
+    group_id: Option<i32>,
+    variant: Value,
 }
 
 /// Слаги разделов — как в сиде каталога: «щ» → «shch» (kabelenesushchie-sistemy, molniezashchita…).
@@ -447,6 +575,10 @@ struct Ctx {
     existing: HashMap<String, Existing>,
     categories_created: usize,
     brands_created: usize,
+    /// группы торговых предложений: название → (id, оси); оси дополняются столбцами «Вар: …» и пишутся в конце
+    groups: HashMap<String, (i32, Vec<String>)>,
+    /// комплектующие пишутся после всех строк (коды могут быть ниже в файле): (строка файла, товар, группы)
+    pending_accessories: Vec<PendingAccessories>,
 }
 
 impl Ctx {
@@ -523,6 +655,67 @@ impl Ctx {
         self.brands_created += 1;
         Ok((id, raw.trim().to_string()))
     }
+
+    /// Группа торговых предложений по названию; новой — создаём (оси — по столбцам «Вар: …»).
+    async fn group(&mut self, conn: &mut PgConnection, name: &str) -> AppResult<i32> {
+        if let Some((id, _)) = self.groups.get(name) {
+            return Ok(*id);
+        }
+        let found: Option<(i32, Vec<String>)> = sqlx::query_as("SELECT id, axes FROM product_groups WHERE name = $1").bind(name).fetch_optional(&mut *conn).await?;
+        let (id, axes) = match found {
+            Some(g) => g,
+            None => (sqlx::query_scalar("INSERT INTO product_groups (name, axes) VALUES ($1, '{}') RETURNING id").bind(name).fetch_one(&mut *conn).await?, Vec::new()),
+        };
+        self.groups.insert(name.to_string(), (id, axes));
+        Ok(id)
+    }
+
+    /// Оси группы по id (для товара, который уже в группе): название группы ищем в кеше или в базе.
+    async fn group_by_id(&mut self, conn: &mut PgConnection, id: i32) -> AppResult<String> {
+        if let Some((name, _)) = self.groups.iter().find(|(_, g)| g.0 == id) {
+            return Ok(name.clone());
+        }
+        let (name, axes): (String, Vec<String>) = sqlx::query_as("SELECT name, axes FROM product_groups WHERE id = $1").bind(id).fetch_one(&mut *conn).await?;
+        self.groups.insert(name.clone(), (id, axes));
+        Ok(name)
+    }
+}
+
+/// Документы товара из ячейки: ссылки находятся среди уже загруженных (по адресу) или добавляются в библиотеку.
+async fn link_documents(conn: &mut PgConnection, product_id: Uuid, docs: &[DocRef]) -> AppResult<()> {
+    let mut ids = Vec::new();
+    for d in docs {
+        let id = match d {
+            DocRef::Id(id) => *id,
+            DocRef::Url { title, url } => {
+                let found: Option<i32> = sqlx::query_scalar("SELECT id FROM documents WHERE url = $1").bind(url).fetch_optional(&mut *conn).await?;
+                match found {
+                    Some(id) => id,
+                    None => {
+                        let file_name = crate::services::files::clean_name(url.split(['?', '#']).next().unwrap_or(url));
+                        let title = title.clone().unwrap_or_else(|| file_name.rsplit_once('.').map(|(n, _)| n.to_string()).unwrap_or_else(|| file_name.clone()));
+                        sqlx::query_scalar("INSERT INTO documents (title, kind, file_name, size_kb, url) VALUES ($1, $2, $3, 0, $4) RETURNING id")
+                            .bind(&title)
+                            .bind(crate::services::files::guess_doc_kind(&title))
+                            .bind(&file_name)
+                            .bind(url)
+                            .fetch_one(&mut *conn)
+                            .await?
+                    }
+                }
+            }
+        };
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    sqlx::query("DELETE FROM product_documents WHERE product_id = $1").bind(product_id).execute(&mut *conn).await?;
+    sqlx::query("INSERT INTO product_documents (product_id, document_id) SELECT $1, unnest($2::int[]) ON CONFLICT DO NOTHING")
+        .bind(product_id)
+        .bind(&ids)
+        .execute(&mut *conn)
+        .await?;
+    Ok(())
 }
 
 /// Характеристики: значения из файла заменяют одноимённые, новые добавляются, «-» удаляет.
@@ -557,10 +750,31 @@ enum Outcome {
 }
 
 /// Запись одной строки. Ошибка данных — `Ok(Err(сообщение))` (строка пропускается), ошибка базы — `Err` (импорт прерывается).
-async fn apply_row(conn: &mut PgConnection, ctx: &mut Ctx, d: RowData, stock_rows: &mut usize) -> AppResult<Result<Outcome, String>> {
+async fn apply_row(conn: &mut PgConnection, ctx: &mut Ctx, d: RowData, line: usize, stock_rows: &mut usize) -> AppResult<Result<Outcome, String>> {
     let existing = ctx.existing.get(&d.code).cloned();
     let existing = existing.as_ref();
     let is_new = existing.is_none();
+    if d.brand_country.is_some() && d.brand.is_none() && existing.and_then(|e| e.brand_id).is_none() {
+        return Ok(Err("Страна бренда: у товара не указан бренд".into()));
+    }
+    if !d.variant_values.is_empty() && d.variant_group.is_none() && existing.and_then(|e| e.group_id).is_none() {
+        return Ok(Err("Вар: укажите столбец «Предложение» — группу исполнений товара".into()));
+    }
+    if let Some(docs) = &d.documents {
+        let ids: Vec<i32> = docs.iter().filter_map(|x| if let DocRef::Id(id) = x { Some(*id) } else { None }).collect();
+        if !ids.is_empty() {
+            let known: Vec<i32> = sqlx::query_scalar("SELECT id FROM documents WHERE id = ANY($1)").bind(&ids).fetch_all(&mut *conn).await?;
+            if let Some(m) = ids.iter().find(|i| !known.contains(i)) {
+                return Ok(Err(format!("Документы: документа #{m} нет в библиотеке")));
+            }
+        }
+    }
+    let extra = d.brand_country.is_some()
+        || d.country_origin.is_some()
+        || d.documents.is_some()
+        || d.accessories.is_some()
+        || d.variant_group.is_some()
+        || !d.variant_values.is_empty();
     if is_new {
         let missing: Vec<&str> = [("Наименование", d.name.is_none()), ("Категория", d.category.is_none()), ("Цена", d.price.is_none())]
             .into_iter()
@@ -626,7 +840,10 @@ async fn apply_row(conn: &mut PgConnection, ctx: &mut Ctx, d: RowData, stock_row
             .bind(d.description.clone().unwrap_or_default())
             .fetch_one(&mut *conn)
             .await?;
-            ctx.existing.insert(d.code.clone(), Existing { id, code: d.code.clone(), list_price: list, sale_price: sale, brand_id: brand.as_ref().map(|b| b.0), attributes });
+            ctx.existing.insert(
+                d.code.clone(),
+                Existing { id, code: d.code.clone(), list_price: list, sale_price: sale, brand_id: brand.as_ref().map(|b| b.0), attributes, group_id: None, variant: json!({}) },
+            );
             id
         }
         Some(e) => {
@@ -679,7 +896,7 @@ async fn apply_row(conn: &mut PgConnection, ctx: &mut Ctx, d: RowData, stock_row
                         e.attributes = a;
                     }
                 }
-            } else if d.stock.is_empty() {
+            } else if d.stock.is_empty() && !extra {
                 return Ok(Ok(Outcome::Unchanged));
             }
             id
@@ -699,7 +916,94 @@ async fn apply_row(conn: &mut PgConnection, ctx: &mut Ctx, d: RowData, stock_row
         .await?;
         *stock_rows += d.stock.len();
     }
+    if let Some(c) = &d.brand_country {
+        let brand_id = brand.as_ref().map(|b| b.0).or(existing.and_then(|e| e.brand_id));
+        let value = if let Opt::Set(v) = c { Some(v.clone()) } else { None };
+        sqlx::query("UPDATE brands SET country_brand = $2 WHERE id = $1").bind(brand_id).bind(value).execute(&mut *conn).await?;
+    }
+    if let Some(c) = &d.country_origin {
+        let value = if let Opt::Set(v) = c { Some(v.clone()) } else { None };
+        sqlx::query("UPDATE products SET country_origin = $2 WHERE id = $1").bind(product_id).bind(value).execute(&mut *conn).await?;
+    }
+    if let Some(docs) = &d.documents {
+        link_documents(conn, product_id, docs).await?;
+    }
+    if let Some(acc) = d.accessories {
+        ctx.pending_accessories.push((line, product_id, acc));
+    }
+    // торговое предложение: группа по названию, значения по осям дополняют прежние значения товара в этой группе
+    let current_group = ctx.existing.get(&d.code).and_then(|e| e.group_id);
+    let target_group = match &d.variant_group {
+        Some(Opt::Clear) => None,
+        Some(Opt::Set(name)) => Some(ctx.group(conn, name).await?),
+        None => current_group,
+    };
+    if d.variant_group.is_some() || !d.variant_values.is_empty() {
+        let mut variant = match ctx.existing.get(&d.code) {
+            Some(e) if e.group_id == target_group && target_group.is_some() => e.variant.as_object().cloned().unwrap_or_default(),
+            _ => serde_json::Map::new(),
+        };
+        if let Some(gid) = target_group {
+            let name = ctx.group_by_id(conn, gid).await?;
+            let axes = &mut ctx.groups.get_mut(&name).expect("cached above").1;
+            for (axis, value) in &d.variant_values {
+                match value {
+                    Some(v) => {
+                        if !axes.contains(axis) {
+                            axes.push(axis.clone());
+                        }
+                        variant.insert(axis.clone(), json!(v));
+                    }
+                    None => {
+                        variant.remove(axis);
+                    }
+                }
+            }
+        }
+        let variant = Value::Object(variant);
+        sqlx::query("UPDATE products SET group_id = $2, variant = $3 WHERE id = $1").bind(product_id).bind(target_group).bind(&variant).execute(&mut *conn).await?;
+        if let Some(e) = ctx.existing.get_mut(&d.code) {
+            e.group_id = target_group;
+            e.variant = variant;
+        }
+    }
     Ok(Ok(if is_new { Outcome::Created } else { Outcome::Updated }))
+}
+
+/// Комплектующие после всех строк файла: коды товаров ищутся в базе с учётом только что созданных.
+/// Незнакомые коды пропускаются и попадают в отчёт (строка при этом записана).
+async fn write_accessories(conn: &mut PgConnection, pending: &[PendingAccessories], s: &mut Summary) -> AppResult<()> {
+    let codes: Vec<String> = pending.iter().flat_map(|p| p.2.iter().flat_map(|g| g.1.iter().cloned())).collect();
+    let found: HashMap<String, Uuid> = sqlx::query_as::<_, (String, Uuid)>("SELECT code, id FROM products WHERE code = ANY($1)").bind(&codes).fetch_all(&mut *conn).await?.into_iter().collect();
+    for (line, product_id, groups) in pending {
+        sqlx::query("DELETE FROM accessories WHERE product_id = $1").bind(product_id).execute(&mut *conn).await?;
+        let mut missing = Vec::new();
+        let mut seen = Vec::new();
+        let mut sort = 0;
+        for (group, codes) in groups {
+            for code in codes {
+                match found.get(code) {
+                    Some(id) if id != product_id && !seen.contains(id) => {
+                        seen.push(*id);
+                        sqlx::query("INSERT INTO accessories (product_id, accessory_id, group_name, sort) VALUES ($1, $2, $3, $4)")
+                            .bind(product_id)
+                            .bind(id)
+                            .bind(group)
+                            .bind(sort)
+                            .execute(&mut *conn)
+                            .await?;
+                        sort += 1;
+                    }
+                    Some(_) => {}
+                    None => missing.push(code.as_str()),
+                }
+            }
+        }
+        if !missing.is_empty() && s.errors.len() < MAX_ERRORS {
+            s.errors.push(RowError { row: *line, message: format!("Комплектующие: товары с кодом {} не найдены — пропущены", missing.join(", ")) });
+        }
+    }
+    Ok(())
 }
 
 /// Импорт в одной транзакции; `dry_run` — всё проверяется и считается так же, но транзакция откатывается.
@@ -741,7 +1045,7 @@ pub async fn run(pool: &PgPool, table: Table, dry_run: bool) -> AppResult<Summar
     let product_slugs: Vec<String> = sqlx::query_scalar("SELECT slug FROM products").fetch_all(&mut *tx).await?;
     let code_idx = cols.iter().position(|c| *c == Col::Code).expect("checked above");
     let codes: Vec<String> = table.rows.iter().filter_map(|(_, r)| r.get(code_idx)).map(|c| c.trim().to_string()).filter(|c| !c.is_empty()).collect();
-    let existing = sqlx::query_as::<_, Existing>("SELECT id, code, list_price, sale_price, brand_id, attributes FROM products WHERE code = ANY($1)")
+    let existing = sqlx::query_as::<_, Existing>("SELECT id, code, list_price, sale_price, brand_id, attributes, group_id, variant FROM products WHERE code = ANY($1)")
         .bind(&codes)
         .fetch_all(&mut *tx)
         .await?;
@@ -754,12 +1058,14 @@ pub async fn run(pool: &PgPool, table: Table, dry_run: bool) -> AppResult<Summar
         existing: existing.into_iter().map(|e| (e.code.clone(), e)).collect(),
         categories_created: 0,
         brands_created: 0,
+        groups: HashMap::new(),
+        pending_accessories: Vec::new(),
     };
 
     let mut s = Summary { dry_run, rows: table.rows.len(), ignored_columns: ignored, ..Default::default() };
     for (line, cells) in &table.rows {
         let result = match parse_row(&cols, cells) {
-            Ok(d) => apply_row(&mut tx, &mut ctx, d, &mut s.stock_rows).await?,
+            Ok(d) => apply_row(&mut tx, &mut ctx, d, *line, &mut s.stock_rows).await?,
             Err(e) => Err(e),
         };
         match result {
@@ -776,6 +1082,11 @@ pub async fn run(pool: &PgPool, table: Table, dry_run: bool) -> AppResult<Summar
     }
     s.categories_created = ctx.categories_created;
     s.brands_created = ctx.brands_created;
+    write_accessories(&mut tx, &ctx.pending_accessories, &mut s).await?;
+    for (id, axes) in ctx.groups.values() {
+        sqlx::query("UPDATE product_groups SET axes = $2 WHERE id = $1").bind(id).bind(axes).execute(&mut *tx).await?;
+    }
+    sqlx::query("DELETE FROM product_groups g WHERE NOT EXISTS (SELECT 1 FROM products p WHERE p.group_id = g.id)").execute(&mut *tx).await?;
     recount_categories(&mut tx).await?;
     if dry_run {
         tx.rollback().await?;
@@ -802,6 +1113,8 @@ struct Example {
     image: Option<String>,
     attributes: Value,
     id: Uuid,
+    country_brand: Option<String>,
+    country_origin: Option<String>,
 }
 
 /// Шаблон файла импорта: лист «Каталог» (заголовки текущих складов + строка-пример из базы) и лист «Инструкция».
@@ -811,7 +1124,8 @@ pub async fn template(pool: &PgPool) -> AppResult<Vec<u8>> {
     let example = sqlx::query_as::<_, Example>(
         r#"SELECT p.id, p.code, p.name,
                   (SELECT string_agg(c2.name, ' / ' ORDER BY length(c2.path)) FROM categories c2 WHERE c.path = c2.path OR c.path LIKE c2.path || '/%') AS category_path,
-                  b.name AS brand, p.unit, p.list_price, p.sale_price, p.pack_qty, p.description, p.images[1] AS image, p.attributes
+                  b.name AS brand, p.unit, p.list_price, p.sale_price, p.pack_qty, p.description, p.images[1] AS image, p.attributes,
+                  b.country_brand, COALESCE(p.country_origin, b.country_origin) AS country_origin
            FROM products p JOIN categories c ON c.id = p.category_id LEFT JOIN brands b ON b.id = p.brand_id
            WHERE p.is_active ORDER BY p.popularity DESC, p.id LIMIT 1"#,
     )
@@ -832,7 +1146,23 @@ pub async fn template(pool: &PgPool) -> AppResult<Vec<u8>> {
         .collect();
     let attr_names: Vec<String> = if attrs.is_empty() { vec!["Материал".into(), "Степень защиты".into()] } else { attrs.iter().map(|a| a.0.clone()).collect() };
 
-    let mut headers: Vec<String> = ["Код", "Наименование", "Категория", "Бренд", "Ед. изм.", "Цена", "Цена распродажи", "Кратность", "Описание", "Изображение"]
+    let mut headers: Vec<String> = [
+        "Код",
+        "Наименование",
+        "Категория",
+        "Бренд",
+        "Ед. изм.",
+        "Цена",
+        "Цена распродажи",
+        "Кратность",
+        "Описание",
+        "Изображение",
+        "Страна бренда",
+        "Страна производства",
+        "Документы",
+        "Комплектующие",
+        "Предложение",
+    ]
         .iter()
         .map(|s| s.to_string())
         .collect();
@@ -852,6 +1182,11 @@ pub async fn template(pool: &PgPool) -> AppResult<Vec<u8>> {
             e.pack_qty.map(dec).unwrap_or_default(),
             e.description.clone(),
             e.image.clone().unwrap_or_default(),
+            e.country_brand.clone().unwrap_or_default(),
+            e.country_origin.clone().unwrap_or_default(),
+            String::new(),
+            String::new(),
+            String::new(),
         ],
         None => vec![
             "100001".into(),
@@ -864,6 +1199,11 @@ pub async fn template(pool: &PgPool) -> AppResult<Vec<u8>> {
             "100".into(),
             "Кабель с медными жилами в негорючей оболочке.".into(),
             "https://tec.tj/images/vvg-3x2.5.jpg".into(),
+            "Россия".into(),
+            "Россия".into(),
+            "Сертификат соответствия | https://tec.tj/docs/vvg-cert.pdf".into(),
+            String::new(),
+            String::new(),
         ],
     };
     row.extend(stores.iter().map(|s| stock.iter().find(|x| x.0 == s.0).map(|x| dec(x.1)).unwrap_or_else(|| if example.is_some() { "0".into() } else { "500".into() })));
@@ -886,7 +1226,8 @@ pub async fn template(pool: &PgPool) -> AppResult<Vec<u8>> {
         let width = match i {
             1 => 48.0,
             2 => 40.0,
-            8 | 9 => 36.0,
+            8 | 9 | 12 | 13 => 36.0,
+            14 => 24.0,
             _ => 14.0,
         };
         ws.set_column_width(col, width)?;
@@ -921,6 +1262,12 @@ pub async fn template(pool: &PgPool) -> AppResult<Vec<u8>> {
         ("Изображение".into(), "Ссылка https://… или путь /… ; несколько — через «;». Заменяет все фото товара.".into()),
         ("Остаток <склад>".into(), "Столбец на каждый склад: «Остаток <код склада>» или «Остаток <название склада>». Количество — остаток на складе (отрицательное считается нулём). Пусто — не менять.".into()),
         ("Хар: <название>".into(), "Характеристика товара, например «Хар: Сечение, мм²». Значение заменяет одноимённую характеристику; «-» — удалить её.".into()),
+        ("Страна бренда".into(), "Страна бренда (флаг в карточке товара) — меняется у бренда товара, то есть у всех его товаров. «-» — очистить.".into()),
+        ("Страна производства".into(), "Страна производства этого товара (если отличается от страны бренда). «-» — очистить: будет как у бренда.".into()),
+        ("Документы".into(), "Документы товара через «;»: «Название | https://ссылка» или просто ссылка; документ, уже загруженный в панели, — «#номер». Заменяет все документы товара; «-» — убрать все.".into()),
+        ("Комплектующие".into(), "Группы через «;», в группе — коды через запятую: «Крышки: 35001, 35002; Крепёж: 37001». Без «Группа:» — группа «Комплектующие». Коды могут быть ниже в этом же файле. Заменяет все комплектующие; «-» — убрать все.".into()),
+        ("Предложение".into(), "Торговое предложение — общее название группы исполнений одного товара, например «Автоматический выключатель Easy9 C». «-» — вывести товар из группы.".into()),
+        ("Вар: <ось>".into(), "Значение товара по оси торгового предложения, например столбцы «Вар: Число полюсов» и «Вар: Номинальный ток, А». Оси группы — в порядке столбцов. Нужен столбец «Предложение» (или товар уже в группе); «-» — убрать значение.".into()),
         (String::new(), String::new()),
         ("Склады".into(), String::new()),
     ];
@@ -938,6 +1285,37 @@ pub async fn template(pool: &PgPool) -> AppResult<Vec<u8>> {
 mod tests {
     use super::*;
     use rust_decimal_macros::dec;
+
+    #[test]
+    fn documents_accessories_and_variant_columns() {
+        assert_eq!(
+            parse_documents("Сертификат | https://x.tj/c.pdf; https://x.tj/p.pdf ;#12").unwrap(),
+            vec![
+                DocRef::Url { title: Some("Сертификат".into()), url: "https://x.tj/c.pdf".into() },
+                DocRef::Url { title: None, url: "https://x.tj/p.pdf".into() },
+                DocRef::Id(12),
+            ]
+        );
+        assert!(parse_documents("сертификат.pdf").is_err());
+        assert!(parse_documents("#abc").is_err());
+        assert_eq!(
+            parse_accessories("Крышки: 35001, 35002; Крепёж:37001\n37002").unwrap(),
+            vec![
+                ("Крышки".to_string(), vec!["35001".to_string(), "35002".to_string()]),
+                ("Крепёж".to_string(), vec!["37001".to_string()]),
+                ("Комплектующие".to_string(), vec!["37002".to_string()]),
+            ]
+        );
+        assert!(parse_accessories("Крышки:").is_err());
+        let stores = vec![StoreRef { id: 1, code: "dushanbe".into(), name: "Центральный склад".into() }];
+        assert_eq!(column("Страна бренда", &stores), Ok(Col::BrandCountry));
+        assert_eq!(column("Страна производства", &stores), Ok(Col::CountryOrigin));
+        assert_eq!(column("Документы", &stores), Ok(Col::Documents));
+        assert_eq!(column("Комплектующие", &stores), Ok(Col::Accessories));
+        assert_eq!(column("Торговое предложение", &stores), Ok(Col::VariantGroup));
+        assert_eq!(column("Вар: Номинальный  ток, А", &stores), Ok(Col::VariantAxis("Номинальный ток, А".into())));
+        assert!(column("Вар:", &stores).is_err());
+    }
 
     #[test]
     fn decimals_in_any_spelling() {

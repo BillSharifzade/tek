@@ -49,10 +49,11 @@ export function OrdersView() {
   const qs = useQueryState();
   const status = (STATUSES as readonly string[]).includes(qs.get("status")) ? qs.get("status") : "";
   const mine = qs.get("mine") === "1";
+  const editPending = qs.get("edit_pending") === "1";
   const q = qs.get("q");
   const [text, setText] = useSearchText(qs);
 
-  const list = useLoad(`orders:${status}:${mine}:${q}`, () => adminApi.orders({ status, q, mine }), "Не удалось загрузить заказы");
+  const list = useLoad(`orders:${status}:${mine}:${editPending}:${q}`, () => adminApi.orders({ status, q, mine, edit_pending: editPending }), "Не удалось загрузить заказы");
   const rows = list.data ?? [];
 
   const columns: Column<AdminOrder>[] = [
@@ -105,7 +106,17 @@ export function OrdersView() {
     },
     { key: "delivery", header: "Получение", hideBelow: "lg", cell: (o) => <span className="whitespace-nowrap">{o.delivery_method_label ?? label(DELIVERY_LABEL, o.delivery_method)}</span> },
     { key: "manager", header: "Менеджер", hideBelow: "lg", cell: (o) => <span className="line-clamp-2 text-[14px] leading-[18px]">{o.manager_name ?? o.manager_email ?? <span className="text-muted">—</span>}</span> },
-    { key: "status", header: "Статус", className: "w-[120px]", cell: (o) => <StatusBadge status={o.status} label={o.status_label ?? label(ORDER_STATUS_LABEL, o.status)} /> },
+    {
+      key: "status",
+      header: "Статус",
+      className: "w-[120px]",
+      cell: (o) => (
+        <span className="flex flex-col items-start gap-[4px]">
+          <StatusBadge status={o.status} label={o.status_label ?? label(ORDER_STATUS_LABEL, o.status)} />
+          {o.edit_pending ? <span className="whitespace-nowrap text-[13px] leading-[17px] text-[#D13B3E]">Запрос на изменение</span> : null}
+        </span>
+      ),
+    },
   ];
 
   return (
@@ -121,6 +132,7 @@ export function OrdersView() {
       <div className="mt-[16px] flex flex-wrap items-center gap-x-[20px] gap-y-[10px]">
         <SearchField value={text} onChange={setText} placeholder="Номер заказа, клиент, телефон, e-mail" className="flex-1 sm:max-w-[420px]" />
         <Checkbox checked={mine} onChange={(e) => qs.set({ mine: e.target.checked ? 1 : null })} label="Только мои заказы" labelClassName="text-[15px]" />
+        <Checkbox checked={editPending} onChange={(e) => qs.set({ edit_pending: e.target.checked ? 1 : null })} label="С запросом на изменение" labelClassName="text-[15px]" />
       </div>
       <ErrorLine error={list.error} className="mt-[20px]" />
       <div className="mt-[28px]">
@@ -132,7 +144,7 @@ export function OrdersView() {
             rows={rows}
             rowKey={(o) => o.id}
             onRowClick={(o) => router.push(`/admin/orders/${o.number}`)}
-            empty={q || status || mine ? "Заказов с такими условиями нет" : "Заказов пока нет"}
+            empty={q || status || mine || editPending ? "Заказов с такими условиями нет" : "Заказов пока нет"}
           />
         )}
       </div>

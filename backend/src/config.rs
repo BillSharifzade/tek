@@ -96,6 +96,11 @@ impl Config {
         }
     }
 
+    /// Онлайн-оплата (Алиф / ДС) доступна покупателям: пока эквайринг банков не подключён — только заглушка вне production.
+    pub fn online_payment(&self) -> bool {
+        self.payments_mock
+    }
+
     /// В production не стартуем с небезопасными настройками — лучше упасть при деплое, чем работать с ними.
     pub fn validate(&self) -> Result<(), String> {
         if !self.production {

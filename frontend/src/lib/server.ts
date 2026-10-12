@@ -49,6 +49,14 @@ export async function authedGet<T>(path: string, query?: Query): Promise<T | nul
   }
 }
 
+/**
+ * Настройки витрины (`GET /content/site`): `online_payment` — подключена ли онлайн-оплата Алиф / ДС.
+ * Пока нет — тексты сайта её не обещают; API недоступен — считаем, что нет.
+ */
+export async function siteFlags(): Promise<{ online_payment: boolean }> {
+  return safe(publicGet<{ online_payment: boolean }>("/content/site", undefined, 300), { online_payment: false });
+}
+
 /** Swallow 404 → null so pages can call notFound(). */
 export async function optional<T>(p: Promise<T>): Promise<T | null> {
   try {

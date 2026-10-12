@@ -203,6 +203,26 @@ async fn stores(State(state): State<AppState>, headers: HeaderMap) -> AppResult<
         .await
 }
 
+/// Открытые вакансии (правятся в панели): `id` — якорь карточки на странице.
+async fn vacancies(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Response> {
+    state
+        .cached_json("vacancies".to_string(), &headers, |state| async move {
+            let rows: Vec<Value> = sqlx::query_scalar(
+                "SELECT to_jsonb(t) FROM (SELECT slug AS id, dept, title, city, experience, schedule, salary, blocks FROM vacancies WHERE is_active ORDER BY sort, id) t",
+            )
+            .fetch_all(&state.pool)
+            .await?;
+            Ok(rows)
+        })
+        .await
+}
+
+/// Настройки витрины, от которых зависят тексты сайта: пока эквайринг Алиф / ДС не подключён (`online_payment = false`),
+/// подвал, «Оплата» и FAQ не обещают онлайн-оплату — в чекауте эти способы показаны неактивными («скоро»).
+async fn site(State(state): State<AppState>) -> Json<Value> {
+    Json(json!({ "online_payment": state.cfg.online_payment() }))
+}
+
 // ---------- leads (формы «Оставить заявку», обратная связь) ----------
 
 #[derive(Deserialize)]
@@ -282,5 +302,7 @@ pub fn routes() -> Router<AppState> {
         .route("/content/pages/{slug}", get(page))
         .route("/content/configurators", get(configurators))
         .route("/content/stores", get(stores))
+        .route("/content/site", get(site))
+        .route("/content/vacancies", get(vacancies))
         .route("/leads", post(post_lead))
 }

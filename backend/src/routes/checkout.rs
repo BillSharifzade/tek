@@ -32,7 +32,7 @@ async fn options(State(state): State<AppState>, OptionalUser(user): OptionalUser
             let (label, sub) = payment_method_label(m);
             let (available, sub) = match *m {
                 // онлайн-оплата включается после подключения эквайринга банков (PAYMENTS_MOCK вне production)
-                "alif" | "dc" if !state.cfg.payments_mock => (false, "скоро"),
+                "alif" | "dc" if !state.cfg.online_payment() => (false, "скоро"),
                 "invoice" if company.is_none() => (false, sub),
                 "invoice" if company == Some(false) => (false, "после проверки компании менеджером"),
                 _ => (true, sub),

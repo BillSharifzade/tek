@@ -113,6 +113,8 @@ export interface AdminOrder {
   manager_name?: string | null;
   /** старый формат списка: e-mail менеджера вместо имени */
   manager_email?: string | null;
+  /** клиент запросил изменение состава — ждёт решения менеджера */
+  edit_pending?: boolean;
 }
 
 export interface PaymentInput {
@@ -233,6 +235,93 @@ export interface ProductPatch {
   is_active?: boolean;
   is_hit?: boolean;
   is_new?: boolean;
+  /** страна производства товара; null — как у бренда */
+  country_origin?: string | null;
+}
+
+/** Вид документа товара (группы на странице товара: Сертификаты / Описание / Чертежи / Каталоги). */
+export type DocumentKind = "certificate" | "declaration" | "passport" | "drawing" | "catalog" | "other";
+
+/** Документ из общей библиотеки: загруженный файл или внешняя ссылка; один документ — у многих товаров. */
+export interface AdminDocument {
+  id: number;
+  title: string;
+  kind: DocumentKind | string;
+  file_name: string;
+  size_kb: number;
+  url: string | null;
+  has_file: boolean;
+  created_at?: string;
+  /** у скольких товаров */
+  products?: number;
+}
+
+export interface DocumentInput {
+  title?: string;
+  kind?: string;
+  url?: string;
+  file?: File | null;
+  /** сразу привязать к товару */
+  product_id?: string;
+}
+
+export interface AdminAccessory {
+  group: string;
+  product_id: string;
+  code: string;
+  name: string;
+  is_active: boolean;
+}
+
+/** Торговое предложение товара: группа исполнений, её оси, значения товара и другие исполнения группы. */
+export interface AdminVariant {
+  group: string;
+  axes: string[];
+  values: Record<string, string>;
+  siblings: { id: string; code: string; name: string; values: Record<string, string>; is_active: boolean }[];
+}
+
+export interface AdminBrand {
+  id: number;
+  slug: string;
+  name: string;
+  country_brand: string | null;
+  country_origin: string | null;
+  description?: string | null;
+  logo_url?: string | null;
+  is_featured?: boolean;
+  products?: number;
+}
+
+export interface BrandPatch {
+  name?: string;
+  country_brand?: string | null;
+  country_origin?: string | null;
+  description?: string | null;
+}
+
+/** Карточка товара в панели: строка списка + документы, комплектующие, предложение, страны. */
+export interface AdminProductDetail extends AdminProduct {
+  country_origin: string | null;
+  brand_info: Pick<AdminBrand, "id" | "slug" | "name" | "country_brand" | "country_origin"> | null;
+  documents: AdminDocument[];
+  accessories: AdminAccessory[];
+  variant: AdminVariant | null;
+}
+
+export interface VariantInput {
+  group: string | null;
+  axes?: string[];
+  values: { axis: string; value: string }[];
+}
+
+/** Загруженный файл: `url` — для полей картинок (`/api/v1/files/…`). */
+export interface UploadedFile {
+  id: string;
+  url: string;
+  name: string;
+  content_type: string;
+  size_bytes: number;
 }
 
 export interface StoreQty {
@@ -285,3 +374,110 @@ export interface OutboxEvent {
   sent_at: string | null;
   payload: unknown;
 }
+
+// ---------- контент сайта ----------
+
+export interface AdminNews {
+  id: number;
+  slug: string;
+  title: string;
+  published_at: string;
+  excerpt: string;
+  image_url: string | null;
+  tags: string[];
+}
+
+/** Новость для правки: текст — в разметке панели (абзацы, «- » списки, «## » заголовки, **жирный**, [ссылка](https://…)). */
+export interface AdminNewsDetail extends AdminNews {
+  body_text: string;
+}
+
+export interface NewsInput {
+  title: string;
+  slug?: string;
+  published_at?: string;
+  excerpt?: string;
+  body_text?: string;
+  image_url?: string | null;
+  tags?: string[];
+}
+
+export interface AdminProject {
+  id: number;
+  slug: string;
+  title: string;
+  year: string;
+  project_date: string;
+  object: string;
+  service: string;
+  image_url: string | null;
+  excerpt: string;
+  photos: string[];
+  video_url: string | null;
+  sort: number;
+}
+
+export interface AdminProjectDetail extends AdminProject {
+  body_text: string;
+  /** слаги брендов */
+  brands: string[];
+  products: { code: string; name: string }[];
+}
+
+export interface ProjectInput {
+  title: string;
+  slug?: string;
+  year?: string;
+  project_date?: string;
+  object?: string;
+  service?: string;
+  image_url?: string | null;
+  excerpt?: string;
+  body_text?: string;
+  photos?: string[];
+  video_url?: string | null;
+  sort?: number;
+  brands?: string[];
+  /** коды товаров */
+  products?: string[];
+}
+
+export interface VacancyBlock {
+  title: string;
+  items: string[];
+}
+
+export interface AdminVacancy {
+  id: number;
+  slug: string;
+  dept: string;
+  title: string;
+  city: string;
+  experience: string;
+  schedule: string;
+  salary: string;
+  blocks: VacancyBlock[];
+  sort: number;
+  is_active: boolean;
+}
+
+export type VacancyInput = Omit<AdminVacancy, "id" | "slug" | "sort"> & { slug?: string; sort?: number };
+
+export interface AdminStore {
+  id: number;
+  code: string;
+  city: string;
+  name: string;
+  address: string;
+  phone: string | null;
+  hours: string | null;
+  delivery_hint: string;
+  lat: number | null;
+  lon: number | null;
+  sort: number;
+  stock_total?: number;
+  /** товаров с остатком */
+  products?: number;
+}
+
+export type StoreInput = Omit<AdminStore, "id" | "stock_total" | "products" | "sort"> & { sort?: number };

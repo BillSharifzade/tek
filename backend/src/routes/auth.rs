@@ -170,21 +170,25 @@ async fn issue_pair(state: &AppState, user: &UserRow) -> AppResult<(String, Stri
     Ok((access, refresh))
 }
 
-async fn login(State(state): State<AppState>, Json(body): Json<LoginInput>) -> AppResult<Json<Value>> {
-    let login = body.login.trim().to_lowercase();
-    // телефон в любом написании (+992 92 111 22 25, 921112225) — к виду +992XXXXXXXXX, как он хранится;
-    // номера, сохранённые до единого формата, — как раньше: только цифры и «+»
+/// Пользователь по логину — e-mail или телефон в любом написании (+992 92 111 22 25, 921112225) — к виду +992XXXXXXXXX,
+/// как он хранится; номера, сохранённые до единого формата, — как раньше: только цифры и «+».
+async fn find_by_login(state: &AppState, raw: &str) -> AppResult<Option<UserRow>> {
+    let login = raw.trim().to_lowercase();
     let by_email = login.contains('@');
     let legacy_phone: String = if by_email { String::new() } else { login.chars().filter(|c| c.is_ascii_digit() || *c == '+').collect() };
     let phone = if by_email { String::new() } else { auth::canonical_phone(&login).unwrap_or_else(|| legacy_phone.clone()) };
-    let user = sqlx::query_as::<_, UserRow>(
+    Ok(sqlx::query_as::<_, UserRow>(
         "SELECT * FROM users WHERE email = $1 OR (length($2) >= 7 AND phone = $2) OR (length($3) >= 7 AND phone = $3) ORDER BY (email = $1) DESC NULLS LAST LIMIT 1",
     )
-        .bind(&login)
-        .bind(&phone)
-        .bind(&legacy_phone)
-        .fetch_optional(&state.pool)
-        .await?;
+    .bind(&login)
+    .bind(&phone)
+    .bind(&legacy_phone)
+    .fetch_optional(&state.pool)
+    .await?)
+}
+
+async fn login(State(state): State<AppState>, Json(body): Json<LoginInput>) -> AppResult<Json<Value>> {
+    let user = find_by_login(&state, &body.login).await?;
     let ok = auth::verify_password_async(body.password.clone(), user.as_ref().map(|u| u.password_hash.clone())).await;
     let Some(user) = user.filter(|_| ok) else {
         return Err(AppError::new(StatusCode::UNAUTHORIZED, "invalid_credentials", "Неверный логин или пароль"));
@@ -243,6 +247,101 @@ async fn logout(State(state): State<AppState>, Json(body): Json<RefreshInput>) -
     Ok(StatusCode::NO_CONTENT)
 }
 
+// ---------- восстановление пароля ----------
+
+/// Сколько действует ссылка из письма «Смена пароля».
+const RESET_TTL_MIN: i64 = 60;
+
+#[derive(Deserialize)]
+struct ForgotInput {
+    login: String,
+}
+
+/// Письмо со ссылкой на смену пароля. Ответ всегда один и тот же — по нему нельзя узнать, есть ли такой аккаунт.
+/// Письмо уходит только одобренному аккаунту с e-mail и не чаще раза в минуту; новая ссылка отменяет прежнюю.
+async fn forgot_password(State(state): State<AppState>, Json(body): Json<ForgotInput>) -> AppResult<(StatusCode, Json<Value>)> {
+    if body.login.trim().is_empty() {
+        return Err(AppError::unprocessable("invalid_login", "Укажите e-mail или телефон"));
+    }
+    let user = find_by_login(&state, &body.login).await?.filter(|u| u.status == "approved");
+    if let Some((u, to)) = user.and_then(|u| mail::valid_email(u.email.as_deref()).map(|to| (u, to))) {
+        let mut tx = state.pool.begin().await?;
+        // блокировка строки пользователя — два одновременных запроса не отправят два письма
+        sqlx::query("SELECT 1 FROM users WHERE id = $1 FOR UPDATE").bind(u.id).execute(&mut *tx).await?;
+        let recent: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM password_resets WHERE user_id = $1 AND created_at > now() - interval '1 minute')")
+            .bind(u.id)
+            .fetch_one(&mut *tx)
+            .await?;
+        if !recent {
+            let token = auth::new_refresh_token();
+            sqlx::query("DELETE FROM password_resets WHERE user_id = $1").bind(u.id).execute(&mut *tx).await?;
+            sqlx::query("INSERT INTO password_resets (token_hash, user_id, expires_at) VALUES ($1, $2, $3)")
+                .bind(auth::sha256_hex(&token))
+                .bind(u.id)
+                .bind(Utc::now() + Duration::minutes(RESET_TTL_MIN))
+                .execute(&mut *tx)
+                .await?;
+            mail::enqueue(&mut tx, mail::PASSWORD_RESET_EVENT, mail::password_reset(&state.cfg, to, &u.first_name, &token), None).await?;
+        }
+        tx.commit().await?;
+    }
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(json!({ "message": "Если аккаунт с такими данными есть и в нём указан e-mail, мы отправили на него ссылку для смены пароля. Ссылка действует 1 час." })),
+    ))
+}
+
+fn invalid_reset() -> AppError {
+    AppError::unprocessable("invalid_reset_token", "Ссылка для смены пароля недействительна или устарела — запросите новую")
+}
+
+#[derive(Deserialize)]
+struct ResetCheckInput {
+    token: String,
+}
+
+/// Действительна ли ссылка из письма: страница сразу показывает «ссылка устарела», а не после ввода пароля.
+async fn check_reset(State(state): State<AppState>, Json(body): Json<ResetCheckInput>) -> AppResult<StatusCode> {
+    let ok: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM password_resets r JOIN users u ON u.id = r.user_id WHERE r.token_hash = $1 AND r.expires_at > now() AND u.status = 'approved')",
+    )
+    .bind(auth::sha256_hex(body.token.trim()))
+    .fetch_one(&state.pool)
+    .await?;
+    if ok { Ok(StatusCode::NO_CONTENT) } else { Err(invalid_reset()) }
+}
+
+#[derive(Deserialize)]
+struct ResetInput {
+    token: String,
+    password: String,
+}
+
+/// Новый пароль по ссылке из письма: ссылка одноразовая, все сессии пользователя завершаются (как при смене пароля в ЛК).
+async fn reset_password(State(state): State<AppState>, Json(body): Json<ResetInput>) -> AppResult<StatusCode> {
+    let mut tx = state.pool.begin().await?;
+    let row: Option<(Uuid, chrono::DateTime<Utc>)> = sqlx::query_as("SELECT user_id, expires_at FROM password_resets WHERE token_hash = $1 FOR UPDATE")
+        .bind(auth::sha256_hex(body.token.trim()))
+        .fetch_optional(&mut *tx)
+        .await?;
+    let Some((user_id, expires_at)) = row else { return Err(invalid_reset()) };
+    let user = sqlx::query_as::<_, UserRow>("SELECT * FROM users WHERE id = $1").bind(user_id).fetch_one(&mut *tx).await?;
+    if expires_at < Utc::now() || user.status != "approved" {
+        sqlx::query("DELETE FROM password_resets WHERE user_id = $1").bind(user_id).execute(&mut *tx).await?;
+        tx.commit().await?;
+        return Err(invalid_reset());
+    }
+    // слабый пароль — ошибка, ссылка остаётся действительной
+    auth::validate_password(&body.password, user.email.as_deref().unwrap_or(""), &user.first_name)?;
+    let hash = auth::hash_password_async(body.password.clone()).await?;
+    sqlx::query("UPDATE users SET password_hash = $2 WHERE id = $1").bind(user_id).bind(hash).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM password_resets WHERE user_id = $1").bind(user_id).execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1").bind(user_id).execute(&mut *tx).await?;
+    tx.commit().await?;
+    state.invalidate_user(user_id).await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn me(State(state): State<AppState>, AuthUser(user): AuthUser) -> AppResult<Json<UserJson>> {
     Ok(Json(user_json(&state, &user).await?))
 }
@@ -254,4 +353,7 @@ pub fn routes() -> Router<AppState> {
         .route("/auth/refresh", post(refresh))
         .route("/auth/logout", post(logout))
         .route("/auth/me", get(me))
+        .route("/auth/password/forgot", post(forgot_password))
+        .route("/auth/password/check", post(check_reset))
+        .route("/auth/password/reset", post(reset_password))
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ClipboardList, Inbox, MessageSquare, Plug, ShoppingCart, Ticket, Upload, UserCheck, Package, Users } from "lucide-react";
+import { ClipboardList, FilePen, Inbox, MessageSquare, Plug, ShoppingCart, Ticket, Upload, UserCheck, Package, Users } from "lucide-react";
 import { adminApi } from "@/lib/admin-api";
 import type { AdminOrder } from "@/lib/admin-types";
 import { cn } from "@/lib/cn";
@@ -61,6 +61,7 @@ export function AdminDashboardView() {
   const failed = useLoad("outbox", () => adminApi.outbox().then((r) => r.filter((e) => e.status === "failed").length));
 
   const newOrders: Loaded<number> = { ...orders, data: orders.data ? orders.data.filter((o) => o.status === "new").length : null, mutate: () => undefined };
+  const editRequests: Loaded<number> = { ...orders, data: orders.data ? orders.data.filter((o) => o.edit_pending).length : null, mutate: () => undefined };
   const recent = orders.data?.slice(0, 6) ?? null;
 
   const columns: Column<AdminOrder>[] = [
@@ -87,6 +88,7 @@ export function AdminDashboardView() {
         <div className="mt-[24px] grid grid-cols-1 gap-[16px] sm:grid-cols-2 xl:grid-cols-3">
           <Counter href="/admin/users" icon={<UserCheck className={iconCls} strokeWidth={1.6} aria-hidden />} title="Регистрации" state={pending} hint="Ожидают одобрения" alert />
           <Counter href="/admin/orders?status=new" icon={<ShoppingCart className={iconCls} strokeWidth={1.6} aria-hidden />} title="Новые заказы" state={newOrders} hint="Ждут подтверждения" alert />
+          <Counter href="/admin/orders?edit_pending=1" icon={<FilePen className={iconCls} strokeWidth={1.6} aria-hidden />} title="Изменения заказов" state={editRequests} hint="Клиенты ждут подтверждения" alert />
           <Counter href="/admin/leads" icon={<ClipboardList className={iconCls} strokeWidth={1.6} aria-hidden />} title="Заявки" state={leads} hint="Новые заявки с сайта" alert />
           <Counter href="/admin/reviews" icon={<MessageSquare className={iconCls} strokeWidth={1.6} aria-hidden />} title="Отзывы и вопросы" state={answers} hint="Без ответа магазина" alert />
           <Counter href="/admin/outbox?status=failed" icon={<Inbox className={iconCls} strokeWidth={1.6} aria-hidden />} title="Интеграции" state={failed} hint="Событий с ошибкой отправки" alert />

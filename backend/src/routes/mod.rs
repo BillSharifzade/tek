@@ -9,6 +9,7 @@ use crate::state::AppState;
 pub mod account;
 pub mod admin;
 pub mod admin_catalog;
+pub mod admin_content;
 pub mod auth;
 pub mod brands;
 pub mod cart;
@@ -38,8 +39,11 @@ pub fn api() -> Router<AppState> {
         .merge(account::routes())
         .merge(admin::routes())
         .merge(admin_catalog::routes())
+        .merge(admin_content::routes())
         .merge(documents::routes())
         .layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(30)))
         // импорт каталога: большой файл пишется в базу дольше 30 с
         .merge(admin_catalog::import_routes().layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(600))))
+        // загрузка документов и картинок до 20 МБ по медленному каналу — дольше 30 с
+        .merge(admin_catalog::upload_routes().layer(TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, Duration::from_secs(300))))
 }

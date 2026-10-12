@@ -7,8 +7,23 @@ import type {
   AdminManager,
   AdminOrder,
   AdminPaged,
+  AdminBrand,
+  AdminDocument,
+  AdminNews,
+  AdminNewsDetail,
+  AdminProject,
+  AdminProjectDetail,
+  AdminStore,
+  AdminVacancy,
+  NewsInput,
+  ProjectInput,
+  StoreInput,
+  VacancyInput,
   AdminProduct,
+  AdminProductDetail,
   AdminQuestion,
+  BrandPatch,
+  DocumentInput,
   AdminReview,
   AdminUser,
   AdminUserPatch,
@@ -24,8 +39,10 @@ import type {
   ProductStoreStock,
   Store,
   StoreQty,
+  UploadedFile,
   UserPricing,
   UserStatus,
+  VariantInput,
 } from "./admin-types";
 
 /** Заказ в ответах API: базовый контракт + поля, которые API отдаёт сверх него (контакты, менеджер, подписи). */
@@ -52,11 +69,13 @@ export const adminApi = {
   managers: () => client.get<AdminManager[]>("/admin/managers"),
 
   // заказы
-  orders: (q: { status?: string; q?: string; mine?: boolean } = {}) => client.get<AdminOrder[]>("/admin/orders", q),
+  orders: (q: { status?: string; q?: string; mine?: boolean; edit_pending?: boolean } = {}) => client.get<AdminOrder[]>("/admin/orders", q),
   order: (number: string) => client.get<AdminOrderDetail>(`/orders/${enc(number)}`),
   setOrderStatus: (number: string, status: string) => client.put<AdminOrderDetail>(`/admin/orders/${enc(number)}/status`, { status }),
   registerPayment: (number: string, body: PaymentInput) => client.post<AdminOrderDetail>(`/admin/orders/${enc(number)}/payments`, body),
   setOrderManager: (number: string, managerId: string) => client.put<AdminOrderDetail>(`/admin/orders/${enc(number)}/manager`, { manager_id: managerId }),
+  approveEdit: (number: string) => client.post<AdminOrderDetail>(`/admin/orders/${enc(number)}/edit-request/approve`, {}),
+  rejectEdit: (number: string, note: string | null) => client.post<AdminOrderDetail>(`/admin/orders/${enc(number)}/edit-request/reject`, { note }),
 
   // заявки
   leads: (q: { status?: LeadStatus | ""; kind?: string; q?: string; page?: number; per_page?: number } = {}) => client.get<AdminPaged<AdminLead>>("/admin/leads", q),
@@ -84,6 +103,30 @@ export const adminApi = {
   /** остатки по складам — из публичной карточки товара (для неактивных товаров может вернуть 404) */
   productStock: (slug: string) => client.get<{ stock: ProductStoreStock[] }>(`/catalog/products/${enc(slug)}`).then((p) => p.stock ?? []),
   stores: () => client.get<Store[]>("/content/stores"),
+  product: (id: string) => client.get<AdminProductDetail>(`/admin/products/${enc(id)}`),
+  setProductDocuments: (id: string, documentIds: number[]) => client.put<AdminProductDetail>(`/admin/products/${enc(id)}/documents`, { document_ids: documentIds }),
+  setProductAccessories: (id: string, items: { code: string; group: string }[]) => client.put<AdminProductDetail>(`/admin/products/${enc(id)}/accessories`, { items }),
+  setProductVariant: (id: string, body: VariantInput) => client.put<AdminProductDetail>(`/admin/products/${enc(id)}/variant`, body),
+
+  // библиотека документов и бренды
+  documents: (q: { q?: string; page?: number; per_page?: number } = {}) => client.get<AdminPaged<AdminDocument>>("/admin/documents", q),
+  createDocument: (input: DocumentInput) => {
+    const form = new FormData();
+    for (const k of ["title", "kind", "url", "product_id"] as const) if (input[k]) form.append(k, input[k]);
+    if (input.file) form.append("file", input.file);
+    return uploadForm<AdminDocument>("/admin/documents", form);
+  },
+  updateDocument: (id: number, patch: { title?: string; kind?: string; url?: string }) => client.put<AdminDocument>(`/admin/documents/${id}`, patch),
+  deleteDocument: (id: number) => client.delete<unknown>(`/admin/documents/${id}`),
+  brands: () => client.get<AdminBrand[]>("/admin/brands"),
+  updateBrand: (id: number, patch: BrandPatch) => client.put<AdminBrand>(`/admin/brands/${id}`, patch),
+  /** файл в хранилище (картинка новости / проекта): `kind: "image"` — только картинки */
+  uploadFile: (file: File, kind?: "image") => {
+    const form = new FormData();
+    if (kind) form.append("kind", kind);
+    form.append("file", file);
+    return uploadForm<UploadedFile>("/admin/files", form);
+  },
 
   // импорт каталога (только администратор)
   importCatalog: (file: File, dryRun: boolean) => {
@@ -98,4 +141,24 @@ export const adminApi = {
 
   // интеграции
   outbox: () => client.get<OutboxEvent[]>("/admin/outbox"),
+
+  // контент сайта
+  news: (q: { q?: string; page?: number; per_page?: number } = {}) => client.get<AdminPaged<AdminNews>>("/admin/news", q),
+  newsItem: (id: number) => client.get<AdminNewsDetail>(`/admin/news/${id}`),
+  createNews: (body: NewsInput) => client.post<AdminNewsDetail>("/admin/news", body),
+  updateNews: (id: number, body: NewsInput) => client.put<AdminNewsDetail>(`/admin/news/${id}`, body),
+  deleteNews: (id: number) => client.delete<unknown>(`/admin/news/${id}`),
+  projects: (q: { q?: string; page?: number; per_page?: number } = {}) => client.get<AdminPaged<AdminProject>>("/admin/projects", q),
+  project: (id: number) => client.get<AdminProjectDetail>(`/admin/projects/${id}`),
+  createProject: (body: ProjectInput) => client.post<AdminProjectDetail>("/admin/projects", body),
+  updateProject: (id: number, body: ProjectInput) => client.put<AdminProjectDetail>(`/admin/projects/${id}`, body),
+  deleteProject: (id: number) => client.delete<unknown>(`/admin/projects/${id}`),
+  vacancies: () => client.get<AdminVacancy[]>("/admin/vacancies"),
+  createVacancy: (body: VacancyInput) => client.post<AdminVacancy>("/admin/vacancies", body),
+  updateVacancy: (id: number, body: Partial<VacancyInput>) => client.put<AdminVacancy>(`/admin/vacancies/${id}`, body),
+  deleteVacancy: (id: number) => client.delete<unknown>(`/admin/vacancies/${id}`),
+  adminStores: () => client.get<AdminStore[]>("/admin/stores"),
+  createStore: (body: StoreInput) => client.post<AdminStore>("/admin/stores", body),
+  updateStore: (id: number, body: StoreInput) => client.put<AdminStore>(`/admin/stores/${id}`, body),
+  deleteStore: (id: number) => client.delete<unknown>(`/admin/stores/${id}`),
 };

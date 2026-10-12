@@ -71,7 +71,10 @@ export function LoginForm() {
           }
         />
       </Field>
-      <Button type="submit" full loading={busy} className="mt-[8px]">
+      <Link href="/forgot-password" className="-mt-[6px] self-end text-[14px] leading-[20px] text-sub transition-colors hover:text-black">
+        Забыли пароль?
+      </Link>
+      <Button type="submit" full loading={busy}>
         Войти
       </Button>
       <p className="text-center text-[14px] leading-[20px] text-sub">

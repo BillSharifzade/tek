@@ -151,6 +151,72 @@ impl P {
 }
 
 /// Категории верхнего уровня с фото (frontend/public/categories/{slug}.png); то же — в миграциях 0006 и 0008.
+/// Склады и магазины компании (данные из доработок R1) — и в демо-базе, и в production (`site_content`).
+/// (код, город, название, адрес, телефон, режим работы, срок получения, порядок, (широта, долгота))
+type StoreSeed = (&'static str, &'static str, &'static str, &'static str, Option<&'static str>, &'static str, &'static str, i32, (f64, f64));
+const STORES: &[StoreSeed] = &[
+    ("dushanbe", "Душанбе", "Центральный склад", "г. Душанбе, ул. Низоми Ганджави", None, "8:30–17:00", "сегодня", 1, (38.549998, 68.735072)),
+    ("khujand", "Худжанд", "Филиал Худжанд", "г. Худжанд, рынок Вахдат, вход 1", Some("+992 92 111 22 25"), "Пн–Сб 8:00–17:00", "завтра", 2, (40.247170, 69.695286)),
+    ("kushoniyon", "Душанбе", "Магазин на рынке Кушониён", "г. Душанбе, рынок Кушониён, магазин №327", Some("+992 55 000 66 13"), "Пн – Сб: 9:00–17:00, Вс — выходной", "сегодня", 3, (38.633192, 68.766223)),
+];
+
+/// Бренды-партнёры: слаг, название, на главной, описание (логотипы — frontend/public/brands).
+pub const BRANDS: [(&str, &str, bool, &str); 19] = [
+    ("dks", "ДКС", true, "Российский производитель кабеленесущих систем №1: металлические и проволочные лотки, кабель-каналы, трубы, аксессуары."),
+    ("schneider-electric", "Schneider Electric", true, "Мировой лидер в области управления энергией и автоматизации."),
+    ("systeme-electric", "Systeme Electric", true, "Электроустановочные изделия и низковольтное оборудование серий Этюд, Glossa, AtlasDesign."),
+    ("legrand", "Legrand", true, "Электроустановочные изделия, кабель-каналы DLP, распределительные щиты."),
+    ("philips-lighting", "Philips Lighting", true, "Светодиодные лампы, светильники и прожекторы Philips / Signify."),
+    ("hascelik-kablo", "Hasçelik Kablo", true, "Турецкий производитель силовых и контрольных кабелей."),
+    ("hes-kablo", "HES Kablo", true, "Кабельная продукция: H05VV-F, NYM, NYY и др."),
+    ("prysmian", "Prysmian", true, "Итальянская кабельная группа — кабели среднего и высокого напряжения."),
+    ("aksa", "AKSA", true, "Дизельные и бензиновые генераторы AKSA Power Generation."),
+    ("te-connectivity", "TE Connectivity", true, "Кабельные муфты Raychem, соединители, термоусадка."),
+    ("omicron", "Omicron", true, "Испытательное оборудование для релейной защиты и первичного оборудования."),
+    ("megger", "Megger", true, "Измерительные приборы: мегаомметры, тестеры заземления."),
+    ("hexing", "Hexing", true, "Счётчики электроэнергии и системы АСКУЭ."),
+    ("sata-tools", "SATA Tools", true, "Профессиональный ручной и электроинструмент."),
+    ("promrukav", "Промрукав", false, "Гофрированные трубы, лотки серии «Стандарт», аксессуары."),
+    ("iek", "IEK", false, "Модульное оборудование, щиты, трансформаторы тока."),
+    ("abb", "ABB", false, "Низковольтная аппаратура и сухие трансформаторы."),
+    ("tsmo", "ЦМО", false, "Телекоммуникационные шкафы и стойки 19\"."),
+    ("metz", "МЭТЗ им. Козлова", false, "Масляные силовые трансформаторы ТМГ."),
+];
+
+/// Разделы каталога: верхний уровень — плитки главной (фото frontend/public/categories), ниже — демо-каталог.
+/// (слаг, название, подразделы (слаг, название, подразделы (слаг, название)))
+type CategorySeed = (&'static str, &'static str, &'static [(&'static str, &'static str, &'static [(&'static str, &'static str)])]);
+const CATEGORY_TREE: &[CategorySeed] = &[
+    ("kabeli-i-provoda", "Кабели и провода", &[("silovye-kabeli", "Силовые кабели", &[]), ("provoda-montazhnye", "Провода монтажные", &[]), ("kontrolnye-kabeli", "Контрольные кабели", &[])]),
+    ("kabelenesushchie-sistemy", "Кабеленесущие системы", &[
+        ("kabelnye-lotki-i-aksessuary", "Кабельные лотки и аксессуары", &[("kabelnye-lotki-dks", "Кабельные лотки ДКС"), ("kryshki", "Крышки"), ("ugly", "Углы"), ("otvetviteli", "Ответвители"), ("konsoli", "Консоли")]),
+        ("kabel-kanaly-i-aksessuary", "Кабель-каналы и аксессуары", &[]),
+        ("kabelnye-truby-i-aksessuary", "Кабельные трубы и аксессуары", &[]),
+    ]),
+    ("svetotekhnika", "Светотехника", &[("lampy", "Лампы", &[]), ("svetilniki", "Светильники", &[]), ("prozhektory", "Прожекторы", &[])]),
+    ("generatory", "Генераторы", &[("portativnye-generatory", "Портативные генераторы", &[]), ("statsionarnye-generatory", "Стационарные генераторы", &[])]),
+    ("molniezashchita-i-zazemlenie", "Молниезащита и заземление", &[("molniepriemniki", "Молниеприемники", &[]), ("komplekty-zazemleniya", "Комплекты заземления", &[]), ("provodniki", "Проводники", &[])]),
+    ("transformatory", "Трансформаторы", &[("maslyanye-transformatory", "Масляные трансформаторы", &[]), ("sukhie-transformatory", "Сухие трансформаторы", &[])]),
+    ("elektroustanovochnye-izdeliya", "Электроустановочные изделия", &[("rozetki", "Розетки", &[]), ("vyklyuchateli", "Выключатели", &[])]),
+    ("nizkovoltnoe-oborudovanie", "Низковольтное оборудование", &[("avtomaticheskie-vyklyuchateli", "Автоматические выключатели", &[]), ("kontaktory", "Контакторы", &[])]),
+    ("shchitovoe-oborudovanie", "Щитовое оборудование", &[("raspredelitelnye-shchity", "Распределительные щиты", &[]), ("telekommunikatsionnye-shkafy", "Телекоммуникационные шкафы", &[])]),
+    ("schetchiki-elektroenergii", "Счетчики электроэнергии", &[("schetchiki", "Счетчики", &[]), ("komplektuyushchie-schetchikov", "Комплектующие счетчиков", &[])]),
+    // категории из макета лендинга (редакция 06.10), товары придут из 1С
+    ("instrumenty", "Инструменты", &[]),
+    ("solnechnaya-energetika", "Солнечная энергетика", &[]),
+    ("elektromontazhnaya-produktsiya", "Электромонтажная продукция", &[]),
+];
+
+/// Тексты страниц «О компании», «Контакты», «Для проектировщиков», «Покупателям» (CMS-страницы).
+const PAGES: &[(&str, &str, &str)] = &[
+    ("about", "О компании", "<p>ООО «Точикэлектрокомплект» (ТЭК) — поставщик электротехнической продукции в Республике Таджикистан с 2009 года. Официальный дистрибьютор Schneider Electric, ДКС, Legrand, Philips Lighting, AKSA.</p><p>Собственный склад 3000 м² в Душанбе, филиал в Худжанде, инженерный отдел, сервисная служба по обслуживанию ДГУ и ИБП, сборка щитового оборудования.</p><ul><li>Доставка по Душанбе и Худжанду за 1 рабочий день</li><li>Квалифицированная техническая поддержка</li><li>Соответствие стандартам качества</li><li>Только оригинальная брендовая продукция</li></ul>"),
+    ("contacts", "Контакты", "<p><strong>Телефон:</strong> <a href=\"tel:+992446206060\">+992 446 20 60 60</a></p><p><strong>E-mail:</strong> <a href=\"mailto:info@tec.tj\">info@tec.tj</a>, <a href=\"mailto:sales@tec.tj\">sales@tec.tj</a></p><p><strong>Главный офис:</strong> г. Душанбе, ул. Бохтар 37/1, офис 704</p><p><strong>Склад:</strong> г. Душанбе, ул. Низоми Ганджави</p><p><strong>Магазин:</strong> г. Душанбе, рынок Кушониён, магазин №327</p><p><strong>Филиал:</strong> г. Худжанд, рынок Вахдат, вход 1</p><p>Режим работы офиса: Пн – Пт: 9:00–17:00, Сб – Вс — выходной</p>"),
+    ("support", "Для проектировщиков", "<p>Технические материалы и онлайн-инструменты для подбора оборудования и подготовки проекта. Рассчитывайте комплектацию, изучайте решения производителей и обращайтесь к инженерам ТЭК за помощью с расчётами и спецификациями.</p><ul><li>Онлайн-калькуляторы и конфигураторы</li><li>Каталоги и брошюры производителей</li><li>Проработка проекта совместно с инженерами ТЭК</li><li>Сертификаты и декларации на продукцию</li></ul>"),
+    ("help", "Помощь", "<h3>Как оформить заказ</h3><p>Добавьте товары в корзину, выберите доставку и способ оплаты, подтвердите заказ. Менеджер свяжется с вами для уточнения деталей.</p><h3>Регистрация</h3><p>Новые аккаунты проходят одобрение компанией в течение одного рабочего дня. После одобрения вам доступны персональные цены и кешбэк.</p><h3>Возврат</h3><p>Возврат товара надлежащего качества — в течение 30 дней при сохранении упаковки.</p>"),
+    ("delivery", "Доставка", "<p>Бережно доставляем товары по Таджикистану за 48 часов. По Душанбе и Худжанду — за 1 рабочий день.</p><p>Стоимость доставки по городу — 30,00 с. Самовывоз со склада и из магазина на рынке Кушониён — бесплатно.</p><p><em>Подъем/спуск на этажи и разгрузка товара не входят в услугу доставки.</em></p>"),
+    ("payment", "Оплата", "<ul><li><strong>Алиф Банк</strong> — онлайн-оплата картой</li><li><strong>Душанбе Сити Банк</strong> — онлайн-оплата картой</li><li><strong>Наличными</strong> — при получении</li><li><strong>По счёту</strong> — для юридических лиц</li></ul>"),
+];
+
 const CATEGORY_PHOTOS: &[&str] = &[
     "kabelenesushchie-sistemy",
     "svetotekhnika",
@@ -285,6 +351,132 @@ async fn insert_category(tx: &mut Tx<'_>, parent: Option<(i32, &str)>, slug: &st
     Ok(id)
 }
 
+/// Конфигураторы (страница «Конфигураторы», ссылка из карточки товара): (лотки, кабель-каналы).
+async fn insert_configurators(tx: &mut Tx<'_>) -> anyhow::Result<(i32, i32)> {
+    let conf_trays: i32 = sqlx::query_scalar(
+        "INSERT INTO configurators (slug, name, description, url, image_url) VALUES ('fix-combitech', 'Конфигуратор подбора кабельных лотков', 'Fix Combitech — программа позволяет автоматически рассчитать количество требуемых элементов кабеленесущих систем и систем организации рабочих мест.', '/configurators/fix-combitech', '/configurators/fix-combitech.svg') RETURNING id",
+    )
+    .fetch_one(&mut **tx)
+    .await?;
+    let conf_channels: i32 = sqlx::query_scalar(
+        "INSERT INTO configurators (slug, name, description, url, image_url) VALUES ('kabel-kanaly', 'Конфигуратор кабель-каналов', 'Подбор кабель-каналов, аксессуаров и комплектующих для организации рабочих мест.', '/configurators/kabel-kanaly', '/configurators/kabel-kanaly.svg') RETURNING id",
+    )
+    .fetch_one(&mut **tx)
+    .await?;
+    Ok((conf_trays, conf_channels))
+}
+
+/// Преимущества на главной (макет 06.10).
+async fn insert_usp(tx: &mut Tx<'_>) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"INSERT INTO usp (title, text, icon, sort) VALUES
+           ('Большой ассортимент **оригинальных товаров** от мировых брендов', 'Прямые контракты с производителями, сертификаты на всё', 'assortment', 1),
+           ('**Доставка товаров** по Душанбе в течение 24 часов с момента заказа', 'Собственная служба доставки, по Таджикистану — за 48 часов', 'truck', 2),
+           ('**Квалифицированная техподдержка** по каждому товару', 'Инженеры помогут с подбором и расчётом', 'support', 3),
+           ('**Удобный личный кабинет** для работы с заказами, оплатами и сметами', 'Персональные цены, акт сверки и бонусная карта', 'account', 4)"#,
+    )
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
+
+/// Услуги из ТЗ (страницы услуг — шаблон сайта, здесь — список и короткие описания).
+async fn insert_services(tx: &mut Tx<'_>) -> anyhow::Result<()> {
+    for (i, (slug, title, short)) in [
+        ("obsluzhivanie-dgu-ibp", "Обслуживание ДГУ и ИБП", "Сервисное обслуживание, пуско-наладка и ремонт дизельных генераторов и ИБП."),
+        ("solnechnye-elektrostantsii", "Солнечные электростанции под ключ", "Проектирование, поставка и монтаж СЭС для промышленных и частных объектов."),
+        ("podderzhka-v-proektirovanii", "Поддержка в проектировании", "Консультации инженеров, подбор оборудования и подготовка спецификаций."),
+    ]
+    .iter()
+    .enumerate()
+    {
+        sqlx::query("INSERT INTO services (slug, title, short, body, image_url, sort) VALUES ($1,$2,$3,$4,$5,$6)")
+            .bind(slug).bind(title).bind(short)
+            .bind(format!("<p>{short}</p><p>Свяжитесь с нами по телефону <a href=\"tel:+992446206060\">+992 446 20 60 60</a> или оставьте заявку — мы подготовим коммерческое предложение в течение одного рабочего дня.</p>"))
+            .bind(match *slug {
+                "obsluzhivanie-dgu-ibp" | "solnechnye-elektrostantsii" => "/figma/service-hero.webp".to_string(),
+                _ => format!("/services/{slug}.svg"),
+            })
+            .bind(i as i32)
+            .execute(&mut **tx).await?;
+    }
+    Ok(())
+}
+
+/// Контент сайта для базы без демо-каталога (`SEED_DEMO=off`, production): склады и магазины, тексты страниц, услуги,
+/// преимущества, конфигураторы; бренды-партнёры и разделы с плиток главной — пока каталог пуст.
+/// Каждая таблица заполняется, только если она пустая, — правки из панели и импорта не перезаписываются.
+/// Новостей, проектов и баннеров здесь нет — их добавляют в панели.
+pub async fn site_content(pool: &PgPool) -> anyhow::Result<()> {
+    let mut tx = pool.begin().await?;
+    let empty = |table: &'static str| format!("SELECT NOT EXISTS (SELECT 1 FROM {table})");
+    let is_empty = async |tx: &mut Tx<'_>, table: &'static str| -> anyhow::Result<bool> { Ok(sqlx::query_scalar::<_, bool>(sqlx::AssertSqlSafe(empty(table))).fetch_one(&mut **tx).await?) };
+    let mut done = Vec::new();
+    if is_empty(&mut tx, "stores").await? {
+        for &(code, city, name, addr, phone, hours, hint, sort, (lat, lon)) in STORES {
+            sqlx::query("INSERT INTO stores (code, city, name, address, phone, hours, delivery_hint, sort, lat, lon) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)")
+                .bind(code).bind(city).bind(name).bind(addr).bind(phone).bind(hours).bind(hint).bind(sort).bind(lat).bind(lon)
+                .execute(&mut *tx).await?;
+        }
+        done.push("stores");
+    }
+    if is_empty(&mut tx, "pages").await? {
+        for (slug, title, body) in PAGES {
+            sqlx::query("INSERT INTO pages (slug, title, body_html) VALUES ($1,$2,$3)").bind(slug).bind(title).bind(body).execute(&mut *tx).await?;
+        }
+        done.push("pages");
+    }
+    if is_empty(&mut tx, "services").await? {
+        insert_services(&mut tx).await?;
+        done.push("services");
+    }
+    if is_empty(&mut tx, "usp").await? {
+        insert_usp(&mut tx).await?;
+        done.push("usp");
+    }
+    if is_empty(&mut tx, "configurators").await? {
+        insert_configurators(&mut tx).await?;
+        done.push("configurators");
+    }
+    // бренды и разделы — только в пустой каталог: дальше их создаёт и меняет импорт
+    if is_empty(&mut tx, "products").await? {
+        if is_empty(&mut tx, "brands").await? {
+            for (i, (slug, name, featured, desc)) in BRANDS.iter().enumerate() {
+                sqlx::query("INSERT INTO brands (slug, name, country_brand, country_origin, description, logo_url, is_featured, sort) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)")
+                    .bind(slug)
+                    .bind(name)
+                    .bind(country(slug))
+                    .bind(if *slug == "dks" || *slug == "promrukav" || *slug == "iek" { "Россия" } else { country(slug) })
+                    .bind(desc)
+                    .bind(format!("/brands/{slug}.svg"))
+                    .bind(featured)
+                    .bind(i as i32)
+                    .execute(&mut *tx)
+                    .await?;
+            }
+            done.push("brands");
+        }
+        if is_empty(&mut tx, "categories").await? {
+            // только разделы с плиток главной (макет): остальные создаст импорт по выгрузке 1С, пустых разделов в меню не будет
+            for (i, (slug, name, _)) in CATEGORY_TREE.iter().filter(|c| CATEGORY_PHOTOS.contains(&c.0)).enumerate() {
+                let id = insert_category(&mut tx, None, slug, name, i as i32).await?;
+                sqlx::query("UPDATE categories SET image_url = $2, description = $3 WHERE id = $1")
+                    .bind(id)
+                    .bind(format!("/categories/{slug}.png"))
+                    .bind(format!("{name}: оригинальная продукция ведущих мировых производителей со склада в Душанбе."))
+                    .execute(&mut *tx)
+                    .await?;
+            }
+            done.push("categories");
+        }
+    }
+    tx.commit().await?;
+    if !done.is_empty() {
+        tracing::info!(tables = ?done, "site content seeded");
+    }
+    Ok(())
+}
+
 /// Заполняет пустую базу. `SeedMode::Catalog` — каталог и контент сайта; `Full` — плюс демо-аккаунты
 /// (admin@tec.tj / Admin1234 …), их заказы, отзывы и купоны; `Off` — ничего.
 pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
@@ -300,11 +492,7 @@ pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
     let mut ctx = Ctx { rng: Rng(0x9E37_79B9_7F4A_7C15), brands: HashMap::new(), cats: HashMap::new(), stores: vec![], code_seq: 200_000, slugs: HashMap::new() };
 
     // ---------- stores ----------
-    for (code, city, name, addr, phone, hours, hint, sort, (lat, lon)) in [
-        ("dushanbe", "Душанбе", "Центральный склад", "г. Душанбе, ул. Низоми Ганджави", None, "8:30–17:00", "сегодня", 1, (38.549998, 68.735072)),
-        ("khujand", "Худжанд", "Филиал Худжанд", "г. Худжанд, рынок Вахдат, вход 1", Some("+992 92 111 22 25"), "Пн–Сб 8:00–17:00", "завтра", 2, (40.247170, 69.695286)),
-        ("kushoniyon", "Душанбе", "Магазин на рынке Кушониён", "г. Душанбе, рынок Кушониён, магазин №327", Some("+992 55 000 66 13"), "Пн – Сб: 9:00–17:00, Вс — выходной", "сегодня", 3, (38.633192, 68.766223)),
-    ] {
+    for &(code, city, name, addr, phone, hours, hint, sort, (lat, lon)) in STORES {
         let id: i32 = sqlx::query_scalar("INSERT INTO stores (code, city, name, address, phone, hours, delivery_hint, sort, lat, lon) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id")
             .bind(code).bind(city).bind(name).bind(addr).bind(phone).bind(hours).bind(hint).bind(sort).bind(lat).bind(lon)
             .fetch_one(&mut *tx).await?;
@@ -312,28 +500,7 @@ pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
     }
 
     // ---------- brands ----------
-    let brands: [(&str, &str, bool, &str); 19] = [
-        ("dks", "ДКС", true, "Российский производитель кабеленесущих систем №1: металлические и проволочные лотки, кабель-каналы, трубы, аксессуары."),
-        ("schneider-electric", "Schneider Electric", true, "Мировой лидер в области управления энергией и автоматизации."),
-        ("systeme-electric", "Systeme Electric", true, "Электроустановочные изделия и низковольтное оборудование серий Этюд, Glossa, AtlasDesign."),
-        ("legrand", "Legrand", true, "Электроустановочные изделия, кабель-каналы DLP, распределительные щиты."),
-        ("philips-lighting", "Philips Lighting", true, "Светодиодные лампы, светильники и прожекторы Philips / Signify."),
-        ("hascelik-kablo", "Hasçelik Kablo", true, "Турецкий производитель силовых и контрольных кабелей."),
-        ("hes-kablo", "HES Kablo", true, "Кабельная продукция: H05VV-F, NYM, NYY и др."),
-        ("prysmian", "Prysmian", true, "Итальянская кабельная группа — кабели среднего и высокого напряжения."),
-        ("aksa", "AKSA", true, "Дизельные и бензиновые генераторы AKSA Power Generation."),
-        ("te-connectivity", "TE Connectivity", true, "Кабельные муфты Raychem, соединители, термоусадка."),
-        ("omicron", "Omicron", true, "Испытательное оборудование для релейной защиты и первичного оборудования."),
-        ("megger", "Megger", true, "Измерительные приборы: мегаомметры, тестеры заземления."),
-        ("hexing", "Hexing", true, "Счётчики электроэнергии и системы АСКУЭ."),
-        ("sata-tools", "SATA Tools", true, "Профессиональный ручной и электроинструмент."),
-        ("promrukav", "Промрукав", false, "Гофрированные трубы, лотки серии «Стандарт», аксессуары."),
-        ("iek", "IEK", false, "Модульное оборудование, щиты, трансформаторы тока."),
-        ("abb", "ABB", false, "Низковольтная аппаратура и сухие трансформаторы."),
-        ("tsmo", "ЦМО", false, "Телекоммуникационные шкафы и стойки 19\"."),
-        ("metz", "МЭТЗ им. Козлова", false, "Масляные силовые трансформаторы ТМГ."),
-    ];
-    for (i, (slug, name, featured, desc)) in brands.iter().enumerate() {
+    for (i, (slug, name, featured, desc)) in BRANDS.iter().enumerate() {
         let id: i32 = sqlx::query_scalar(
             "INSERT INTO brands (slug, name, country_brand, country_origin, description, logo_url, is_featured, sort) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",
         )
@@ -351,27 +518,7 @@ pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
     }
 
     // ---------- categories ----------
-    let tree: &[(&str, &str, &[(&str, &str, &[(&str, &str)])])] = &[
-        ("kabeli-i-provoda", "Кабели и провода", &[("silovye-kabeli", "Силовые кабели", &[]), ("provoda-montazhnye", "Провода монтажные", &[]), ("kontrolnye-kabeli", "Контрольные кабели", &[])]),
-        ("kabelenesushchie-sistemy", "Кабеленесущие системы", &[
-            ("kabelnye-lotki-i-aksessuary", "Кабельные лотки и аксессуары", &[("kabelnye-lotki-dks", "Кабельные лотки ДКС"), ("kryshki", "Крышки"), ("ugly", "Углы"), ("otvetviteli", "Ответвители"), ("konsoli", "Консоли")]),
-            ("kabel-kanaly-i-aksessuary", "Кабель-каналы и аксессуары", &[]),
-            ("kabelnye-truby-i-aksessuary", "Кабельные трубы и аксессуары", &[]),
-        ]),
-        ("svetotekhnika", "Светотехника", &[("lampy", "Лампы", &[]), ("svetilniki", "Светильники", &[]), ("prozhektory", "Прожекторы", &[])]),
-        ("generatory", "Генераторы", &[("portativnye-generatory", "Портативные генераторы", &[]), ("statsionarnye-generatory", "Стационарные генераторы", &[])]),
-        ("molniezashchita-i-zazemlenie", "Молниезащита и заземление", &[("molniepriemniki", "Молниеприемники", &[]), ("komplekty-zazemleniya", "Комплекты заземления", &[]), ("provodniki", "Проводники", &[])]),
-        ("transformatory", "Трансформаторы", &[("maslyanye-transformatory", "Масляные трансформаторы", &[]), ("sukhie-transformatory", "Сухие трансформаторы", &[])]),
-        ("elektroustanovochnye-izdeliya", "Электроустановочные изделия", &[("rozetki", "Розетки", &[]), ("vyklyuchateli", "Выключатели", &[])]),
-        ("nizkovoltnoe-oborudovanie", "Низковольтное оборудование", &[("avtomaticheskie-vyklyuchateli", "Автоматические выключатели", &[]), ("kontaktory", "Контакторы", &[])]),
-        ("shchitovoe-oborudovanie", "Щитовое оборудование", &[("raspredelitelnye-shchity", "Распределительные щиты", &[]), ("telekommunikatsionnye-shkafy", "Телекоммуникационные шкафы", &[])]),
-        ("schetchiki-elektroenergii", "Счетчики электроэнергии", &[("schetchiki", "Счетчики", &[]), ("komplektuyushchie-schetchikov", "Комплектующие счетчиков", &[])]),
-        // категории из макета лендинга (редакция 06.10), товары придут из 1С
-        ("instrumenty", "Инструменты", &[]),
-        ("solnechnaya-energetika", "Солнечная энергетика", &[]),
-        ("elektromontazhnaya-produktsiya", "Электромонтажная продукция", &[]),
-    ];
-    for (i, (slug, name, children)) in tree.iter().enumerate() {
+    for (i, (slug, name, children)) in CATEGORY_TREE.iter().enumerate() {
         let id = insert_category(&mut tx, None, slug, name, i as i32).await?;
         sqlx::query("UPDATE categories SET image_url = $2, description = $3 WHERE id = $1")
             .bind(id)
@@ -397,16 +544,7 @@ pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
         .await?;
 
     // ---------- configurators ----------
-    let conf_trays: i32 = sqlx::query_scalar(
-        "INSERT INTO configurators (slug, name, description, url, image_url) VALUES ('fix-combitech', 'Конфигуратор подбора кабельных лотков', 'Fix Combitech — программа позволяет автоматически рассчитать количество требуемых элементов кабеленесущих систем и систем организации рабочих мест.', '/configurators/fix-combitech', '/configurators/fix-combitech.svg') RETURNING id",
-    )
-    .fetch_one(&mut *tx)
-    .await?;
-    let conf_channels: i32 = sqlx::query_scalar(
-        "INSERT INTO configurators (slug, name, description, url, image_url) VALUES ('kabel-kanaly', 'Конфигуратор кабель-каналов', 'Подбор кабель-каналов, аксессуаров и комплектующих для организации рабочих мест.', '/configurators/kabel-kanaly', '/configurators/kabel-kanaly.svg') RETURNING id",
-    )
-    .fetch_one(&mut *tx)
-    .await?;
+    let (conf_trays, conf_channels) = insert_configurators(&mut tx).await?;
 
     // ---------- documents ----------
     let mut docs: HashMap<&str, i32> = HashMap::new();
@@ -790,33 +928,8 @@ pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
     )
     .execute(&mut *tx)
     .await?;
-    sqlx::query(
-        r#"INSERT INTO usp (title, text, icon, sort) VALUES
-           ('Большой ассортимент **оригинальных товаров** от мировых брендов', 'Прямые контракты с производителями, сертификаты на всё', 'assortment', 1),
-           ('**Доставка товаров** по Душанбе в течение 24 часов с момента заказа', 'Собственная служба доставки, по Таджикистану — за 48 часов', 'truck', 2),
-           ('**Квалифицированная техподдержка** по каждому товару', 'Инженеры помогут с подбором и расчётом', 'support', 3),
-           ('**Удобный личный кабинет** для работы с заказами, оплатами и сметами', 'Персональные цены, акт сверки и бонусная карта', 'account', 4)"#,
-    )
-    .execute(&mut *tx)
-    .await?;
-    for (i, (slug, title, short)) in [
-        ("obsluzhivanie-dgu-ibp", "Обслуживание ДГУ и ИБП", "Сервисное обслуживание, пуско-наладка и ремонт дизельных генераторов и ИБП."),
-        ("solnechnye-elektrostantsii", "Солнечные электростанции под ключ", "Проектирование, поставка и монтаж СЭС для промышленных и частных объектов."),
-        ("podderzhka-v-proektirovanii", "Поддержка в проектировании", "Консультации инженеров, подбор оборудования и подготовка спецификаций."),
-    ]
-    .iter()
-    .enumerate()
-    {
-        sqlx::query("INSERT INTO services (slug, title, short, body, image_url, sort) VALUES ($1,$2,$3,$4,$5,$6)")
-            .bind(slug).bind(title).bind(short)
-            .bind(format!("<p>{short}</p><p>Свяжитесь с нами по телефону <a href=\"tel:+992446206060\">+992 446 20 60 60</a> или оставьте заявку — мы подготовим коммерческое предложение в течение одного рабочего дня.</p>"))
-            .bind(match *slug {
-                "obsluzhivanie-dgu-ibp" | "solnechnye-elektrostantsii" => "/figma/service-hero.webp".to_string(),
-                _ => format!("/services/{slug}.svg"),
-            })
-            .bind(i as i32)
-            .execute(&mut *tx).await?;
-    }
+    insert_usp(&mut tx).await?;
+    insert_services(&mut tx).await?;
     let projects: &[(&str, &str, &str, &str, &str)] = &[
         ("Резервное электроснабжение головного офиса ICB", "2025", "2025-08-10", "International Commercial Bank of Tajikistan", "Поставка, Монтаж, ПНР"),
         ("Резервное электроснабжение золотодобывающего предприятия", "2025", "2025-08-10", "Золотые прииски", "Поставка, ПНР"),
@@ -867,14 +980,7 @@ pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
             .bind("/news/default.svg")
             .execute(&mut *tx).await?;
     }
-    for (slug, title, body) in [
-        ("about", "О компании", "<p>ООО «Точикэлектрокомплект» (ТЭК) — поставщик электротехнической продукции в Республике Таджикистан с 2009 года. Официальный дистрибьютор Schneider Electric, ДКС, Legrand, Philips Lighting, AKSA.</p><p>Собственный склад 3000 м² в Душанбе, филиал в Худжанде, инженерный отдел, сервисная служба по обслуживанию ДГУ и ИБП, сборка щитового оборудования.</p><ul><li>Доставка по Душанбе и Худжанду за 1 рабочий день</li><li>Квалифицированная техническая поддержка</li><li>Соответствие стандартам качества</li><li>Только оригинальная брендовая продукция</li></ul>"),
-        ("contacts", "Контакты", "<p><strong>Телефон:</strong> <a href=\"tel:+992446206060\">+992 446 20 60 60</a></p><p><strong>E-mail:</strong> <a href=\"mailto:info@tec.tj\">info@tec.tj</a>, <a href=\"mailto:sales@tec.tj\">sales@tec.tj</a></p><p><strong>Главный офис:</strong> г. Душанбе, ул. Бохтар 37/1, офис 704</p><p><strong>Склад:</strong> г. Душанбе, ул. Низоми Ганджави</p><p><strong>Магазин:</strong> г. Душанбе, рынок Кушониён, магазин №327</p><p><strong>Филиал:</strong> г. Худжанд, рынок Вахдат, вход 1</p><p>Режим работы офиса: Пн – Пт: 9:00–17:00, Сб – Вс — выходной</p>"),
-        ("support", "Для проектировщиков", "<p>Технические материалы и онлайн-инструменты для подбора оборудования и подготовки проекта. Рассчитывайте комплектацию, изучайте решения производителей и обращайтесь к инженерам ТЭК за помощью с расчётами и спецификациями.</p><ul><li>Онлайн-калькуляторы и конфигураторы</li><li>Каталоги и брошюры производителей</li><li>Проработка проекта совместно с инженерами ТЭК</li><li>Сертификаты и декларации на продукцию</li></ul>"),
-        ("help", "Помощь", "<h3>Как оформить заказ</h3><p>Добавьте товары в корзину, выберите доставку и способ оплаты, подтвердите заказ. Менеджер свяжется с вами для уточнения деталей.</p><h3>Регистрация</h3><p>Новые аккаунты проходят одобрение компанией в течение одного рабочего дня. После одобрения вам доступны персональные цены и кешбэк.</p><h3>Возврат</h3><p>Возврат товара надлежащего качества — в течение 30 дней при сохранении упаковки.</p>"),
-        ("delivery", "Доставка", "<p>Бережно доставляем товары по Таджикистану за 48 часов. По Душанбе и Худжанду — за 1 рабочий день.</p><p>Стоимость доставки по городу — 30,00 с. Самовывоз со склада и из магазина на рынке Кушониён — бесплатно.</p><p><em>Подъем/спуск на этажи и разгрузка товара не входят в услугу доставки.</em></p>"),
-        ("payment", "Оплата", "<ul><li><strong>Алиф Банк</strong> — онлайн-оплата картой</li><li><strong>Душанбе Сити Банк</strong> — онлайн-оплата картой</li><li><strong>Наличными</strong> — при получении</li><li><strong>По счёту</strong> — для юридических лиц</li></ul>"),
-    ] {
+    for (slug, title, body) in PAGES {
         sqlx::query("INSERT INTO pages (slug, title, body_html) VALUES ($1,$2,$3)").bind(slug).bind(title).bind(body).execute(&mut *tx).await?;
     }
 

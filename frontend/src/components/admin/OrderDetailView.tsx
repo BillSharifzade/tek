@@ -79,6 +79,16 @@ export function OrderDetailView({ number }: { number: string }) {
         }}
       />
 
+      {o.edit_request ? (
+        <EditRequestCard
+          order={o}
+          onChange={(next) => {
+            setOrder(next);
+            meta.reload();
+          }}
+        />
+      ) : null}
+
       <ItemsCard order={o} />
 
       <div className="grid grid-cols-1 gap-[16px] lg:gap-[27px] xl:grid-cols-2">
@@ -232,6 +242,108 @@ function StatusCard({ order: o, onChange }: { order: AdminOrderDetail; onChange:
           <>
             Заказ №{o.number}: «{o.status_label}» → «{label(ORDER_STATUS_LABEL, target)}». Изменение уйдёт в CRM, клиент увидит новый статус в личном кабинете.
             {target === "delivered" && o.payment.method === "cash" && o.remaining > 0 ? " Оплата наличными будет зачтена автоматически." : null}
+          </>
+        )}
+      </ConfirmModal>
+    </Card>
+  );
+}
+
+/**
+ * Запрос клиента на изменение состава (ТЗ: «заказ на отгрузку должен меняться после одобрения менеджером»):
+ * что меняется, новая сумма, комментарий; «Одобрить» применяет состав к заказу, «Отклонить» — с причиной для клиента.
+ */
+function EditRequestCard({ order: o, onChange }: { order: AdminOrderDetail; onChange: (o: AdminOrderDetail) => void }) {
+  const [action, setAction] = useState<"approve" | "reject" | null>(null);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const r = o.edit_request;
+  if (!r) return null;
+
+  const run = async () => {
+    setBusy(true);
+    try {
+      const next = action === "approve" ? await adminApi.approveEdit(o.number) : await adminApi.rejectEdit(o.number, note.trim() || null);
+      onChange(next);
+      toast.success(action === "approve" ? "Изменения применены к заказу" : "Запрос отклонён, клиент получит уведомление");
+      setAction(null);
+      setNote("");
+    } catch (e) {
+      toast.error(errorMessage(e, action === "approve" ? "Не удалось применить изменения" : "Не удалось отклонить запрос"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const changed = r.items.filter((i) => i.qty !== i.old_qty);
+  return (
+    <Card id="edit-request" className="shadow-[inset_4px_0_0_#FFCC33]">
+      <CardTitle right={<span className={cn(labelCls, "tnum")}>от {dateTime(r.created_at)}</span>}>Запрос на изменение состава</CardTitle>
+      <p className={cn("mt-[12px]", labelCls)}>Заказ, резерв на складе и CRM изменятся только после одобрения. Пока запрос не рассмотрен, заказ нельзя отгрузить.</p>
+      <ul className="mt-[18px] divide-y divide-line border-y border-line">
+        {changed.map((i) => (
+          <li key={i.product.id} className="flex flex-wrap items-center gap-x-[16px] gap-y-[6px] py-[12px]">
+            <div className="min-w-[200px] flex-1">
+              <span className="line-clamp-2 text-[15px] font-medium leading-[20px] text-black">{i.product.name}</span>
+              <span className="block text-[13px] leading-[18px] text-[#555] tnum">Код: {i.product.code}</span>
+            </div>
+            <span className="whitespace-nowrap text-[15px] leading-[20px] tnum">
+              {i.old_qty === 0 ? (
+                <span className="text-new">добавлен: {fmtQty(i.qty)} {i.product.unit}</span>
+              ) : i.qty === 0 ? (
+                <span className="text-[#D13B3E]">убран (было {fmtQty(i.old_qty)} {i.product.unit})</span>
+              ) : (
+                <>
+                  {fmtQty(i.old_qty)} → <span className="font-semibold">{fmtQty(i.qty)}</span> {i.product.unit}
+                </>
+              )}
+            </span>
+          </li>
+        ))}
+        {changed.length === 0 ? <li className={cn("py-[12px]", labelCls)}>Состав не меняется — только комментарий.</li> : null}
+      </ul>
+      <dl className="mt-[16px] flex flex-col gap-[6px]">
+        <InfoRow title="Сумма заказа">
+          <span className="tnum">
+            {money(o.total)} → {money(r.total)}
+          </span>
+        </InfoRow>
+        {r.delivery_price !== o.delivery_price ? (
+          <InfoRow title="Доставка">
+            <span className="tnum">
+              {money(o.delivery_price)} → {money(r.delivery_price)}
+            </span>
+          </InfoRow>
+        ) : null}
+        {r.comment ? (
+          <InfoRow title="Комментарий">
+            <span className="font-normal">{r.comment}</span>
+          </InfoRow>
+        ) : null}
+      </dl>
+      <div className="mt-[20px] flex flex-wrap gap-[10px] border-t border-line pt-[18px]">
+        <Button className={btnCls} onClick={() => setAction("approve")}>
+          Одобрить изменения
+        </Button>
+        <Button variant="danger" className={btnCls} onClick={() => setAction("reject")}>
+          Отклонить
+        </Button>
+      </div>
+      <ConfirmModal
+        open={action !== null}
+        title={action === "approve" ? "Одобрить изменения?" : "Отклонить запрос?"}
+        confirmLabel={action === "approve" ? "Одобрить" : "Отклонить"}
+        danger={action === "reject"}
+        busy={busy}
+        onConfirm={run}
+        onClose={() => setAction(null)}
+      >
+        {action === "approve" ? (
+          <>Состав заказа №{o.number} изменится, резерв на складе пересчитается, обновление уйдёт в CRM, клиент получит уведомление.</>
+        ) : (
+          <>
+            <span className="block">Заказ №{o.number} останется прежним, клиент получит уведомление.</span>
+            <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Причина (увидит клиент)" aria-label="Причина отказа" maxLength={500} className={cn(fieldCls, "mt-[14px]")} />
           </>
         )}
       </ConfirmModal>

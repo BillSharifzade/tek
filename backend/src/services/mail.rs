@@ -235,6 +235,22 @@ pub fn account_approved(cfg: &Config, to: String, name: &str) -> Mail {
     }
 }
 
+/// Событие письма со ссылкой на смену пароля: в списке очереди панели текст письма скрыт, после отправки — стирается.
+pub const PASSWORD_RESET_EVENT: &str = "email.password_reset";
+
+/// Клиенту: ссылка на смену пароля (запрос «Забыли пароль?»).
+pub fn password_reset(cfg: &Config, to: String, name: &str, token: &str) -> Mail {
+    let url = format!("{}/reset-password?token={token}", base_url(cfg));
+    let p1 = "Мы получили запрос на смену пароля от вашего аккаунта на сайте ТЭК. Чтобы задать новый пароль, перейдите по ссылке — она действует 1 час и срабатывает один раз.";
+    let p2 = "Если вы не запрашивали смену пароля, просто проигнорируйте это письмо — пароль останется прежним.";
+    Mail {
+        to,
+        subject: "Смена пароля на сайте ТЭК".into(),
+        html: layout(cfg, "Смена пароля", &format!("<p>{}</p><p>{p1}</p><p>{p2}</p>", esc(&hello(name))), Some(("Задать новый пароль", &url))),
+        text: format!("{}\n\n{p1}\n{url}\n\n{p2}{}", hello(name), text_footer()),
+    }
+}
+
 pub struct MailItem {
     pub code: String,
     pub name: String,
@@ -371,6 +387,42 @@ pub fn order_status(cfg: &Config, to: String, name: &str, number: &str, status_l
         to,
         subject: format!("Заказ {number}: {status_label}"),
         html: layout(cfg, &format!("Заказ {number}: {status_label}"), &format!("<p>{}</p><p>{}</p>", esc(&hello(name)), esc(&p)), Some(("Открыть заказ", &url))),
+        text: format!("{}\n\n{p}\nЗаказ: {url}{}", hello(name), text_footer()),
+    }
+}
+
+/// Менеджеру: клиент просит изменить состав заказа — нужно одобрить или отклонить.
+pub fn order_edit_requested(cfg: &Config, to: String, number: &str, customer: &str, old_total: Decimal, new_total: Decimal, comment: Option<&str>) -> Mail {
+    let url = format!("{}/admin/orders/{number}", base_url(cfg));
+    let p = format!("{customer} просит изменить состав заказа {number}: сумма {} → {}.", money(old_total), money(new_total));
+    let p2 = "Заказ, резерв и CRM изменятся только после вашего одобрения. Пока запрос не рассмотрен, заказ нельзя отгрузить.";
+    let comment_html = comment.map(|c| format!("<p>Комментарий клиента: {}</p>", esc(c))).unwrap_or_default();
+    Mail {
+        to,
+        subject: format!("Запрос на изменение заказа {number}"),
+        html: layout(cfg, &format!("Запрос на изменение заказа {number}"), &format!("<p>{}</p>{comment_html}<p>{p2}</p>", esc(&p)), Some(("Рассмотреть в панели", &url))),
+        text: format!("{p}{}\n{p2}\nПанель: {url}{}", comment.map(|c| format!("\nКомментарий клиента: {c}")).unwrap_or_default(), text_footer()),
+    }
+}
+
+/// Клиенту: решение менеджера по запросу на изменение заказа.
+pub fn order_edit_decision(cfg: &Config, to: String, name: &str, number: &str, approved: bool, note: Option<&str>) -> Mail {
+    let url = format!("{}/account/orders/{number}", base_url(cfg));
+    let (subject, p) = if approved {
+        (format!("Заказ {number}: изменения подтверждены"), format!("Менеджер подтвердил изменение состава заказа {number}. Обновлённый состав и сумма — в личном кабинете."))
+    } else {
+        (
+            format!("Заказ {number}: изменения отклонены"),
+            match note {
+                Some(n) => format!("Менеджер отклонил изменение состава заказа {number}: {n}. Заказ остался прежним."),
+                None => format!("Менеджер отклонил изменение состава заказа {number}. Заказ остался прежним — по вопросам свяжитесь с менеджером."),
+            },
+        )
+    };
+    Mail {
+        to,
+        subject: subject.clone(),
+        html: layout(cfg, &subject, &format!("<p>{}</p><p>{}</p>", esc(&hello(name)), esc(&p)), Some(("Открыть заказ", &url))),
         text: format!("{}\n\n{p}\nЗаказ: {url}{}", hello(name), text_footer()),
     }
 }

@@ -45,6 +45,7 @@ export function OrderDetailView({ number }: { number: string }) {
   const [editItems, setEditItems] = useState<EditItem[]>([]);
   const [editComment, setEditComment] = useState("");
   const [saving, setSaving] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,11 +69,26 @@ export function OrderDetailView({ number }: { number: string }) {
     };
   }, [number]);
 
+  // запрос ещё не рассмотрен — правим его, а не исходный состав
   const startEdit = () => {
     if (!order) return;
-    setEditItems(order.items.map((i) => ({ product_id: i.product.id, qty: i.qty })));
-    setEditComment(order.comment ?? "");
+    const req = order.edit_request;
+    setEditItems(req ? req.items.filter((i) => i.qty > 0).map((i) => ({ product_id: i.product.id, qty: i.qty })) : order.items.map((i) => ({ product_id: i.product.id, qty: i.qty })));
+    setEditComment(req ? (req.comment ?? "") : (order.comment ?? ""));
     setEditing(true);
+  };
+
+  const withdraw = async () => {
+    setWithdrawing(true);
+    try {
+      const o = await client.delete<OrderData>(`/account/orders/${number}/edit-request`);
+      setOrder(o);
+      toast.success("Запрос на изменение отозван");
+    } catch (e) {
+      toast.error(errorMessage(e, "Не удалось отозвать запрос"));
+    } finally {
+      setWithdrawing(false);
+    }
   };
 
   const setQty = (productId: string, q: number) => setEditItems((items) => items.map((i) => (i.product_id === productId ? { ...i, qty: q } : i)));
@@ -88,7 +104,7 @@ export function OrderDetailView({ number }: { number: string }) {
       const o = await client.put<OrderData>(`/account/orders/${number}`, { items: editItems, comment: editComment.trim() || null });
       setOrder(o);
       setEditing(false);
-      toast.success("Заказ обновлён. Изменения отправлены менеджеру");
+      toast.success("Запрос отправлен менеджеру. Заказ изменится после подтверждения");
     } catch (e) {
       toast.error(errorMessage(e, "Не удалось сохранить изменения"));
     } finally {
@@ -170,13 +186,58 @@ export function OrderDetailView({ number }: { number: string }) {
         </dl>
       </Card>
 
+      {order.edit_request && !editing ? (
+        <Card className="shadow-[inset_4px_0_0_#FFCC33]">
+          <CardTitle
+            right={
+              <div className="flex flex-wrap gap-[10px]">
+                {order.can_edit ? (
+                  <Button variant="secondary" className={btnCls} icon={<Pencil className="size-4" aria-hidden />} onClick={startEdit}>
+                    Изменить запрос
+                  </Button>
+                ) : null}
+                <Button variant="outline" className={btnCls} loading={withdrawing} onClick={withdraw}>
+                  Отозвать запрос
+                </Button>
+              </div>
+            }
+          >
+            Изменения ждут подтверждения
+          </CardTitle>
+          <p className={cn("mt-[12px]", labelCls)}>
+            Запрос от {formatDateTime(order.edit_request.created_at)} передан менеджеру. Заказ изменится после подтверждения — до этого действует прежний состав.
+          </p>
+          <ul className="mt-[16px] flex flex-col gap-[6px] text-[15px] leading-[20px]">
+            {order.edit_request.items
+              .filter((i) => i.qty !== i.old_qty)
+              .map((i) => (
+                <li key={i.product.id} className="flex flex-wrap justify-between gap-x-[16px]">
+                  <span className="min-w-0 flex-1">{i.product.name}</span>
+                  <span className="whitespace-nowrap tnum">
+                    {i.qty === 0 ? (
+                      <span className="text-[#D13B3E]">убрать</span>
+                    ) : (
+                      <>
+                        {fmtQty(i.old_qty)} → <span className="font-semibold">{fmtQty(i.qty)}</span> {i.product.unit}
+                      </>
+                    )}
+                  </span>
+                </li>
+              ))}
+          </ul>
+          <dl className="ml-auto mt-[16px] flex max-w-[344px] flex-col gap-[6px] text-[15px] leading-[20px] tnum">
+            <Row label="Сумма после изменения" value={money(order.edit_request.total)} className="border-t border-line pt-[10px] font-semibold" labelClassName="text-black" />
+          </dl>
+        </Card>
+      ) : null}
+
       <Card>
         <CardTitle
           right={
             !editing ? (
               order.can_edit || order.can_cancel ? (
                 <div className="flex flex-wrap gap-[10px]">
-                  {order.can_edit ? (
+                  {order.can_edit && !order.edit_request ? (
                     <Button variant="secondary" className={btnCls} icon={<Pencil className="size-4" aria-hidden />} onClick={startEdit}>
                       Редактировать
                     </Button>
@@ -194,7 +255,7 @@ export function OrderDetailView({ number }: { number: string }) {
                   Отмена
                 </Button>
                 <Button className={btnCls} loading={saving} onClick={saveEdit}>
-                  Сохранить изменения
+                  Отправить на подтверждение
                 </Button>
               </div>
             )
@@ -247,7 +308,7 @@ export function OrderDetailView({ number }: { number: string }) {
         {editing ? (
           <div className="mt-[20px]">
             <Textarea aria-label="Комментарий к заказу" placeholder="Комментарий к заказу" value={editComment} onChange={(e) => setEditComment(e.target.value)} className={cn(fieldCls, "h-auto min-h-[72px] py-[8px]")} />
-            <p className="mt-[8px] text-[13px] leading-[18px] text-[#555]">Цены товаров остаются такими, как при оформлении заказа; итог и стоимость доставки пересчитаются после сохранения, менеджер получит обновление заказа.</p>
+            <p className="mt-[8px] text-[13px] leading-[18px] text-[#555]">Цены товаров остаются такими, как при оформлении заказа. Изменения вступят в силу после подтверждения менеджером — до этого действует прежний состав заказа.</p>
           </div>
         ) : (
           <dl className="ml-auto mt-[16px] flex max-w-[344px] flex-col gap-[6px] text-[15px] leading-[20px] tnum">

@@ -76,6 +76,24 @@ pub struct EventJson {
     pub at: DateTime<Utc>,
 }
 
+/// Позиция запроса на изменение: новое количество (0 — товар убран) и количество в заказе сейчас (0 — товар добавлен).
+#[derive(Debug, Clone, Serialize)]
+pub struct EditRequestItemJson {
+    pub product: ProductCard,
+    pub qty: Decimal,
+    pub old_qty: Decimal,
+}
+
+/// Запрос клиента на изменение состава, который ждёт решения менеджера.
+#[derive(Debug, Clone, Serialize)]
+pub struct EditRequestJson {
+    pub created_at: DateTime<Utc>,
+    pub comment: Option<String>,
+    pub total: Decimal,
+    pub delivery_price: Decimal,
+    pub items: Vec<EditRequestItemJson>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct OrderJson {
     pub id: Uuid,
@@ -103,6 +121,8 @@ pub struct OrderJson {
     pub can_cancel: bool,
     pub can_edit: bool,
     pub manager: Option<crate::models::ManagerJson>,
+    /// запрос на изменение состава, который ждёт подтверждения менеджером
+    pub edit_request: Option<EditRequestJson>,
 }
 
 pub fn is_editable(status: &str) -> bool {
@@ -170,7 +190,8 @@ pub async fn order_json(state: &AppState, o: &OrderRow) -> AppResult<OrderJson> 
                 line_cashback: it.line_cashback,
             }
         })
-        .collect();
+        .collect::<Vec<OrderItemJson>>();
+    let edit_request = pending_request_json(pool, o.id, &items_json, &anon).await?;
     let events = sqlx::query_as::<_, OrderEventRow>("SELECT kind, label, created_at FROM order_events WHERE order_id = $1 ORDER BY created_at")
         .bind(o.id)
         .fetch_all(pool)
@@ -236,7 +257,41 @@ pub async fn order_json(state: &AppState, o: &OrderRow) -> AppResult<OrderJson> 
         can_cancel: is_editable(&o.status) && o.payment_status != "paid" && o.paid_amount.is_zero(),
         can_edit: is_editable(&o.status) && o.payment_status != "paid",
         manager,
+        edit_request,
     })
+}
+
+#[derive(sqlx::FromRow)]
+struct PendingRequestRow {
+    created_at: DateTime<Utc>,
+    comment: Option<String>,
+    total: Decimal,
+    delivery_price: Decimal,
+    items: serde_json::Value,
+}
+
+/// Нерассмотренный запрос на изменение: позиции заказа с новым количеством (убранные — 0) и добавленные товары.
+async fn pending_request_json(pool: &PgPool, order_id: Uuid, current: &[OrderItemJson], ctx: &PriceCtx) -> AppResult<Option<EditRequestJson>> {
+    let Some(r) = sqlx::query_as::<_, PendingRequestRow>("SELECT created_at, comment, total, delivery_price, items FROM order_edit_requests WHERE order_id = $1 AND status = 'pending'")
+        .bind(order_id)
+        .fetch_optional(pool)
+        .await?
+    else {
+        return Ok(None);
+    };
+    let wanted: Vec<EditItem> = serde_json::from_value(r.items).unwrap_or_default();
+    let qty_of = |id: Uuid| wanted.iter().find(|w| w.product_id == id).map(|w| w.qty).unwrap_or(Decimal::ZERO);
+    let mut items: Vec<EditRequestItemJson> = current
+        .iter()
+        .map(|it| EditRequestItemJson { product: it.product.clone(), qty: qty_of(it.product.id), old_qty: it.qty })
+        .collect();
+    let added: Vec<Uuid> = wanted.iter().map(|w| w.product_id).filter(|id| !current.iter().any(|c| c.product.id == *id)).collect();
+    if !added.is_empty() {
+        for p in products_by_ids(pool, &added).await? {
+            items.push(EditRequestItemJson { qty: qty_of(p.id), old_qty: Decimal::ZERO, product: to_card(&p, ctx) });
+        }
+    }
+    Ok(Some(EditRequestJson { created_at: r.created_at, comment: r.comment, total: r.total, delivery_price: r.delivery_price, items }))
 }
 
 // ---------- checkout ----------
@@ -428,7 +483,7 @@ pub async fn create_order(
     let company_id = user.and_then(|u| u.company_id);
     match input.payment.method.as_str() {
         "cash" => {}
-        "alif" | "dc" if state.cfg.payments_mock => {}
+        "alif" | "dc" if state.cfg.online_payment() => {}
         "alif" | "dc" => return Err(AppError::unprocessable("payment_unavailable", "Онлайн-оплата пока недоступна — выберите другой способ")),
         "invoice" => match company_id {
             None => return Err(AppError::unprocessable("invoice_requires_company", "Оплата по счёту доступна только для юридических лиц")),
@@ -727,6 +782,11 @@ async fn record_payment(tx: &mut sqlx::Transaction<'_, sqlx::Postgres>, o: &Orde
 async fn apply_cancel(tx: &mut sqlx::Transaction<'_, sqlx::Postgres>, o: &OrderRow, label: &str) -> AppResult<()> {
     sqlx::query("UPDATE orders SET status = 'cancelled', updated_at = now() WHERE id = $1").bind(o.id).execute(&mut **tx).await?;
     sqlx::query("INSERT INTO order_events (order_id, kind, label) VALUES ($1, 'cancelled', $2)").bind(o.id).bind(label).execute(&mut **tx).await?;
+    // нерассмотренный запрос на изменение отменённого заказа больше не нужен
+    sqlx::query("UPDATE order_edit_requests SET status = 'cancelled', decided_at = now() WHERE order_id = $1 AND status = 'pending'")
+        .bind(o.id)
+        .execute(&mut **tx)
+        .await?;
     release_stock(tx, o.id).await?;
     if let Some(code) = &o.coupon_code {
         sqlx::query("UPDATE coupons SET used_count = GREATEST(used_count - 1, 0) WHERE upper(code) = upper($1)").bind(code).execute(&mut **tx).await?;
@@ -779,7 +839,7 @@ pub async fn cancel_order(state: &AppState, o: &OrderRow) -> AppResult<OrderRow>
     load_by_id(&state.pool, o.id).await
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EditItem {
     pub product_id: Uuid,
     pub qty: Decimal,
@@ -797,29 +857,47 @@ struct EditLine {
     line_cashback: Decimal,
 }
 
-pub async fn edit_order(state: &AppState, o: &OrderRow, user: &UserRow, items: Vec<EditItem>, comment: Option<String>) -> AppResult<OrderRow> {
-    let items: Vec<EditItem> = items.into_iter().filter(|i| i.qty > Decimal::ZERO).collect();
-    if items.is_empty() {
-        return Err(AppError::unprocessable("empty_order", "В заказе должен остаться хотя бы один товар"));
-    }
-    let ctx = PriceCtx::for_user(&state.pool, user).await?;
-    let ids: Vec<Uuid> = items.iter().map(|i| i.product_id).collect();
-    let products = products_by_ids(&state.pool, &ids).await?;
-    let coupon = match &o.coupon_code {
-        Some(code) => cart::load_coupon(&state.pool, code).await?,
-        None => None,
-    };
+/// Новый итог заказа после изменения состава.
+struct EditOutcome {
+    total: Decimal,
+    delivery_price: Decimal,
+}
 
-    let mut tx = state.pool.begin().await?;
-    let o = lock_order(&mut tx, o.id).await?;
+/// Состав заказа ещё можно менять: не отгружен и не оплачен.
+fn check_editable(o: &OrderRow) -> AppResult<()> {
     if !is_editable(&o.status) {
         return Err(AppError::conflict("not_editable", "Заказ уже отгружен и не может быть изменён"));
     }
     if o.payment_status == "paid" {
         return Err(AppError::conflict("paid_order", "Заказ оплачен — изменить состав можно через менеджера"));
     }
+    Ok(())
+}
+
+/// Применяет новый состав к заказу (под блокировкой `lock_order`): цены, итог и доставка, резерв на складах, позиции,
+/// корректировки акта сверки и кешбэка, события в CRM и 1С. Цены новых товаров — по прайсу владельца заказа `owner`.
+async fn apply_edit(
+    state: &AppState,
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    o: &OrderRow,
+    owner: &UserRow,
+    items: &[EditItem],
+    comment: Option<String>,
+    event_label: &str,
+) -> AppResult<EditOutcome> {
+    let items: Vec<&EditItem> = items.iter().filter(|i| i.qty > Decimal::ZERO).collect();
+    if items.is_empty() {
+        return Err(AppError::unprocessable("empty_order", "В заказе должен остаться хотя бы один товар"));
+    }
+    let ctx = PriceCtx::for_user(&state.pool, owner).await?;
+    let ids: Vec<Uuid> = items.iter().map(|i| i.product_id).collect();
+    let products = products_by_ids(&state.pool, &ids).await?;
+    let coupon = match &o.coupon_code {
+        Some(code) => cart::load_coupon(&state.pool, code).await?,
+        None => None,
+    };
     // цены уже заказанных товаров не пересчитываются по сегодняшнему прайсу — меняется только количество
-    let old_items = sqlx::query_as::<_, OrderItemRow>("SELECT * FROM order_items WHERE order_id = $1").bind(o.id).fetch_all(&mut *tx).await?;
+    let old_items = sqlx::query_as::<_, OrderItemRow>("SELECT * FROM order_items WHERE order_id = $1").bind(o.id).fetch_all(&mut **tx).await?;
     let mut subtotal_list = Decimal::ZERO;
     let mut subtotal = Decimal::ZERO;
     let mut cashback_total = Decimal::ZERO;
@@ -884,13 +962,13 @@ pub async fn edit_order(state: &AppState, o: &OrderRow, user: &UserRow, items: V
     )
     .bind(&new_ids)
     .bind(o.id)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
     // старый резерв — на склад, новый состав — в резерв (остаток проверяется под блокировкой)
-    release_stock(&mut tx, o.id).await?;
+    release_stock(tx, o.id).await?;
     let reserve: Vec<(Uuid, String, Decimal)> = rows.iter().map(|l| (l.product.id, l.product.name.clone(), l.qty)).collect();
-    reserve_stock(&mut tx, o.id, &reserve, o.store_id).await?;
-    sqlx::query("DELETE FROM order_items WHERE order_id = $1").bind(o.id).execute(&mut *tx).await?;
+    reserve_stock(tx, o.id, &reserve, o.store_id).await?;
+    sqlx::query("DELETE FROM order_items WHERE order_id = $1").bind(o.id).execute(&mut **tx).await?;
     let mut payload_items = Vec::new();
     for l in &rows {
         let p = &l.product;
@@ -910,7 +988,7 @@ pub async fn edit_order(state: &AppState, o: &OrderRow, user: &UserRow, items: V
         .bind(l.cashback_pct)
         .bind(l.line_total)
         .bind(l.line_cashback)
-        .execute(&mut *tx)
+        .execute(&mut **tx)
         .await?;
         payload_items.push(json!({ "product_id": p.id, "code": p.code, "qty": l.qty, "price": l.price, "line_total": l.line_total }));
     }
@@ -927,17 +1005,18 @@ pub async fn edit_order(state: &AppState, o: &OrderRow, user: &UserRow, items: V
     .bind(cashback_total)
     .bind(comment)
     .bind(delivery_price)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await?;
-    sqlx::query("INSERT INTO order_events (order_id, kind, label) VALUES ($1, 'edited', 'Состав заказа изменён клиентом')")
+    sqlx::query("INSERT INTO order_events (order_id, kind, label) VALUES ($1, 'edited', $2)")
         .bind(o.id)
-        .execute(&mut *tx)
+        .bind(event_label)
+        .execute(&mut **tx)
         .await?;
     if let (Some(uid), Some(cid)) = (o.user_id, o.company_id) {
         // исходный документ не переписываем (акт сверки за прошлый период не должен меняться) — разница отдельной корректировкой
         let diff = round2(total - o.total);
         if !diff.is_zero() {
-            let doc = ledger_doc_number(&mut tx, &o, "credit_note", "КОР").await?;
+            let doc = ledger_doc_number(tx, o, "credit_note", "КОР").await?;
             sqlx::query("INSERT INTO ledger_entries (user_id, company_id, entry_date, doc_type, doc_number, debit, credit, order_id, note) VALUES ($1,$2,$3,'credit_note',$4,$5,$6,$7,$8)")
                 .bind(uid)
                 .bind(cid)
@@ -947,13 +1026,13 @@ pub async fn edit_order(state: &AppState, o: &OrderRow, user: &UserRow, items: V
                 .bind((-diff).max(Decimal::ZERO))
                 .bind(o.id)
                 .bind(format!("Изменение заказа {}", o.number))
-                .execute(&mut *tx)
+                .execute(&mut **tx)
                 .await?;
         }
     }
     if let Some(uid) = o.user_id {
         // корректируем только уже начисленный кешбэк (заказы, оформленные до начисления по получению)
-        let accrued = accrued_cashback(&mut tx, o.id).await?;
+        let accrued = accrued_cashback(tx, o.id).await?;
         let diff = if accrued.is_zero() { Decimal::ZERO } else { round2(cashback_total - accrued) };
         if !diff.is_zero() {
             sqlx::query("INSERT INTO bonus_transactions (user_id, order_id, entry_date, kind, amount, note) VALUES ($1,$2,$3,'adjust',$4,$5)")
@@ -962,20 +1041,164 @@ pub async fn edit_order(state: &AppState, o: &OrderRow, user: &UserRow, items: V
                 .bind(delivery::today_local())
                 .bind(diff)
                 .bind(format!("Изменение заказа {}", o.number))
-                .execute(&mut *tx)
+                .execute(&mut **tx)
                 .await?;
         }
     }
     // после частичной оплаты заказ уменьшили ровно до внесённой суммы — он оплачен полностью
     if o.paid_amount > Decimal::ZERO && total <= o.paid_amount {
-        let updated = lock_order(&mut tx, o.id).await?;
-        record_payment(&mut tx, &updated, Decimal::ZERO, None, &format!("Оплата заказа {}", o.number)).await?;
+        let updated = lock_order(tx, o.id).await?;
+        record_payment(tx, &updated, Decimal::ZERO, None, &format!("Оплата заказа {}", o.number)).await?;
     }
-    outbox::enqueue(&mut tx, "crm", "order.updated", json!({ "number": o.number, "order_id": o.id, "items": payload_items, "delivery_price": delivery_price, "total": total }))
+    outbox::enqueue(tx, "crm", "order.updated", json!({ "number": o.number, "order_id": o.id, "items": payload_items, "delivery_price": delivery_price, "total": total }))
         .await?;
-    outbox::enqueue(&mut tx, "onec", "stock.reserve", json!({ "number": o.number, "order_id": o.id, "items": payload_items })).await?;
+    outbox::enqueue(tx, "onec", "stock.reserve", json!({ "number": o.number, "order_id": o.id, "items": payload_items })).await?;
+    Ok(EditOutcome { total, delivery_price })
+}
+
+/// Запрос клиента на изменение состава: заказ не меняется до одобрения менеджером. Новый состав сразу проверяется
+/// целиком (остатки, кратность, оплата) — изменение применяется в транзакции, которая откатывается, — чтобы клиент
+/// узнал об ошибке сейчас, а не после решения менеджера. Новый запрос заменяет прежний, ещё не рассмотренный.
+pub async fn request_edit(state: &AppState, o: &OrderRow, user: &UserRow, items: Vec<EditItem>, comment: Option<String>) -> AppResult<OrderRow> {
+    let items: Vec<EditItem> = items.into_iter().filter(|i| i.qty > Decimal::ZERO).collect();
+    let comment = comment.map(|c| c.trim().chars().take(2000).collect::<String>()).filter(|c| !c.is_empty());
+    let preview = {
+        let mut tx = state.pool.begin().await?;
+        let locked = lock_order(&mut tx, o.id).await?;
+        check_editable(&locked)?;
+        let outcome = apply_edit(state, &mut tx, &locked, user, &items, comment.clone(), "").await?;
+        tx.rollback().await?;
+        outcome
+    };
+    let mut tx = state.pool.begin().await?;
+    let o = lock_order(&mut tx, o.id).await?;
+    check_editable(&o)?;
+    sqlx::query("UPDATE order_edit_requests SET status = 'superseded', decided_at = now() WHERE order_id = $1 AND status = 'pending'")
+        .bind(o.id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("INSERT INTO order_edit_requests (order_id, user_id, items, comment, total, delivery_price) VALUES ($1, $2, $3, $4, $5, $6)")
+        .bind(o.id)
+        .bind(user.id)
+        .bind(json!(items))
+        .bind(&comment)
+        .bind(preview.total)
+        .bind(preview.delivery_price)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("INSERT INTO order_events (order_id, kind, label) VALUES ($1, 'edit_requested', 'Запрошено изменение состава — ждёт подтверждения менеджера')")
+        .bind(o.id)
+        .execute(&mut *tx)
+        .await?;
+    outbox::enqueue(&mut tx, "crm", "order.edit_requested", json!({ "number": o.number, "order_id": o.id, "items": items, "comment": comment, "total": preview.total }))
+        .await?;
+    if let Some(to) = mail::manager_recipient(&mut tx, &state.cfg, o.assigned_manager_id).await? {
+        let customer = format!("{} {}", o.first_name, o.last_name).trim().to_string();
+        let m = mail::order_edit_requested(&state.cfg, to, &o.number, &customer, o.total, preview.total, comment.as_deref());
+        mail::enqueue(&mut tx, "email.order_edit_requested", m, Some(&o.number)).await?;
+    }
+    tx.commit().await?;
+    load_by_id(&state.pool, o.id).await
+}
+
+#[derive(sqlx::FromRow)]
+struct EditRequestRow {
+    id: i64,
+    items: serde_json::Value,
+    comment: Option<String>,
+}
+
+async fn pending_request(tx: &mut sqlx::Transaction<'_, sqlx::Postgres>, order_id: Uuid) -> AppResult<EditRequestRow> {
+    sqlx::query_as::<_, EditRequestRow>("SELECT id, items, comment FROM order_edit_requests WHERE order_id = $1 AND status = 'pending' FOR UPDATE")
+        .bind(order_id)
+        .fetch_optional(&mut **tx)
+        .await?
+        .ok_or_else(|| AppError::conflict("no_edit_request", "Запроса на изменение заказа нет — возможно, его уже рассмотрели"))
+}
+
+/// Клиенту — уведомление в ЛК и письмо о решении по запросу на изменение.
+async fn notify_edit_decision(state: &AppState, tx: &mut sqlx::Transaction<'_, sqlx::Postgres>, o: &OrderRow, approved: bool, note: Option<&str>) -> AppResult<()> {
+    let title = if approved { format!("Заказ {}: изменения подтверждены", o.number) } else { format!("Заказ {}: изменения отклонены", o.number) };
+    let body = match (approved, note) {
+        (true, _) => "Менеджер подтвердил изменение состава заказа.".to_string(),
+        (false, Some(n)) => format!("Менеджер отклонил изменение состава заказа: {n}"),
+        (false, None) => "Менеджер отклонил изменение состава заказа. Заказ остался прежним.".to_string(),
+    };
+    if let Some(uid) = o.user_id {
+        sqlx::query("INSERT INTO notifications (user_id, kind, title, body, link) VALUES ($1,'order_status',$2,$3,$4)")
+            .bind(uid)
+            .bind(&title)
+            .bind(&body)
+            .bind(format!("/account/orders/{}", o.number))
+            .execute(&mut **tx)
+            .await?;
+    }
+    if let Some(to) = mail::valid_email(Some(&o.email)) {
+        let m = mail::order_edit_decision(&state.cfg, to, &o.first_name, &o.number, approved, note);
+        mail::enqueue(tx, "email.order_edit_decision", m, Some(&o.number)).await?;
+    }
+    Ok(())
+}
+
+/// Менеджер одобряет запрос клиента: новый состав применяется к заказу (цены, резерв, акт сверки, CRM / 1С).
+pub async fn approve_edit(state: &AppState, o: &OrderRow, manager: &UserRow) -> AppResult<OrderRow> {
+    let mut tx = state.pool.begin().await?;
+    let o = lock_order(&mut tx, o.id).await?;
+    let req = pending_request(&mut tx, o.id).await?;
+    if !is_editable(&o.status) || o.payment_status == "paid" {
+        return Err(AppError::conflict("not_editable", "Заказ уже отгружен или оплачен — изменение применить нельзя, отклоните запрос"));
+    }
+    let Some(owner) = (match o.user_id {
+        Some(uid) => sqlx::query_as::<_, UserRow>("SELECT * FROM users WHERE id = $1").bind(uid).fetch_optional(&mut *tx).await?,
+        None => None,
+    }) else {
+        return Err(AppError::conflict("no_owner", "Покупатель заказа не найден — изменение применить нельзя, отклоните запрос"));
+    };
+    let items: Vec<EditItem> = serde_json::from_value(req.items).map_err(|_| AppError::conflict("invalid_request", "Запрос повреждён — отклоните его"))?;
+    apply_edit(state, &mut tx, &o, &owner, &items, req.comment, "Изменение состава подтверждено менеджером").await?;
+    sqlx::query("UPDATE order_edit_requests SET status = 'approved', manager_id = $2, decided_at = now() WHERE id = $1")
+        .bind(req.id)
+        .bind(manager.id)
+        .execute(&mut *tx)
+        .await?;
+    notify_edit_decision(state, &mut tx, &o, true, None).await?;
     tx.commit().await?;
     state.invalidate_public();
+    load_by_id(&state.pool, o.id).await
+}
+
+/// Менеджер отклоняет запрос: заказ остаётся прежним, клиент получает уведомление с причиной.
+pub async fn reject_edit(state: &AppState, o: &OrderRow, manager: &UserRow, note: Option<String>) -> AppResult<OrderRow> {
+    let note = note.map(|n| n.trim().chars().take(500).collect::<String>()).filter(|n| !n.is_empty());
+    let mut tx = state.pool.begin().await?;
+    let o = lock_order(&mut tx, o.id).await?;
+    let req = pending_request(&mut tx, o.id).await?;
+    sqlx::query("UPDATE order_edit_requests SET status = 'rejected', manager_id = $2, manager_note = $3, decided_at = now() WHERE id = $1")
+        .bind(req.id)
+        .bind(manager.id)
+        .bind(&note)
+        .execute(&mut *tx)
+        .await?;
+    let label = match &note {
+        Some(n) => format!("Изменение состава отклонено менеджером: {n}"),
+        None => "Изменение состава отклонено менеджером".to_string(),
+    };
+    sqlx::query("INSERT INTO order_events (order_id, kind, label) VALUES ($1, 'edit_rejected', $2)").bind(o.id).bind(label).execute(&mut *tx).await?;
+    outbox::enqueue(&mut tx, "crm", "order.edit_rejected", json!({ "number": o.number, "order_id": o.id, "note": note })).await?;
+    notify_edit_decision(state, &mut tx, &o, false, note.as_deref()).await?;
+    tx.commit().await?;
+    load_by_id(&state.pool, o.id).await
+}
+
+/// Клиент отзывает свой запрос, пока менеджер его не рассмотрел.
+pub async fn withdraw_edit(state: &AppState, o: &OrderRow) -> AppResult<OrderRow> {
+    let mut tx = state.pool.begin().await?;
+    let o = lock_order(&mut tx, o.id).await?;
+    let req = pending_request(&mut tx, o.id).await?;
+    sqlx::query("UPDATE order_edit_requests SET status = 'withdrawn', decided_at = now() WHERE id = $1").bind(req.id).execute(&mut *tx).await?;
+    sqlx::query("INSERT INTO order_events (order_id, kind, label) VALUES ($1, 'edit_withdrawn', 'Запрос на изменение состава отозван')").bind(o.id).execute(&mut *tx).await?;
+    outbox::enqueue(&mut tx, "crm", "order.edit_withdrawn", json!({ "number": o.number, "order_id": o.id })).await?;
+    tx.commit().await?;
     load_by_id(&state.pool, o.id).await
 }
 
@@ -1001,6 +1224,16 @@ pub async fn set_status(state: &AppState, o: &OrderRow, status: &str) -> AppResu
             "invalid_transition",
             format!("Нельзя перевести заказ из «{}» в «{}»", order_status_label(&o.status), order_status_label(status)),
         ));
+    }
+    // отгрузить заказ, не решив по запросу клиента на изменение, нельзя — иначе уйдёт не тот состав
+    if !is_editable(status) && status != "cancelled" {
+        let pending: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM order_edit_requests WHERE order_id = $1 AND status = 'pending')")
+            .bind(o.id)
+            .fetch_one(&mut *tx)
+            .await?;
+        if pending {
+            return Err(AppError::conflict("edit_pending", "Клиент запросил изменение состава — сначала подтвердите или отклоните запрос"));
+        }
     }
     if status == "cancelled" {
         apply_cancel(&mut tx, &o, "Заказ отменён менеджером").await?;

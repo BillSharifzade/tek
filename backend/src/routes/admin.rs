@@ -355,6 +355,8 @@ struct OrdersQuery {
     status: Option<String>,
     q: Option<String>,
     mine: Option<String>,
+    /// `1` — только заказы с запросом клиента на изменение, который ждёт решения
+    edit_pending: Option<String>,
 }
 
 async fn admin_orders(State(state): State<AppState>, Manager(m): Manager, Query(q): Query<OrdersQuery>) -> AppResult<Json<Vec<Value>>> {
@@ -364,9 +366,11 @@ async fn admin_orders(State(state): State<AppState>, Manager(m): Manager, Query(
              SELECT o.id, o.number, o.created_at, o.status, o.total, o.paid_amount, GREATEST(o.total - o.paid_amount, 0) AS remaining,
                     o.payment_method, o.payment_status, o.delivery_method, o.first_name, o.last_name, o.phone, o.email,
                     c.name AS company_name, o.crm_status, o.reservation_status, o.assigned_manager_id AS manager_id,
-                    NULLIF(trim(concat_ws(' ', mg.first_name, mg.last_name)), '') AS manager_name, mg.email AS manager_email
+                    NULLIF(trim(concat_ws(' ', mg.first_name, mg.last_name)), '') AS manager_name, mg.email AS manager_email,
+                    EXISTS (SELECT 1 FROM order_edit_requests er WHERE er.order_id = o.id AND er.status = 'pending') AS edit_pending
              FROM orders o LEFT JOIN companies c ON c.id = o.company_id LEFT JOIN users mg ON mg.id = o.assigned_manager_id
              WHERE ($1::text IS NULL OR o.status = $1) AND ($2::uuid IS NULL OR o.assigned_manager_id = $2)
+               AND (NOT $5 OR EXISTS (SELECT 1 FROM order_edit_requests er WHERE er.order_id = o.id AND er.status = 'pending'))
                AND ($3::text IS NULL OR o.number ILIKE $3 OR concat_ws(' ', o.first_name, o.last_name) ILIKE $3
                     OR concat_ws(' ', o.last_name, o.first_name) ILIKE $3 OR o.phone ILIKE $3 OR o.email ILIKE $3 OR c.name ILIKE $3
                     OR ($4 <> '' AND regexp_replace(o.phone, '\D', '', 'g') LIKE '%' || $4 || '%'))
@@ -376,6 +380,7 @@ async fn admin_orders(State(state): State<AppState>, Manager(m): Manager, Query(
     .bind(if flag(q.mine.as_deref()) { Some(m.id) } else { None })
     .bind(pattern)
     .bind(digits)
+    .bind(flag(q.edit_pending.as_deref()))
     .fetch_all(&state.pool)
     .await?;
     for r in rows.iter_mut() {
@@ -463,13 +468,38 @@ async fn register_payment(State(state): State<AppState>, Manager(_m): Manager, P
     Ok(Json(json!(orders::order_json(&state, &o).await?)))
 }
 
+/// Запрос клиента на изменение состава: одобрить — состав применяется к заказу, отклонить — заказ остаётся прежним.
+async fn approve_edit(State(state): State<AppState>, Manager(m): Manager, Path(number): Path<String>) -> AppResult<Json<Value>> {
+    let Some(o) = orders::load_by_number(&state.pool, &number).await? else {
+        return Err(AppError::not_found("Заказ не найден"));
+    };
+    let o = orders::approve_edit(&state, &o, &m).await?;
+    Ok(Json(json!(orders::order_json(&state, &o).await?)))
+}
+
+#[derive(Deserialize)]
+struct RejectInput {
+    note: Option<String>,
+}
+
+async fn reject_edit(State(state): State<AppState>, Manager(m): Manager, Path(number): Path<String>, Json(body): Json<RejectInput>) -> AppResult<Json<Value>> {
+    let Some(o) = orders::load_by_number(&state.pool, &number).await? else {
+        return Err(AppError::not_found("Заказ не найден"));
+    };
+    let o = orders::reject_edit(&state, &o, &m, body.note).await?;
+    Ok(Json(json!(orders::order_json(&state, &o).await?)))
+}
+
 async fn outbox(State(state): State<AppState>, Manager(_m): Manager) -> AppResult<Json<Vec<Value>>> {
-    // у писем HTML-версия не нужна в списке (тяжёлая) — остаются to / subject / text
+    // у писем HTML-версия не нужна в списке (тяжёлая) — остаются to / subject / text;
+    // у письма «Смена пароля» скрыт и текст: в нём ссылка, по которой можно войти в чужой аккаунт
     let rows: Vec<Value> = sqlx::query_scalar(
         r#"SELECT to_jsonb(t) FROM (SELECT id, target, event, status, attempts, mock, last_error, created_at, sent_at,
-                  CASE WHEN target = 'email' THEN payload - 'html' ELSE payload END AS payload
+                  CASE WHEN target = 'email' AND event = $1 THEN payload - 'html' - 'text'
+                       WHEN target = 'email' THEN payload - 'html' ELSE payload END AS payload
            FROM integration_outbox ORDER BY id DESC LIMIT 200) t"#,
     )
+    .bind(mail::PASSWORD_RESET_EVENT)
     .fetch_all(&state.pool)
     .await?;
     Ok(Json(rows))
@@ -730,6 +760,8 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/orders/{number}/status", put(set_status))
         .route("/admin/orders/{number}/manager", put(set_order_manager))
         .route("/admin/orders/{number}/payments", post(register_payment))
+        .route("/admin/orders/{number}/edit-request/approve", post(approve_edit))
+        .route("/admin/orders/{number}/edit-request/reject", post(reject_edit))
         .route("/admin/outbox", get(outbox))
         .route("/admin/leads", get(leads))
         .route("/admin/leads/{id}", put(update_lead))
