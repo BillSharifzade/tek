@@ -43,12 +43,13 @@ export function CatalogMenuButton({ categories }: { categories: CategoryNode[] }
         className="relative block h-[44px] w-[107px] shrink-0 rounded-[5px] bg-brand text-left text-black transition-colors hover:bg-brand-hover"
       >
         {/* Доработки R4: линии чуть толще (1.5 вместо 1.3), крест — обычный, той же толщины, в квадрате 10.5×10.5
-            по центру трёх линий; SVG вместо повёрнутых span — без искажений при сглаживании */}
-        <svg aria-hidden width={10.5} height={11.5} viewBox="0 0 10.5 11.5" fill="none" className="absolute left-[17px] top-[16.7px]">
+            по центру трёх линий; SVG вместо повёрнутых span — без искажений при сглаживании.
+            Рамка SVG целая (11×13 с запасом) и overflow-visible: при дробной рамке браузер округлял её и срезал нижнюю линию */}
+        <svg aria-hidden width={11} height={13} viewBox="0 0 11 13" fill="none" className="absolute left-[17px] top-[16px] overflow-visible">
           {open ? (
-            <path d="M0.75 1.25 9.75 10.25M9.75 1.25 0.75 10.25" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />
+            <path d="M0.75 1.95 9.75 10.95M9.75 1.95 0.75 10.95" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" />
           ) : (
-            <path d="M0 0.75h10.5M0 5.75h10.5M0 10.75h10.5" stroke="currentColor" strokeWidth={1.5} />
+            <path d="M0 1.45h10.5M0 6.45h10.5M0 11.45h10.5" stroke="currentColor" strokeWidth={1.5} />
           )}
         </svg>
         <span className="absolute left-[35.2px] top-[16px] text-[14px] font-medium leading-[12px]">Каталог</span>
