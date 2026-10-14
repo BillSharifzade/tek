@@ -11,7 +11,7 @@ import { toast } from "@/store/toast";
 /**
  * Меню ЛК (Figma 9063:200, «Group 72»): карточка 246px, r7, обводка #E5E5E5, пункты по 56px (текст 16/56 с x=29),
  * активный пункт — фон #FBFCFD, SemiBold #000; остальные — Regular #808080 (→ #000 при наведении).
- * Пункты из макета + недостающие разделы по ТЗ (Баланс, Документы, Избранное) и «Выйти».
+ * Пункты из макета + недостающие разделы по ТЗ (Баланс, Документы, Избранное), «Сметы» (доработки R5) и «Выйти».
  */
 export const ACCOUNT_MENU: { href: string; label: string; exact?: boolean }[] = [
   { href: "/account", label: "Основная информация", exact: true },
@@ -22,6 +22,7 @@ export const ACCOUNT_MENU: { href: string; label: string; exact?: boolean }[] = 
   { href: "/account/bonus", label: "Бонусная карта" },
   { href: "/account/reviews", label: "Отзывы и вопросы" },
   { href: "/account/documents", label: "Документы" },
+  { href: "/account/estimates", label: "Сметы" },
   { href: "/account/favorites", label: "Избранное" },
 ];
 

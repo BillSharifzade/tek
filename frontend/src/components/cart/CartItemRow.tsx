@@ -128,9 +128,12 @@ export function CartItemRow({ item, onQty, onSelect, onRemove, onAccessories, re
           )}
         </div>
 
-        <Link href={`/product/${p.slug}`} className="link-hover mt-[10px] block max-w-[660px] pr-[36px] text-[14px] leading-[18px] text-black line-clamp-2">
-          {p.name}
-        </Link>
+        {/* кликабелен только сам текст названия, а не пустое место до «сердца» (доработки R5) */}
+        <p className="mt-[10px] max-w-[660px] pr-[36px] text-[14px] leading-[18px] line-clamp-2">
+          <Link href={`/product/${p.slug}`} className="link-hover text-black">
+            {p.name}
+          </Link>
+        </p>
 
         {discounted ? (
           <span className="ml-[1px] mt-[7px] flex h-[19px] w-fit items-center rounded-[3px] bg-sale-bg pl-[7px] pr-[6px] text-[12px] font-semibold leading-[15px] text-sale-text">

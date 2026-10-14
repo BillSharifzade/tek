@@ -128,7 +128,7 @@ export function CartView() {
     setBusy("save");
     try {
       await client.post("/cart/estimates", { name: name.trim() || `Смета от ${new Date().toLocaleDateString("ru-RU")}` });
-      toast.success("Смета сохранена", { actionLabel: "Мои сметы", actionHref: "/account/documents#estimates" });
+      toast.success("Смета сохранена", { actionLabel: "Мои сметы", actionHref: "/account/estimates" });
       setSaveOpen(false);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Не удалось сохранить смету");

@@ -146,15 +146,14 @@ pub struct BonusEntry {
     pub note: Option<String>,
 }
 
+/// Вся история бонусного счёта (доработки R5: без выбора периода), последние операции — сверху;
+/// `balance` у операции — остаток после неё.
 #[derive(Debug, Clone, Serialize)]
 pub struct BonusStatement {
-    pub period: Period,
     pub balance: Decimal,
-    pub opening: Decimal,
     pub entries: Vec<BonusEntry>,
     pub accrued: Decimal,
     pub spent: Decimal,
-    pub closing: Decimal,
 }
 
 pub async fn bonus_balance(pool: &PgPool, user_id: Uuid) -> AppResult<Decimal> {
@@ -164,28 +163,19 @@ pub async fn bonus_balance(pool: &PgPool, user_id: Uuid) -> AppResult<Decimal> {
         .await?)
 }
 
-pub async fn bonus_statement(pool: &PgPool, user_id: Uuid, from: NaiveDate, to: NaiveDate) -> AppResult<BonusStatement> {
-    let opening: Decimal = sqlx::query_scalar(
-        "SELECT COALESCE(SUM(amount), 0) FROM bonus_transactions WHERE user_id = $1 AND entry_date < $2",
-    )
-    .bind(user_id)
-    .bind(from)
-    .fetch_one(pool)
-    .await?;
+pub async fn bonus_statement(pool: &PgPool, user_id: Uuid) -> AppResult<BonusStatement> {
     let rows = sqlx::query_as::<_, BonusRow>(
         r#"SELECT b.entry_date, b.kind, b.amount, b.note, o.number AS order_number
            FROM bonus_transactions b LEFT JOIN orders o ON o.id = b.order_id
-           WHERE b.user_id = $1 AND b.entry_date >= $2 AND b.entry_date <= $3 ORDER BY b.entry_date, b.id"#,
+           WHERE b.user_id = $1 ORDER BY b.entry_date, b.id"#,
     )
     .bind(user_id)
-    .bind(from)
-    .bind(to)
     .fetch_all(pool)
     .await?;
-    let mut balance = opening;
+    let mut balance = Decimal::ZERO;
     let mut accrued = Decimal::ZERO;
     let mut spent = Decimal::ZERO;
-    let entries = rows
+    let mut entries: Vec<BonusEntry> = rows
         .into_iter()
         .map(|r| {
             balance += r.amount;
@@ -197,12 +187,13 @@ pub async fn bonus_statement(pool: &PgPool, user_id: Uuid, from: NaiveDate, to: 
             let kind_label = match r.kind.as_str() {
                 "accrual" => "Начисление",
                 "spend" => "Списание",
+                "refund" => "Возврат",
                 _ => "Корректировка",
             }
             .to_string();
             BonusEntry { date: r.entry_date, order_number: r.order_number, kind: r.kind, kind_label, amount: r.amount, balance, note: r.note }
         })
         .collect();
-    let total = bonus_balance(pool, user_id).await?;
-    Ok(BonusStatement { period: Period { from, to }, balance: total, opening, entries, accrued, spent, closing: balance })
+    entries.reverse();
+    Ok(BonusStatement { balance, entries, accrued, spent })
 }

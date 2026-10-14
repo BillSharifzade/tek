@@ -14,6 +14,7 @@ import { useAuth } from "@/store/auth";
 import { toast } from "@/store/toast";
 import { useHydrated } from "@/lib/hooks";
 import { Input, Textarea } from "@/components/ui/Input";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { rememberOrderEmail } from "@/components/account/OrderSummaryCard";
 import { SummaryRow } from "@/components/cart/CartSummary";
@@ -93,6 +94,29 @@ export function CheckoutView() {
   const [prefilled, setPrefilled] = useState(false);
   const [center, setCenter] = useState<[number, number]>(DUSHANBE);
   const [locating, setLocating] = useState(false);
+  const [useBonus, setUseBonus] = useState(false);
+  /** адрес подставлен картой / геолокацией — искать его на карте не нужно */
+  const addressFromMap = useRef(false);
+
+  // доработки R5: адрес, набранный в поле, через паузу ищется на карте — метка переезжает к нему
+  useEffect(() => {
+    if (addressFromMap.current) {
+      addressFromMap.current = false;
+      return;
+    }
+    const q = form.address.trim();
+    if (q.length < 4) return;
+    let alive = true;
+    const t = window.setTimeout(() => {
+      void geocode(q).then((c) => {
+        if (alive && c) setCenter(c);
+      });
+    }, 900);
+    return () => {
+      alive = false;
+      window.clearTimeout(t);
+    };
+  }, [form.address]);
 
   useEffect(() => {
     client
@@ -144,7 +168,10 @@ export function CheckoutView() {
     );
   }
 
-  const total = Math.round((cart.total + deliveryPrice) * 100) / 100;
+  // бонусы — только на товары (не на доставку) и не больше остатка на счёте
+  const bonusAvailable = user ? Math.max(0, Math.min(user.bonus_balance ?? 0, cart.total)) : 0;
+  const bonus = useBonus && bonusAvailable > 0 ? Math.floor(bonusAvailable * 100) / 100 : 0;
+  const total = Math.round((cart.total - bonus + deliveryPrice) * 100) / 100;
   const pickup = form.method === "pickup";
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => {
@@ -160,10 +187,7 @@ export function CheckoutView() {
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
-        const c: [number, number] = [pos.coords.longitude, pos.coords.latitude];
-        setCenter(c);
-        const addr = await reverseGeocode(c[0], c[1]);
-        if (addr) set("address", addr);
+        await pickPoint([pos.coords.longitude, pos.coords.latitude]);
         setLocating(false);
       },
       () => {
@@ -174,11 +198,14 @@ export function CheckoutView() {
     );
   };
 
-  const findOnMap = async () => {
-    const q = form.address.trim();
-    if (q.length < 4) return;
-    const c = await geocode(q);
-    if (c) setCenter(c);
+  /** точка на карте (клик, перетаскивание метки, геолокация) → адрес в поле */
+  const pickPoint = async (c: [number, number]) => {
+    setCenter(c);
+    const addr = await reverseGeocode(c[0], c[1]);
+    if (addr) {
+      addressFromMap.current = true;
+      set("address", addr);
+    }
   };
 
   const validate = (): boolean => {
@@ -207,10 +234,12 @@ export function CheckoutView() {
       delivery: pickup ? { method: "pickup", store_id: form.store_id ?? undefined } : { method: form.method, address: form.address.trim(), date: form.date },
       payment: { method: form.payment },
       comment: form.comment.trim() || undefined,
+      bonus: bonus > 0 ? bonus : undefined,
     };
     try {
       const r = await client.post<CheckoutResult>("/checkout", payload);
       rememberOrderEmail(email);
+      if (bonus > 0) void useAuth.getState().refreshUser();
       try {
         setCart(await client.get<Cart>("/cart"));
       } catch {
@@ -225,6 +254,9 @@ export function CheckoutView() {
       if (e instanceof ApiError && e.code === "insufficient_stock") {
         toast.error("Некоторых товаров недостаточно в наличии. Проверьте корзину.");
         router.push("/cart");
+      } else if (e instanceof ApiError && e.code === "insufficient_bonus") {
+        toast.error(e.message);
+        void useAuth.getState().refreshUser();
       } else {
         toast.error(e instanceof ApiError ? e.message : "Не удалось оформить заказ");
       }
@@ -294,7 +326,6 @@ export function CheckoutView() {
                     id="co-address"
                     value={form.address}
                     onChange={(e) => set("address", e.target.value)}
-                    onBlur={() => void findOnMap()}
                     invalid={Boolean(errors.address)}
                     placeholder="Адрес"
                     aria-label="Адрес доставки"
@@ -304,7 +335,7 @@ export function CheckoutView() {
                   <FieldError>{errors.address}</FieldError>
                 </div>
               </div>
-              <DeliveryMap center={center} className="mt-[17px]" />
+              <DeliveryMap center={center} onPick={(c) => void pickPoint(c)} className="mt-[17px]" />
             </section>
             <DashLine />
 
@@ -383,6 +414,23 @@ export function CheckoutView() {
               })}
           </div>
           <FieldError>{errors.payment}</FieldError>
+          {bonusAvailable > 0 ? (
+            <div className="mt-[18px] rounded-[7px] bg-surface px-[16px] py-[12px]">
+              <Checkbox
+                checked={useBonus}
+                onChange={(e) => setUseBonus(e.target.checked)}
+                label={
+                  <>
+                    Оплатить бонусами <span className="font-medium tnum">{money(Math.floor(bonusAvailable * 100) / 100)}</span>
+                  </>
+                }
+                labelClassName="text-[15px] leading-[20px] text-black"
+              />
+              <p className="mt-[4px] pl-[26px] text-[13px] leading-[17px] text-sub tnum">
+                На бонусном счёте {money(user?.bonus_balance ?? 0)} Бонусами оплачиваются товары, доставка — отдельно.
+              </p>
+            </div>
+          ) : null}
         </section>
         <DashLine />
 
@@ -470,6 +518,7 @@ export function CheckoutView() {
           <SummaryRow label={`Товары (${selectedItems.length})`} value={money(cart.subtotal_list)} />
           {cart.discount_total > 0 ? <SummaryRow label="Скидка" value={money(cart.discount_total)} green /> : null}
           {cart.coupon ? <SummaryRow label={`Промокод ${cart.coupon.code}`} value={money(cart.coupon.discount)} green /> : null}
+          {bonus > 0 ? <SummaryRow label="Бонусами" value={money(bonus)} green /> : null}
           <SummaryRow label="Доставка" value={deliveryPrice > 0 ? money(deliveryPrice) : "бесплатно"} />
           {cart.cashback_total > 0 ? <SummaryRow label="Кешбэк" value={money(cart.cashback_total)} className="text-[#4938F8]" /> : null}
         </div>

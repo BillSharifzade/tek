@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Question, QuestionsResponse } from "@/lib/types";
+import type { Question, QuestionsResponse, ReviewReply } from "@/lib/types";
 import { client } from "@/lib/client";
 import { ApiError } from "@/lib/api";
 import { date } from "@/lib/format";
@@ -14,7 +14,7 @@ import { useHydrated } from "@/lib/hooks";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Field, Textarea } from "@/components/ui/Input";
-import { ActionChip, SpecialistBadge } from "./Reviews";
+import { ActionChip, ReplyForm, SpecialistBadge, useStaff } from "./Reviews";
 import { MoreButton } from "./ProductAccessories";
 
 const PAGE = 5;
@@ -23,6 +23,7 @@ const PAGE = 5;
  * «Вопросы и ответы» (Figma 8612:423): слева вопрос (автор 16/20 500, дата 14/20 #666 — шаг 23, текст 14/22, «Ответить»),
  * справа ответы в плашках 393px #F6F7F8 r10 с «Специалист ТЭК» вровень с автором (текст 14/21); разделитель #D9DDE4;
  * справа — «Задать вопрос». «Еще» — через 35px под последним вопросом.
+ * Доработки R5: «Ответить» — только у сотрудников и отвечает на вопрос; «Удалить» — у автора и сотрудников (вопрос и ответ).
  */
 export function Questions({ slug, initial }: { slug: string; initial: QuestionsResponse }) {
   const hydrated = useHydrated();
@@ -34,17 +35,47 @@ export function Questions({ slug, initial }: { slug: string; initial: QuestionsR
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mine, forgetMine] = useMine("questions");
+  const [answering, setAnswering] = useState<string | null>(null);
+  const mine = useMine("questions");
+  const staff = useStaff();
 
   const remove = async (id: string) => {
     if (!window.confirm("Удалить вопрос?")) return;
     try {
-      await client.delete(`/catalog/products/${slug}/questions/${id}`);
+      // сотрудник удаляет любой вопрос через панель, автор — свой
+      await client.delete(staff ? `/admin/questions/${id}` : `/catalog/products/${slug}/questions/${id}`);
       setItems((prev) => prev.filter((q) => q.id !== id));
-      forgetMine(id);
+      mine.forget(id);
       toast.success("Вопрос удалён");
+      router.refresh();
     } catch {
       toast.error("Не удалось удалить вопрос");
+    }
+  };
+
+  const setAnswer = (id: string, answer: ReviewReply | null) => setItems((prev) => prev.map((q) => (q.id === id ? { ...q, answer } : q)));
+
+  const answer = async (id: string, text: string) => {
+    try {
+      const r = await client.post<{ answer?: ReviewReply }>(`/admin/questions/${id}/answer`, { text });
+      setAnswer(id, r.answer ?? { author: "Точикэлектрокомплект", date: new Date().toISOString(), text });
+      setAnswering(null);
+      toast.success("Ответ опубликован");
+      return true;
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Не удалось отправить ответ");
+      return false;
+    }
+  };
+
+  const removeAnswer = async (id: string) => {
+    if (!window.confirm("Удалить ответ ТЭК?")) return;
+    try {
+      await client.delete(`/admin/questions/${id}/answer`);
+      setAnswer(id, null);
+      toast.success("Ответ удалён");
+    } catch {
+      toast.error("Не удалось удалить ответ");
     }
   };
 
@@ -59,6 +90,7 @@ export function Questions({ slug, initial }: { slug: string; initial: QuestionsR
     try {
       const q = await client.post<Question>(`/catalog/products/${slug}/questions`, { text });
       setItems((prev) => [q, ...prev]);
+      mine.add(q.id, slug);
       router.refresh();
       setText("");
       setOpen(false);
@@ -81,14 +113,17 @@ export function Questions({ slug, initial }: { slug: string; initial: QuestionsR
                   <p className="text-[16px] font-medium leading-[20px] text-black">{q.author}</p>
                   <p className="mt-[3px] text-[14px] leading-[20px] text-sub tnum">{date(q.date)}</p>
                   <p className="mt-[5px] whitespace-pre-line text-[14px] leading-[22px] text-black">{q.text}</p>
-                  <div className="mt-[12px] flex gap-[9px]">
-                    <ActionChip onClick={() => setOpen(true)}>Ответить</ActionChip>
-                    {mine.has(q.id) ? (
-                      <ActionChip danger onClick={() => void remove(q.id)}>
-                        Удалить
-                      </ActionChip>
-                    ) : null}
-                  </div>
+                  {staff || mine.ids.has(q.id) ? (
+                    <div className="mt-[12px] flex gap-[9px]">
+                      {staff && !q.answer ? <ActionChip onClick={() => setAnswering((cur) => (cur === q.id ? null : q.id))}>Ответить</ActionChip> : null}
+                      {staff || mine.ids.has(q.id) ? (
+                        <ActionChip danger onClick={() => void remove(q.id)}>
+                          Удалить
+                        </ActionChip>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {answering === q.id && !q.answer ? <ReplyForm label="Ответ на вопрос" className="mt-[14px]" onCancel={() => setAnswering(null)} onSubmit={(t) => answer(q.id, t)} /> : null}
                 </div>
                 {q.answer ? (
                   <div className="self-start rounded-[10px] bg-surface pb-[16px] pl-[21px] pr-[20px] pt-[15px]">
@@ -98,6 +133,11 @@ export function Questions({ slug, initial }: { slug: string; initial: QuestionsR
                     </p>
                     <p className="mt-[2px] text-[14px] leading-[20px] text-sub tnum">{date(q.answer.date)}</p>
                     <p className="mt-[6px] whitespace-pre-line text-[14px] leading-[21px] text-black">{q.answer.text}</p>
+                    {staff ? (
+                      <ActionChip danger onClick={() => void removeAnswer(q.id)} className="mt-[10px]">
+                        Удалить ответ
+                      </ActionChip>
+                    ) : null}
                   </div>
                 ) : (
                   <p className="self-start rounded-[10px] bg-surface px-[21px] py-[15px] text-[14px] leading-[20px] text-sub">Ожидает ответа специалиста</p>

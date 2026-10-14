@@ -30,6 +30,7 @@ const iconBtn = "inline-flex size-[32px] items-center justify-center rounded-[6p
 interface Draft {
   list: string;
   sale: string;
+  cashback: string;
   hit: boolean;
   isNew: boolean;
 }
@@ -40,7 +41,7 @@ const ACTIVE_OPTIONS = [
   { value: "0", label: "Сняты с продажи" },
 ];
 
-/** «Товары»: поиск и фильтр по категории, правка цены / цены распродажи прямо в строке, публикация, остатки по складам (модалка). */
+/** «Товары»: поиск и фильтр по категории, правка цены / цены распродажи / кешбэка прямо в строке, публикация, остатки по складам (модалка). */
 export function ProductsView() {
   const qs = useQueryState();
   const q = qs.get("q");
@@ -52,7 +53,7 @@ export function ProductsView() {
   const list = useLoad(`products:${q}:${category}:${active}:${page}`, () => adminApi.products({ q, category, active, page, per_page: 50 }), "Не удалось загрузить товары");
 
   const [editId, setEditId] = useState<string | null>(null);
-  const [draft, setDraft] = useState<Draft>({ list: "", sale: "", hit: false, isNew: false });
+  const [draft, setDraft] = useState<Draft>({ list: "", sale: "", cashback: "", hit: false, isNew: false });
   const [busy, setBusy] = useState<string | null>(null);
   const [stockFor, setStockFor] = useState<AdminProduct | null>(null);
 
@@ -78,7 +79,9 @@ export function ProductsView() {
     const sp = draft.sale.trim() ? parseNum(draft.sale) : null;
     if (lp === null || lp <= 0) return toast.error("Цена — число больше 0");
     if (draft.sale.trim() && (sp === null || sp <= 0 || sp >= lp)) return toast.error("Цена распродажи — больше 0 и меньше обычной цены");
-    const body: ProductPatch = { list_price: lp, sale_price: sp };
+    const cb = draft.cashback.trim() ? parseNum(draft.cashback) : 0;
+    if (cb === null || cb < 0 || cb > 50) return toast.error("Кешбэк — от 0 до 50 %");
+    const body: ProductPatch = { list_price: lp, sale_price: sp, cashback_pct: cb };
     if (draft.hit !== Boolean(p.is_hit ?? p.badges?.includes("hit"))) body.is_hit = draft.hit;
     if (draft.isNew !== Boolean(p.is_new ?? p.badges?.includes("new"))) body.is_new = draft.isNew;
     if (await patch(p, body, "Товар сохранён")) setEditId(null);
@@ -137,6 +140,21 @@ export function ProductsView() {
         ),
     },
     {
+      key: "cashback",
+      header: "Кешбэк, %",
+      align: "right",
+      hideBelow: "md",
+      className: "w-[100px]",
+      cell: (p) =>
+        editId === p.id ? (
+          <Input value={draft.cashback} onChange={(e) => setDraft((d) => ({ ...d, cashback: e.target.value }))} inputMode="decimal" aria-label="Кешбэк, %" placeholder="0" className={cn(fieldCls, "w-[72px] text-right tnum")} />
+        ) : p.cashback_pct ? (
+          <span className="whitespace-nowrap font-medium text-[#4938F8] tnum">{String(p.cashback_pct).replace(".", ",")}</span>
+        ) : (
+          <span className="text-muted">—</span>
+        ),
+    },
+    {
       key: "stock",
       header: "Остаток",
       align: "right",
@@ -187,12 +205,13 @@ export function ProductsView() {
                 setDraft({
                   list: String(p.list_price),
                   sale: p.sale_price !== null ? String(p.sale_price) : "",
+                  cashback: p.cashback_pct ? String(p.cashback_pct) : "",
                   hit: Boolean(p.is_hit ?? p.badges?.includes("hit")),
                   isNew: Boolean(p.is_new ?? p.badges?.includes("new")),
                 });
               }}
               aria-label={`Изменить цены: ${p.name}`}
-              title="Цены и отметки"
+              title="Цены, кешбэк и отметки"
             >
               <Pencil className="size-4" />
             </button>

@@ -243,7 +243,7 @@ export function CompanyView() {
           <Link href="/account/documents" className={docLinkCls}>
             Счета, акты и договоры
           </Link>
-          <Link href="/account/documents#estimates" className={docLinkCls}>
+          <Link href="/account/estimates" className={docLinkCls}>
             Сохранённые сметы
           </Link>
         </div>

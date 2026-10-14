@@ -28,8 +28,8 @@ export interface AdminUser {
   role: Role;
   status: UserStatus;
   customer_type: CustomerType;
+  /** персональная скидка аккаунта, % (0 — цены как у гостя) */
   discount_pct: number;
-  cashback_pct: number;
   manager_id: string | null;
   manager_name?: string | null;
   is_lead_manager?: boolean;
@@ -54,7 +54,6 @@ export interface PricingRule {
   brand_slug: string | null;
   product_id: string | null;
   discount_pct: number;
-  cashback_pct: number;
   /** подписи в ответе GET …/pricing (в запросе не нужны) */
   category_name?: string | null;
   brand_name?: string | null;
@@ -64,14 +63,12 @@ export interface PricingRule {
 
 export interface UserPricing {
   discount_pct: number;
-  cashback_pct: number;
   manager_id: string | null;
   rules: PricingRule[];
 }
 
 export interface PricingInput {
   discount_pct?: number;
-  cashback_pct?: number;
   manager_id?: string | null;
   rules?: PricingRule[];
 }
@@ -218,6 +215,8 @@ export interface AdminProduct {
   unit: string;
   list_price: number;
   sale_price: number | null;
+  /** кешбэк товара, % от цены покупателя (0 — без кешбэка) */
+  cashback_pct?: number;
   pack_qty?: number | null;
   stock_total: number;
   /** остатки по всем складам (в том числе у снятых с продажи) */
@@ -232,6 +231,7 @@ export interface AdminProduct {
 export interface ProductPatch {
   list_price?: number;
   sale_price?: number | null;
+  cashback_pct?: number;
   is_active?: boolean;
   is_hit?: boolean;
   is_new?: boolean;

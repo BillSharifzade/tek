@@ -379,6 +379,7 @@ function ItemsCard({ order: o }: { order: AdminOrderDetail }) {
         <Row label={`Товары (${o.items.length})`} value={money(o.subtotal_list ?? o.subtotal + o.discount_total)} />
         {o.discount_total > 0 ? <Row label="Скидка" value={`− ${money(o.discount_total)}`} valueClassName="text-[#0FB500]" /> : null}
         {o.coupon_discount > 0 ? <Row label={`Купон${o.coupon_code ? ` ${o.coupon_code}` : ""}`} value={`− ${money(o.coupon_discount)}`} valueClassName="text-[#0FB500]" /> : null}
+        {o.bonus_spent > 0 ? <Row label="Оплачено бонусами" value={`− ${money(o.bonus_spent)}`} valueClassName="text-[#0FB500]" /> : null}
         <Row label="Доставка" value={o.delivery_price > 0 ? money(o.delivery_price) : "бесплатно"} />
         <Row label="Итого" value={money(o.total)} className="mt-[6px] border-t border-line pt-[10px] text-[19px] font-semibold leading-[24px]" labelClassName="text-black" />
         {o.cashback_total > 0 ? <Row label="Кешбэк клиенту" value={`+ ${money(o.cashback_total)}`} /> : null}

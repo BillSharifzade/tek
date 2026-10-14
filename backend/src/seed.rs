@@ -69,14 +69,13 @@ struct UserSeed {
     manager: Option<Uuid>,
     lead: bool,
     discount: Decimal,
-    cashback: Decimal,
 }
 
 async fn insert_user(tx: &mut Tx<'_>, u: UserSeed) -> anyhow::Result<Uuid> {
     let id: Uuid = sqlx::query_scalar(
-        "INSERT INTO users (email, phone, password_hash, first_name, last_name, role, status, customer_type, company_id, manager_id, is_lead_manager, discount_pct, cashback_pct) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id",
+        "INSERT INTO users (email, phone, password_hash, first_name, last_name, role, status, customer_type, company_id, manager_id, is_lead_manager, discount_pct) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id",
     )
-    .bind(u.email).bind(u.phone).bind(u.hash).bind(u.first_name).bind(u.last_name).bind(u.role).bind(u.status).bind(u.ctype).bind(u.company).bind(u.manager).bind(u.lead).bind(u.discount).bind(u.cashback)
+    .bind(u.email).bind(u.phone).bind(u.hash).bind(u.first_name).bind(u.last_name).bind(u.role).bind(u.status).bind(u.ctype).bind(u.company).bind(u.manager).bind(u.lead).bind(u.discount)
     .fetch_one(&mut **tx)
     .await?;
     Ok(id)
@@ -989,20 +988,23 @@ pub async fn run(pool: &PgPool, mode: SeedMode) -> anyhow::Result<bool> {
         // ---------- companies & users ----------
         let company_id: Uuid = sqlx::query_scalar("INSERT INTO companies (name, inn, address, phone, email, verified) VALUES ('ООО «Точикэлектрокомплект»', '123123123', 'Таджикистан, 734060, г. Душанбе, ул. Исмоили Сомони 68/13', '+992446206060', 'info@tec.tj', true) RETURNING id")
             .fetch_one(&mut *tx).await?;
-        let mk_user = |email: &str, phone: &str, pw: &str, fname: &str, lname: &str, role: &str, status: &str, ctype: &str, company: Option<Uuid>, manager: Option<Uuid>, lead: bool, d: Decimal, c: Decimal| {
+        let mk_user = |email: &str, phone: &str, pw: &str, fname: &str, lname: &str, role: &str, status: &str, ctype: &str, company: Option<Uuid>, manager: Option<Uuid>, lead: bool, d: Decimal| {
             let hash = hash_password(pw).expect("hash");
-            UserSeed { email: email.to_string(), phone: phone.to_string(), hash, first_name: fname.to_string(), last_name: lname.to_string(), role: role.to_string(), status: status.to_string(), ctype: ctype.to_string(), company, manager, lead, discount: d, cashback: c }
+            UserSeed { email: email.to_string(), phone: phone.to_string(), hash, first_name: fname.to_string(), last_name: lname.to_string(), role: role.to_string(), status: status.to_string(), ctype: ctype.to_string(), company, manager, lead, discount: d }
         };
-        let admin_id = insert_user(&mut tx, mk_user("admin@tec.tj", "+992446206060", "Admin1234", "Администратор", "ТЭК", "admin", "approved", "purchaser", None, None, false, dec!(0), dec!(0))).await?;
-        let manager_id = insert_user(&mut tx, mk_user("manager@tec.tj", "+992935000010", "Manager1234", "Абдурахим", "Фозилов", "manager", "approved", "purchaser", None, None, true, dec!(0), dec!(0))).await?;
-        let client_id = insert_user(&mut tx, mk_user("client@tec.tj", "+992900000001", "Client1234", "Фаррух", "Назаров", "customer", "approved", "purchaser", Some(company_id), Some(manager_id), false, dec!(10), dec!(3))).await?;
-        let electric_id = insert_user(&mut tx, mk_user("electric@tec.tj", "+992900000002", "Electric1234", "Далер", "Рахимов", "customer", "approved", "electrician", None, None, false, dec!(5), dec!(2))).await?;
-        let _pending_id = insert_user(&mut tx, mk_user("pending@tec.tj", "+992900000003", "Pending1234", "Нозим", "Курбонов", "customer", "pending", "retail", None, None, false, dec!(0), dec!(0))).await?;
+        let admin_id = insert_user(&mut tx, mk_user("admin@tec.tj", "+992446206060", "Admin1234", "Администратор", "ТЭК", "admin", "approved", "purchaser", None, None, false, dec!(0))).await?;
+        let manager_id = insert_user(&mut tx, mk_user("manager@tec.tj", "+992935000010", "Manager1234", "Абдурахим", "Фозилов", "manager", "approved", "purchaser", None, None, true, dec!(0))).await?;
+        let client_id = insert_user(&mut tx, mk_user("client@tec.tj", "+992900000001", "Client1234", "Фаррух", "Назаров", "customer", "approved", "purchaser", Some(company_id), Some(manager_id), false, dec!(10))).await?;
+        let electric_id = insert_user(&mut tx, mk_user("electric@tec.tj", "+992900000002", "Electric1234", "Далер", "Рахимов", "customer", "approved", "electrician", None, None, false, dec!(5))).await?;
+        let _pending_id = insert_user(&mut tx, mk_user("pending@tec.tj", "+992900000003", "Pending1234", "Нозим", "Курбонов", "customer", "pending", "retail", None, None, false, dec!(0))).await?;
         let _ = admin_id;
-        sqlx::query("INSERT INTO user_price_rules (user_id, category_id, discount_pct, cashback_pct) VALUES ($1, $2, 15, 5)")
+        sqlx::query("INSERT INTO user_price_rules (user_id, category_id, discount_pct) VALUES ($1, $2, 15)")
             .bind(client_id).bind(ctx.cats["kabelenesushchie-sistemy"]).execute(&mut *tx).await?;
-        sqlx::query("INSERT INTO user_price_rules (user_id, brand_id, discount_pct, cashback_pct) VALUES ($1, $2, 8, 3)")
+        sqlx::query("INSERT INTO user_price_rules (user_id, brand_id, discount_pct) VALUES ($1, $2, 8)")
             .bind(electric_id).bind(ctx.brands["dks"]).execute(&mut *tx).await?;
+        // кешбэк — маркетинговая программа на отдельные товары (доработки R5): лотки ДКС и розетки Systeme Electric
+        sqlx::query("UPDATE products SET cashback_pct = 3 WHERE brand_id = $1").bind(ctx.brands["dks"]).execute(&mut *tx).await?;
+        sqlx::query("UPDATE products SET cashback_pct = 5 WHERE code IN ('101010', '101005')").execute(&mut *tx).await?;
 
         // ---------- coupons ----------
         sqlx::query("INSERT INTO coupons (code, kind, value, min_total, active) VALUES ('TEK10', 'percent', 10, 0, true), ('WELCOME50', 'fixed', 50, 500, true)").execute(&mut *tx).await?;

@@ -111,6 +111,8 @@ pub struct OrderJson {
     pub coupon_discount: Decimal,
     pub delivery_price: Decimal,
     pub total: Decimal,
+    /// списано бонусов в оплату — `total` уже за их вычетом
+    pub bonus_spent: Decimal,
     pub cashback_total: Decimal,
     pub paid_amount: Decimal,
     pub remaining: Decimal,
@@ -127,6 +129,12 @@ pub struct OrderJson {
 
 pub fn is_editable(status: &str) -> bool {
     matches!(status, "new" | "confirmed" | "processing")
+}
+
+/// Заказ оплачен деньгами. Заказ, целиком оплаченный бонусами (итог 0, статус оплаты «оплачен»), клиент отменяет и
+/// меняет как неоплаченный — бонусы при этом возвращаются / пересчитываются.
+fn paid_with_money(o: &OrderRow) -> bool {
+    o.payment_status == "paid" && !o.total.is_zero()
 }
 
 pub async fn load_by_number(pool: &PgPool, number: &str) -> AppResult<Option<OrderRow>> {
@@ -162,7 +170,15 @@ pub async fn order_json(state: &AppState, o: &OrderRow) -> AppResult<OrderJson> 
                     brand: BrandRef { slug: String::new(), name: String::new() },
                     unit: it.unit.clone(),
                     image: None,
-                    price: Price { list: it.list_price, price: it.price, discount_pct: it.discount_pct, cashback: Decimal::ZERO, sale: false, savings: Decimal::ZERO },
+                    price: Price {
+                        list: it.list_price,
+                        price: it.price,
+                        discount_pct: it.discount_pct,
+                        cashback: Decimal::ZERO,
+                        cashback_pct: it.cashback_pct,
+                        sale: false,
+                        savings: Decimal::ZERO,
+                    },
                     stock_total: Decimal::ZERO,
                     in_stock: false,
                     badges: vec![],
@@ -183,7 +199,8 @@ pub async fn order_json(state: &AppState, o: &OrderRow) -> AppResult<OrderJson> 
                     price: it.price,
                     discount_pct: it.discount_pct,
                     cashback,
-                    sale: false,
+                    cashback_pct: it.cashback_pct,
+                    sale: it.price < it.list_price,
                     savings: round2((it.list_price - it.price).max(Decimal::ZERO)),
                 },
                 line_total: it.line_total,
@@ -246,6 +263,7 @@ pub async fn order_json(state: &AppState, o: &OrderRow) -> AppResult<OrderJson> 
         coupon_discount: o.coupon_discount,
         delivery_price: o.delivery_price,
         total: o.total,
+        bonus_spent: o.bonus_spent,
         cashback_total: o.cashback_total,
         paid_amount: o.paid_amount,
         remaining: round2((o.total - o.paid_amount).max(Decimal::ZERO)),
@@ -254,8 +272,8 @@ pub async fn order_json(state: &AppState, o: &OrderRow) -> AppResult<OrderJson> 
         items: items_json,
         events,
         // те же правила, что в cancel_order / edit_order: оплаченный (в том числе частично) заказ клиент не отменяет
-        can_cancel: is_editable(&o.status) && o.payment_status != "paid" && o.paid_amount.is_zero(),
-        can_edit: is_editable(&o.status) && o.payment_status != "paid",
+        can_cancel: is_editable(&o.status) && !paid_with_money(o) && o.paid_amount.is_zero(),
+        can_edit: is_editable(&o.status) && !paid_with_money(o),
         manager,
         edit_request,
     })
@@ -323,6 +341,9 @@ pub struct CheckoutInput {
     pub delivery: DeliveryInput,
     pub payment: PaymentInput,
     pub comment: Option<String>,
+    /// сколько бонусов списать в оплату товаров (только авторизованный покупатель, не больше баланса и суммы товаров)
+    #[serde(default)]
+    pub bonus: Option<Decimal>,
 }
 
 pub async fn route_manager(pool: &PgPool, user: Option<&UserRow>) -> AppResult<Option<Uuid>> {
@@ -496,11 +517,25 @@ pub async fn create_order(
     }
 
     let cj = &computed.json;
-    let total = round2(cj.total + delivery_price);
+    let bonus = input.bonus.map(round2).filter(|b| *b > Decimal::ZERO).unwrap_or(Decimal::ZERO);
+    if bonus > Decimal::ZERO && user.is_none() {
+        return Err(AppError::unprocessable("bonus_requires_login", "Списать бонусы можно после входа в личный кабинет"));
+    }
+    // бонусы тратятся только на товары — доставка оплачивается деньгами
+    if bonus > cj.total {
+        return Err(AppError::unprocessable("bonus_exceeds_total", "Бонусами можно оплатить не больше суммы товаров"));
+    }
+    let total = round2(cj.total - bonus + delivery_price);
     let today = delivery::today_local();
     // срок оплаты счёта — 3 рабочих дня (доработки R2)
     let due_date = if input.payment.method == "invoice" { Some(delivery::add_working_days(today, 3)) } else { None };
-    let payment_status = if input.payment.method == "invoice" { "invoice_issued" } else { "pending" };
+    let payment_status = if total.is_zero() {
+        "paid"
+    } else if input.payment.method == "invoice" {
+        "invoice_issued"
+    } else {
+        "pending"
+    };
     let manager_id = route_manager(pool, user).await?;
 
     let mut tx = pool.begin().await?;
@@ -526,6 +561,18 @@ pub async fn create_order(
     if still_in_cart != ordered_ids.len() as i64 || locked_coupon.flatten() != cart_row.coupon_code {
         return Err(AppError::conflict("cart_changed", "Корзина изменилась — проверьте состав заказа"));
     }
+    if let (Some(u), true) = (user, bonus > Decimal::ZERO) {
+        // баланс считается под блокировкой строки пользователя — два заказа не потратят одни и те же бонусы
+        sqlx::query("SELECT 1 FROM users WHERE id = $1 FOR UPDATE").bind(u.id).execute(&mut *tx).await?;
+        let balance: Decimal = sqlx::query_scalar("SELECT COALESCE(SUM(amount), 0) FROM bonus_transactions WHERE user_id = $1")
+            .bind(u.id)
+            .fetch_one(&mut *tx)
+            .await?;
+        if bonus > balance {
+            return Err(AppError::unprocessable("insufficient_bonus", "На бонусном счёте меньше бонусов — обновите страницу")
+                .with_details(json!({ "balance": balance })));
+        }
+    }
     let seq: i64 = sqlx::query_scalar("SELECT nextval('order_number_seq')").fetch_one(&mut *tx).await?;
     let number = format!("TEK-{seq:06}");
     let email = Some(email_given.to_string()).filter(|e| !e.is_empty()).or_else(|| user.and_then(|u| u.email.clone())).unwrap_or_default();
@@ -533,8 +580,8 @@ pub async fn create_order(
         r#"INSERT INTO orders (number, user_id, company_id, first_name, last_name, phone, email, status,
               delivery_method, delivery_address, delivery_date, store_id, delivery_price, payment_method, payment_status,
               comment, subtotal_list, discount_total, coupon_code, coupon_discount, subtotal, total, cashback_total,
-              due_date, assigned_manager_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,'new',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+              due_date, assigned_manager_id, bonus_spent)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,'new',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
            RETURNING *"#,
     )
     .bind(&number)
@@ -561,8 +608,19 @@ pub async fn create_order(
     .bind(cj.cashback_total)
     .bind(due_date)
     .bind(manager_id)
+    .bind(bonus)
     .fetch_one(&mut *tx)
     .await?;
+    if let (Some(u), true) = (user, bonus > Decimal::ZERO) {
+        sqlx::query("INSERT INTO bonus_transactions (user_id, order_id, entry_date, kind, amount, note) VALUES ($1,$2,$3,'spend',$4,$5)")
+            .bind(u.id)
+            .bind(order.id)
+            .bind(today)
+            .bind(-bonus)
+            .bind(format!("Оплата заказа {number}"))
+            .execute(&mut *tx)
+            .await?;
+    }
 
     let mut items_payload = Vec::new();
     let mut mail_items = Vec::new();
@@ -589,7 +647,7 @@ pub async fn create_order(
         .bind(item.price.list)
         .bind(item.price.price)
         .bind(item.price.discount_pct)
-        .bind(if item.price.price.is_zero() { Decimal::ZERO } else { round2(item.price.cashback / item.price.price * Decimal::ONE_HUNDRED) })
+        .bind(item.price.cashback_pct)
         .bind(item.line_total)
         .bind(item.line_cashback)
         .execute(&mut *tx)
@@ -621,7 +679,7 @@ pub async fn create_order(
         "manager": manager_json,
         "delivery": { "method": order.delivery_method, "address": order.delivery_address, "date": order.delivery_date, "price": delivery_price },
         "payment": { "method": order.payment_method, "status": payment_status },
-        "totals": { "subtotal": cj.subtotal, "discount": cj.discount_total, "coupon": cj.coupon, "total": total, "cashback": cj.cashback_total },
+        "totals": { "subtotal": cj.subtotal, "discount": cj.discount_total, "coupon": cj.coupon, "bonus": bonus, "total": total, "cashback": cj.cashback_total },
         "items": items_payload, "comment": order.comment,
     });
     outbox::enqueue(&mut tx, "crm", "order.created", crm_payload).await?;
@@ -649,6 +707,7 @@ pub async fn create_order(
         payment: payment_method_label(&order.payment_method).0.to_string(),
         delivery_price,
         coupon_discount: order.coupon_discount,
+        bonus_spent: bonus,
         total,
         comment: order.comment.as_deref(),
     };
@@ -804,6 +863,16 @@ async fn apply_cancel(tx: &mut sqlx::Transaction<'_, sqlx::Postgres>, o: &OrderR
                 .execute(&mut **tx)
                 .await?;
         }
+        if o.bonus_spent > Decimal::ZERO {
+            sqlx::query("INSERT INTO bonus_transactions (user_id, order_id, entry_date, kind, amount, note) VALUES ($1,$2,$3,'refund',$4,$5)")
+                .bind(uid)
+                .bind(o.id)
+                .bind(today)
+                .bind(o.bonus_spent)
+                .bind(format!("Возврат бонусов: отмена заказа {}", o.number))
+                .execute(&mut **tx)
+                .await?;
+        }
         let unpaid = round2(o.total - o.paid_amount).max(Decimal::ZERO);
         if o.company_id.is_some() && unpaid > Decimal::ZERO {
             let doc = ledger_doc_number(tx, o, "credit_note", "КОР").await?;
@@ -830,7 +899,7 @@ pub async fn cancel_order(state: &AppState, o: &OrderRow) -> AppResult<OrderRow>
     if !is_editable(&o.status) {
         return Err(AppError::conflict("not_cancellable", "Заказ уже отгружен и не может быть отменён"));
     }
-    if o.payment_status == "paid" || o.paid_amount > Decimal::ZERO {
+    if paid_with_money(&o) || o.paid_amount > Decimal::ZERO {
         return Err(AppError::conflict("paid_order", "Заказ оплачен — для отмены и возврата денег свяжитесь с менеджером"));
     }
     apply_cancel(&mut tx, &o, "Заказ отменён клиентом").await?;
@@ -868,7 +937,7 @@ fn check_editable(o: &OrderRow) -> AppResult<()> {
     if !is_editable(&o.status) {
         return Err(AppError::conflict("not_editable", "Заказ уже отгружен и не может быть изменён"));
     }
-    if o.payment_status == "paid" {
+    if paid_with_money(o) {
         return Err(AppError::conflict("paid_order", "Заказ оплачен — изменить состав можно через менеджера"));
     }
     Ok(())
@@ -933,7 +1002,7 @@ async fn apply_edit(
                     list: price.list,
                     price: price.price,
                     discount_pct: price.discount_pct,
-                    cashback_pct: if price.price.is_zero() { Decimal::ZERO } else { round2(price.cashback / price.price * Decimal::ONE_HUNDRED) },
+                    cashback_pct: price.cashback_pct,
                     line_total: round2(price.price * it.qty),
                     line_cashback: round2(price.cashback * it.qty),
                 }
@@ -948,7 +1017,9 @@ async fn apply_edit(
     let coupon_discount = coupon.as_ref().and_then(|c| cart::redeemed_coupon_discount(c, subtotal)).unwrap_or(Decimal::ZERO);
     let goods_total = (subtotal - coupon_discount).max(Decimal::ZERO);
     let delivery_price = delivery_price(&o.delivery_method, goods_total)?;
-    let total = round2(goods_total + delivery_price);
+    // списанные бонусы остаются в заказе, пока покрываются суммой товаров; лишнее возвращается на счёт
+    let bonus_spent = o.bonus_spent.min(goods_total);
+    let total = round2(goods_total - bonus_spent + delivery_price);
     // после частичной оплаты сумма заказа не может стать меньше уже внесённой
     if total < o.paid_amount {
         return Err(AppError::conflict("below_paid", "Заказ частично оплачен — уменьшить его сумму можно через менеджера"));
@@ -994,7 +1065,7 @@ async fn apply_edit(
     }
     sqlx::query(
         r#"UPDATE orders SET subtotal_list = $2, discount_total = $3, coupon_discount = $4, subtotal = $5, total = $6,
-           cashback_total = $7, comment = COALESCE($8, comment), delivery_price = $9, updated_at = now() WHERE id = $1"#,
+           cashback_total = $7, comment = COALESCE($8, comment), delivery_price = $9, bonus_spent = $10, updated_at = now() WHERE id = $1"#,
     )
     .bind(o.id)
     .bind(subtotal_list)
@@ -1005,6 +1076,7 @@ async fn apply_edit(
     .bind(cashback_total)
     .bind(comment)
     .bind(delivery_price)
+    .bind(bonus_spent)
     .execute(&mut **tx)
     .await?;
     sqlx::query("INSERT INTO order_events (order_id, kind, label) VALUES ($1, 'edited', $2)")
@@ -1030,6 +1102,16 @@ async fn apply_edit(
                 .await?;
         }
     }
+    if let (Some(uid), true) = (o.user_id, bonus_spent < o.bonus_spent) {
+        sqlx::query("INSERT INTO bonus_transactions (user_id, order_id, entry_date, kind, amount, note) VALUES ($1,$2,$3,'refund',$4,$5)")
+            .bind(uid)
+            .bind(o.id)
+            .bind(delivery::today_local())
+            .bind(round2(o.bonus_spent - bonus_spent))
+            .bind(format!("Возврат бонусов: изменение заказа {}", o.number))
+            .execute(&mut **tx)
+            .await?;
+    }
     if let Some(uid) = o.user_id {
         // корректируем только уже начисленный кешбэк (заказы, оформленные до начисления по получению)
         let accrued = accrued_cashback(tx, o.id).await?;
@@ -1045,12 +1127,24 @@ async fn apply_edit(
                 .await?;
         }
     }
-    // после частичной оплаты заказ уменьшили ровно до внесённой суммы — он оплачен полностью
-    if o.paid_amount > Decimal::ZERO && total <= o.paid_amount {
+    // после частичной оплаты заказ уменьшили ровно до внесённой суммы (или бонусы покрыли его целиком) — он оплачен полностью
+    if o.payment_status != "paid" && total <= o.paid_amount && (o.paid_amount > Decimal::ZERO || total.is_zero()) {
         let updated = lock_order(tx, o.id).await?;
         record_payment(tx, &updated, Decimal::ZERO, None, &format!("Оплата заказа {}", o.number)).await?;
     }
-    outbox::enqueue(tx, "crm", "order.updated", json!({ "number": o.number, "order_id": o.id, "items": payload_items, "delivery_price": delivery_price, "total": total }))
+    // заказ был целиком оплачен бонусами, а теперь к оплате есть сумма — снова ждёт оплаты
+    if o.payment_status == "paid" && total > o.paid_amount {
+        sqlx::query("UPDATE orders SET payment_status = CASE WHEN payment_method = 'invoice' THEN 'invoice_issued' ELSE 'pending' END WHERE id = $1")
+            .bind(o.id)
+            .execute(&mut **tx)
+            .await?;
+    }
+    outbox::enqueue(
+        tx,
+        "crm",
+        "order.updated",
+        json!({ "number": o.number, "order_id": o.id, "items": payload_items, "delivery_price": delivery_price, "bonus": bonus_spent, "total": total }),
+    )
         .await?;
     outbox::enqueue(tx, "onec", "stock.reserve", json!({ "number": o.number, "order_id": o.id, "items": payload_items })).await?;
     Ok(EditOutcome { total, delivery_price })

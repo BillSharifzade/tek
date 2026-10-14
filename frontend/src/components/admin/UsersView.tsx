@@ -110,9 +110,9 @@ export function UsersView() {
     },
     {
       key: "terms",
-      header: "Скидка / кешбэк",
+      header: "Скидка",
       hideBelow: "lg",
-      cell: (u) => (u.role === "customer" ? <span className="tnum">{pct(u.discount_pct)} / {pct(u.cashback_pct)}</span> : <span className="text-muted">—</span>),
+      cell: (u) => (u.role === "customer" ? <span className="tnum">{pct(u.discount_pct)}</span> : <span className="text-muted">—</span>),
     },
     { key: "manager", header: "Менеджер", hideBelow: "md", cell: (u) => (u.manager_name ? <span>{u.manager_name}</span> : <span className="text-muted">{u.manager_id ? "назначен" : "—"}</span>) },
     { key: "created", header: "Регистрация", hideBelow: "sm", className: "w-[100px]", cell: (u) => <span className="tnum">{date(u.created_at)}</span> },

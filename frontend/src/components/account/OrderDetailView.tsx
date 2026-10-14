@@ -277,7 +277,6 @@ export function OrderDetailView({ number }: { number: string }) {
                   </Link>
                   <p className="mt-[2px] text-[13px] leading-[18px] text-[#555] tnum">
                     Код: {i.product.code} · {money(i.price.price)} {i.product.price_unit_label}
-                    {i.price.discount_pct > 0 ? <span className="ml-[8px] text-[#00A000]">−{i.price.discount_pct}%</span> : null}
                   </p>
                 </div>
                 {editing ? (
@@ -315,6 +314,7 @@ export function OrderDetailView({ number }: { number: string }) {
             <Row label={`Товары (${order.items.length})`} value={money(order.subtotal_list ?? order.subtotal + order.discount_total)} />
             {order.discount_total > 0 ? <Row label="Скидка" value={`− ${money(order.discount_total)}`} valueClassName="text-[#0FB500]" /> : null}
             {order.coupon_discount > 0 ? <Row label={`Купон${order.coupon_code ? ` ${order.coupon_code}` : ""}`} value={`− ${money(order.coupon_discount)}`} valueClassName="text-[#0FB500]" /> : null}
+            {order.bonus_spent > 0 ? <Row label="Оплачено бонусами" value={`− ${money(order.bonus_spent)}`} valueClassName="text-[#0FB500]" /> : null}
             <Row label="Доставка" value={order.delivery_price > 0 ? money(order.delivery_price) : "бесплатно"} />
             <Row label="Итого" value={money(order.total)} className="mt-[6px] border-t border-line pt-[10px] text-[19px] font-semibold leading-[24px]" labelClassName="text-black" />
             {order.cashback_total > 0 ? <Row label="Кешбэк на бонусный счёт" value={`+ ${money(order.cashback_total)}`} valueClassName="font-medium" /> : null}

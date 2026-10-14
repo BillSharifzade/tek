@@ -1,32 +1,23 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { Download, FileSpreadsheet } from "lucide-react";
+import { Download } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { AccountDocument, Estimate } from "@/lib/types";
+import type { AccountDocument } from "@/lib/types";
 import { client, downloadFile } from "@/lib/client";
-import { date, money } from "@/lib/format";
+import { date } from "@/lib/format";
 import { toast } from "@/store/toast";
-import { useCart } from "@/store/cart";
-import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { DataTable, type Column } from "./DataTable";
-import { Card, CardTitle, EmptyState, ErrorLine, apiPath, btnCls, errorMessage } from "./shared";
+import { Card, CardTitle, ErrorLine, apiPath, errorMessage } from "./shared";
 
 type Doc = AccountDocument & { id: string | number; kind_label?: string; note?: string | null; url: string | null; order_number?: string | null };
 
 const KIND_LABEL: Record<string, string> = { invoice: "Счёт", act: "Акт", contract: "Договор", payment: "Оплата", credit_note: "Корректировка" };
 
-/** «Документы» (макета нет — в стиле ЛК): счета/акты/договоры для скачивания + сохранённые сметы (восстановить в корзину). */
+/** «Документы» (макета нет — в стиле ЛК): счета/акты/договоры для скачивания. Сметы — отдельной вкладкой (доработки R5). */
 export function DocumentsView() {
-  const router = useRouter();
-  const loadCart = useCart((s) => s.load);
   const [docs, setDocs] = useState<Doc[] | null>(null);
-  const [estimates, setEstimates] = useState<Estimate[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
-  // удаление сметы — вторым нажатием («Точно удалить?»)
-  const [armedId, setArmedId] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   // Documents need the Bearer token, so they are fetched and saved rather than linked directly.
@@ -44,39 +35,11 @@ export function DocumentsView() {
   };
 
   useEffect(() => {
-    Promise.all([client.get<Doc[]>("/account/documents"), client.get<Estimate[]>("/account/estimates")])
-      .then(([d, e]) => {
-        setDocs(d);
-        setEstimates(e);
-      })
+    client
+      .get<Doc[]>("/account/documents")
+      .then(setDocs)
       .catch((e) => setError(errorMessage(e)));
   }, []);
-
-  const restore = async (est: Estimate) => {
-    setBusyId(est.id);
-    try {
-      await client.post(`/account/estimates/${est.id}/restore`, {});
-      await loadCart();
-      toast.success("Смета восстановлена в корзину", { actionLabel: "Перейти в корзину", actionHref: "/cart" });
-      router.push("/cart");
-    } catch (e) {
-      toast.error(errorMessage(e, "Не удалось восстановить смету"));
-      setBusyId(null);
-    }
-  };
-
-  const remove = async (est: Estimate) => {
-    setBusyId(est.id);
-    try {
-      await client.delete(`/account/estimates/${est.id}`);
-      setEstimates((prev) => prev?.filter((x) => x.id !== est.id) ?? prev);
-      toast.info("Смета удалена");
-    } catch (e) {
-      toast.error(errorMessage(e, "Не удалось удалить смету"));
-    } finally {
-      setBusyId(null);
-    }
-  };
 
   const columns: Column<Doc>[] = [
     { key: "kind", header: "Тип", className: "w-[130px]", cell: (d) => <span className="font-medium">{d.kind_label ?? KIND_LABEL[d.kind] ?? d.kind}</span> },
@@ -124,47 +87,6 @@ export function DocumentsView() {
         </div>
       </Card>
 
-      <Card id="estimates" className="scroll-mt-[130px]">
-        <CardTitle>Сохранённые сметы</CardTitle>
-        <div className="mt-[21px]">
-          {estimates === null ? (
-            error ? null : <Skeleton className="h-[120px] rounded-[7px]" />
-          ) : estimates.length === 0 ? (
-            <EmptyState>Сохраняйте корзину как смету кнопкой «Сохранить смету» — она появится здесь.</EmptyState>
-          ) : (
-            <ul className="flex flex-col divide-y divide-line border-y border-line">
-              {estimates.map((e) => (
-                <li key={e.id} className="flex flex-wrap items-center gap-x-[16px] gap-y-[12px] py-[14px]">
-                  <span className="flex size-[44px] shrink-0 items-center justify-center rounded-[7px] bg-surface-2 text-black">
-                    <FileSpreadsheet className="size-[22px]" strokeWidth={1.6} aria-hidden />
-                  </span>
-                  <span className="min-w-[200px] flex-1">
-                    <span className="block text-[15px] font-medium leading-[20px]">{e.name}</span>
-                    <span className="block text-[13px] leading-[18px] text-[#555] tnum">
-                      {date(e.created_at)} · позиций: {e.items_count} · {money(e.total)}
-                    </span>
-                  </span>
-                  <div className="flex gap-[10px]">
-                    <Button variant="secondary" className={btnCls} loading={busyId === e.id} onClick={() => restore(e)}>
-                      Восстановить в корзину
-                    </Button>
-                    <Button
-                      variant={armedId === e.id ? "danger" : "outline"}
-                      className={btnCls}
-                      disabled={busyId === e.id}
-                      onClick={() => (armedId === e.id ? void remove(e) : setArmedId(e.id))}
-                      onBlur={() => setArmedId((id) => (id === e.id ? null : id))}
-                      aria-label={armedId === e.id ? `Подтвердить удаление сметы ${e.name}` : `Удалить смету ${e.name}`}
-                    >
-                      {armedId === e.id ? "Точно удалить?" : "Удалить"}
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </Card>
     </div>
   );
 }

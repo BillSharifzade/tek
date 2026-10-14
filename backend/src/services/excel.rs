@@ -72,15 +72,21 @@ pub fn cart_estimate(company: Option<&str>, customer: &str, date: &str, cart: &C
         ws.write_string_with_format(row, 3, &item.product.unit, &s.cell)?;
         ws.write_number_with_format(row, 4, f(item.qty), &s.cell)?;
         ws.write_number_with_format(row, 5, f(item.price.price), &s.num)?;
-        ws.write_number_with_format(row, 6, f(item.price.discount_pct), &s.cell)?;
+        // персональная скидка — это уже цена покупателя (доработки R5); в столбце — только скидка по акции
+        let promo = if item.price.list > item.price.price && !item.price.list.is_zero() {
+            ((item.price.list - item.price.price) / item.price.list * rust_decimal::Decimal::ONE_HUNDRED).round_dp(1)
+        } else {
+            rust_decimal::Decimal::ZERO
+        };
+        ws.write_number_with_format(row, 6, f(promo), &s.cell)?;
         ws.write_number_with_format(row, 7, f(item.line_total), &s.num)?;
         row += 1;
         n += 1;
     }
     row += 1;
     let totals = [
-        ("Товары по прайсу:", cart.subtotal_list),
-        ("Скидка:", cart.discount_total),
+        ("Товары:", cart.subtotal_list),
+        ("Скидка по акциям:", cart.discount_total),
         ("Купон:", cart.coupon.as_ref().map(|c| c.discount).unwrap_or_default()),
         ("Итого:", cart.total),
         ("Кешбэк на бонусный счёт:", cart.cashback_total),
@@ -283,9 +289,9 @@ pub fn bonus_xlsx(customer: &str, st: &BonusStatement) -> AppResult<Vec<u8>> {
     ws.set_column_width(4, 14)?;
     ws.set_column_width(5, 14)?;
     ws.merge_range(0, 0, 0, 5, "Детализация бонусного счёта", &s.title)?;
-    ws.merge_range(1, 0, 1, 5, &format!("{} · период с {} по {}", customer, st.period.from.format("%d.%m.%Y"), st.period.to.format("%d.%m.%Y")), &s.sub)?;
-    ws.write_string(3, 0, "Бонусов на начало периода:")?;
-    ws.write_number_with_format(3, 5, f(st.opening), &s.total_num)?;
+    ws.merge_range(1, 0, 1, 5, &format!("{} · вся история, последние операции сверху", customer), &s.sub)?;
+    ws.write_string(3, 0, "Бонусов на счёте:")?;
+    ws.write_number_with_format(3, 5, f(st.balance), &s.total_num)?;
     let head = ["Дата", "Заказ", "Операция", "Примечание", "Сумма, с.", "Баланс, с."];
     let hr = 5u32;
     for (i, h) in head.iter().enumerate() {
@@ -302,7 +308,8 @@ pub fn bonus_xlsx(customer: &str, st: &BonusStatement) -> AppResult<Vec<u8>> {
         row += 1;
     }
     row += 1;
-    ws.merge_range(row, 0, row, 4, "Бонусов на конец периода:", &s.total_label)?;
-    ws.write_number_with_format(row, 5, f(st.closing), &s.total_num)?;
+    ws.merge_range(row, 0, row, 3, "Итого начислено / списано:", &s.total_label)?;
+    ws.write_number_with_format(row, 4, f(st.accrued), &s.total_num)?;
+    ws.write_number_with_format(row, 5, f(-st.spent), &s.total_num)?;
     Ok(wb.save_to_buffer()?)
 }

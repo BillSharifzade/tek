@@ -23,7 +23,6 @@ pub struct UserRow {
     pub manager_id: Option<Uuid>,
     pub is_lead_manager: bool,
     pub discount_pct: Decimal,
-    pub cashback_pct: Decimal,
     pub notify_marketing: bool,
     pub notify_replies: bool,
     pub created_at: DateTime<Utc>,
@@ -66,7 +65,6 @@ pub struct UserJson {
     pub status: String,
     pub customer_type: String,
     pub discount_pct: Decimal,
-    pub cashback_pct: Decimal,
     pub bonus_balance: Decimal,
     pub company: Option<CompanyJson>,
     pub manager: Option<ManagerJson>,
@@ -81,7 +79,7 @@ pub struct UserJson {
 pub const PRODUCT_SELECT: &str = r#"
 SELECT p.id, p.code, p.slug, p.name, p.brand_id, b.slug AS brand_slug, b.name AS brand_name,
        p.category_id, c.path AS category_path, c.slug AS category_slug, c.name AS category_name,
-       p.group_id, p.variant, p.unit, p.list_price, p.sale_price, p.is_hit, p.is_new,
+       p.group_id, p.variant, p.unit, p.list_price, p.sale_price, p.cashback_pct, p.is_hit, p.is_new,
        p.pack_qty, p.pack_label, p.configurator_id, p.attributes, p.images, p.description,
        p.short_description, p.features, p.rating, p.reviews_count, p.questions_count, p.popularity,
        p.created_at, p.is_active,
@@ -110,6 +108,8 @@ pub struct ProductRow {
     pub unit: String,
     pub list_price: Decimal,
     pub sale_price: Option<Decimal>,
+    /// кешбэк товара, % от цены покупателя (доработки R5; 0 — без кешбэка)
+    pub cashback_pct: Decimal,
     pub is_hit: bool,
     pub is_new: bool,
     pub pack_qty: Option<Decimal>,
@@ -132,10 +132,13 @@ pub struct ProductRow {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct Price {
+    /// обычная цена покупателя (с его персональной скидкой, без акции) — зачёркивается, только если `price` ниже
     pub list: Decimal,
     pub price: Decimal,
     pub discount_pct: Decimal,
+    /// кешбэк за единицу на бонусный счёт
     pub cashback: Decimal,
+    pub cashback_pct: Decimal,
     pub sale: bool,
     pub savings: Decimal,
 }
@@ -336,6 +339,8 @@ pub struct OrderRow {
     pub reservation_status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    /// бонусы, списанные в оплату (миграция 0014): `total` уже уменьшен на них
+    pub bonus_spent: Decimal,
 }
 
 #[derive(Debug, Clone, sqlx::FromRow)]

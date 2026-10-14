@@ -7,6 +7,7 @@ import { BadgeList } from "@/components/ui/Badge";
 import { Stars } from "@/components/ui/Rating";
 import { SplitPrice } from "@/components/ui/Price";
 import { IconCheckGreen } from "@/components/icons/figma";
+import { IconNoStock } from "@/components/cart/icons";
 import { FavoriteButton } from "./FavoriteButton";
 import { CardBuyRow } from "./CardBuyRow";
 
@@ -33,10 +34,7 @@ export function StockLine({ product, className }: { product: ProductCardT; class
   if (!product.in_stock) {
     return (
       <span className={cn("flex items-center gap-[4px] text-[13px] font-medium leading-[17px] text-muted", className)}>
-        <svg width={13} height={13} viewBox="0 0 13 13" aria-hidden>
-          <circle cx="6.5" cy="6.5" r="6.5" fill="#B3B3B3" />
-          <path d="M6.5 3.2V6.7L8.6 8" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" fill="none" />
-        </svg>
+        <IconNoStock className="shrink-0" />
         Нет в наличии
       </span>
     );

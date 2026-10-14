@@ -10,11 +10,16 @@ Errors: `{"error": {"code": "snake_case_code", "message": "human text (ru)", "de
 Auth: `Authorization: Bearer <access_jwt>` (15 min). Refresh with `POST /auth/refresh`.
 Guest cart: header `X-Cart-Token: <uuid>` (issued by the server in the `cart_token` field of any cart response; frontend persists it in localStorage). When a logged-in user sends `X-Cart-Token`, `POST /cart/merge` merges the guest cart into the user cart.
 
-Pricing rule (applies everywhere a price is shown):
-* anonymous → `list_price`, discount 0, cashback 0
-* authenticated → `price = list_price * (1 - discount_pct/100)`, `cashback = price * cashback_pct/100`.
-  discount_pct/cashback_pct = the most specific matching row of `user_price_rules` (product > brand > category (nearest ancestor) > user default from `users.discount_pct / cashback_pct`), default 0 after registration.
-* `sale_price` (Распродажа) replaces `list_price` when set, and the personal discount is applied on top; `list_price` is still returned so the UI can show it struck through + "выгода N с.".
+Pricing rule (applies everywhere a price is shown; revision R5):
+* discount: anonymous and accounts without a discount → 0 %; otherwise the manually set personal discount — the most specific
+  matching row of `user_price_rules` (product > brand > category (nearest ancestor) > `users.discount_pct`). It is not
+  credited to the bonus account: the account simply sees its own prices.
+* `Price.list = list_price * (1 - discount/100)` — the account's regular price; `Price.price` — what it pays:
+  `sale_price * (1 - discount/100)` for a promo item (Распродажа), otherwise `= list`. The UI strikes `list` through
+  (+ "выгода N с." = `savings`) only when `price < list`, i.e. only for promo items; a personal discount is never struck through.
+* cashback is a separate loyalty programme set per product (`products.cashback_pct`, 0–50 %, 0 = none):
+  `Price.cashback = price * cashback_pct/100` per unit (shown as the «Кешбэк N с.» badge only when > 0). It is credited to
+  the bonus account when the order is delivered; bonuses can be spent only on purchases (`bonus` in `POST /checkout`).
 
 ## Rules enforced by the API
 
@@ -42,7 +47,7 @@ Pricing rule (applies everywhere a price is shown):
 ## Shared JSON shapes
 
 ```
-Price        { list: number, price: number, discount_pct: number, cashback: number, sale: bool, savings: number }
+Price        { list: number, price: number, discount_pct: number, cashback: number, cashback_pct: number, sale: bool, savings: number }
 ProductCard  { id, slug, code, name, brand: {slug,name}, unit: "шт"|"м", image: string|null,
                price: Price, stock_total: number, in_stock: bool, badges: ["sale"|"hit"|"new"],
                rating: number, reviews_count: number, price_unit_label: "за шт"|"за метр",
@@ -73,7 +78,7 @@ EditRequest  { created_at, comment|null, total, delivery_price,                 
                items: [{product: ProductCard, qty, old_qty}] }                    // qty 0 = removed, old_qty 0 = added
 User         { id, email, phone, first_name, last_name, role: "customer"|"manager"|"admin",
                status: "pending"|"approved"|"blocked", customer_type: "retail"|"legal"|"electrician"|"purchaser", email: "" when not given,
-               discount_pct, cashback_pct, bonus_balance, company: Company|null,
+               discount_pct, bonus_balance, company: Company|null,
                manager: {name, phone, email}|null, notify_marketing: bool, notify_replies: bool }
 Company      { id, name, inn, address, phone, email }
 ```
@@ -93,7 +98,7 @@ Delivery methods: `courier` (Доставка, 30.00 с., Душанбе/Худ�
 | GET | `/catalog/products` | query: `category, brand, q, sort=popular|new|price_asc|price_desc|rating|reviews|name, page=1, per_page=24, in_stock=1, sale=1, hit=1, new=1, price_min, price_max, attr.<Name>=<value>` → `{ items: ProductCard[], total, page, per_page, pages }` |
 | GET | `/catalog/products/{slug}` | `Product` |
 | GET | `/catalog/products/{slug}/reviews` | `{ summary:{avg, count, distribution:{5:n,...}}, items:[{id, author, date, rating, pros, cons, text, reply:{author, date, text}|null}], page, pages }` |
-| POST | `/catalog/products/{slug}/reviews` | auth. `{rating, pros, cons, text}` → 201 review |
+| POST | `/catalog/products/{slug}/reviews` | auth. `{rating, pros, cons, text}` → 201 review; one review per account and product — 409 `review_exists` |
 | GET | `/catalog/products/{slug}/questions` | `{ items:[{id, author, date, text, answer:{author,date,text}|null}], total }` |
 | POST | `/catalog/products/{slug}/questions` | auth. `{text}` → 201 |
 | DELETE | `/catalog/products/{slug}/reviews/{id}` | auth, только автор → 204 (пересчитывает рейтинг товара) |
@@ -156,7 +161,7 @@ Password policy (validated server-side, message ru): ≥8 chars, latin letters +
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/checkout/options` | `{ delivery_methods:[{code,label,price,free_from?,description}], delivery_dates:[{date, label:"Сегодня"|"Завтра"|"Пятница", day_label:"9 сентября", available:bool}], delivery_max_date:"2027-10-12" (в заказе — любая дата от сегодня до неё, кроме воскресенья), payment_methods:[{code,label,sublabel,available}], stores:[{id,city,name,address,phone,hours}] , note:"Подъем/спуск на этажи и разгрузка товара не входят в услугу доставки" }` |
-| POST | `/checkout` | `{ contact:{first_name,last_name,phone,email}, delivery:{method, address?, date?, store_id?}, payment:{method}, comment? }` → 201 `{ order: Order, payment: {kind:"redirect"|"invoice"|"none", url?} }`. Uses **selected** cart items only, validates stock, applies coupon, writes `orders`, reserves stock (`integration_outbox` → 1C), pushes to CRM (`assigned manager` if user has one, else `lead manager`), clears the ordered items from the cart, accrues cashback as a pending bonus transaction. |
+| POST | `/checkout` | `{ contact:{first_name,last_name,phone,email}, delivery:{method, address?, date?, store_id?}, payment:{method}, comment?, bonus? }` → 201 `{ order: Order, payment: {kind:"redirect"|"invoice"|"none", url?} }`. Uses **selected** cart items only, validates stock, applies coupon, writes `orders`, reserves stock (`integration_outbox` → 1C), pushes to CRM (`assigned manager` if user has one, else `lead manager`; `totals.bonus`), clears the ordered items from the cart. `bonus` — bonuses to spend on the goods (signed-in buyer only: 422 `bonus_requires_login`; ≤ goods total after coupon: 422 `bonus_exceeds_total`; ≤ balance, checked under a lock: 422 `insufficient_bonus`): written off as a `spend` bonus transaction, `Order.bonus_spent`, `total` = goods − bonus + delivery (fully covered → `payment.status = paid`, `kind:"none"`). Cancel returns them (`refund`); an edit that lowers the goods total below the spent bonuses returns the excess. Cashback is credited on delivery. |
 | POST | `/payments/{provider}/callback` | provider = alif|dc. `{order_number, status:"paid"|"failed", txn_id}` → marks the order paid. Stub for the online-payment modules: only with `PAYMENTS_MOCK` (404 otherwise); 422 `provider_mismatch` |
 | GET | `/orders/{number}/invoice.xlsx` | счёт на оплату (auth owner / manager, or guest with `?email=`) |
 | GET | `/orders/{number}` | auth (or guest with `?email=`) → `Order` |
@@ -170,13 +175,13 @@ Password policy (validated server-side, message ru): ≥8 chars, latin letters +
 | PUT | `/account/password` | `{current_password, new_password}` |
 | PUT | `/account/notifications` | `{notify_marketing, notify_replies}` |
 | GET/PUT | `/account/company` | `Company` / `{name,inn,address,phone,email}` |
-| GET | `/account/orders?from&to&page` | default last 30 days → `{items:[{number,id,date,status,status_label,total,paid_amount,remaining,due_date}], total}` |
+| GET | `/account/orders?from&to&page` | all orders by default (R5); with `from`/`to` — that period → `{items:[{number,id,date,status,status_label,total,paid_amount,remaining,due_date}], total, period: {from,to} \| null}` |
 | GET | `/account/orders/{number}` | `Order` |
 | POST | `/account/orders/{number}/cancel` | allowed while status ∉ {shipped, delivered, cancelled} → `Order`; emits CRM update |
 | PUT | `/account/orders/{number}` | `{items:[{product_id, qty}], comment?}` while editable (not shipped, not paid) → `Order` with `edit_request`. **Change request** (ТЗ: the shipping order changes only after the manager's approval): the order, stock reservation, reconciliation and CRM stay as they are until a manager approves it. The new composition is validated at once exactly as on approval (stock, pack multiples, «below paid») — 422 / 409 right away. A new request replaces a pending one. Emits CRM `order.edit_requested`, e-mails the manager (`email.order_edit_requested`). On approval: items already in the order keep their order prices (new ones — current personal price), the coupon stays applied, delivery price is recalculated, CRM `order.updated` + 1C `stock.reserve` |
 | DELETE | `/account/orders/{number}/edit-request` | withdraw the pending request → `Order`; 409 `no_edit_request` |
-| GET | `/account/reconciliation?from&to` | Акт сверки: `{ period:{from,to}, opening_balance, entries:[{date, doc_type, doc_number, debit, credit, balance, order_number}], turnover:{debit,credit}, closing_balance }` ; `.xlsx` variant at `/account/reconciliation.xlsx` |
-| GET | `/account/bonus?from&to` | `{ balance, opening, entries:[{date, order_number, kind:"accrual"|"spend"|"adjust", amount, balance, note}], closing }` ; `.xlsx` variant at `/account/bonus.xlsx` |
+| GET | `/account/reconciliation?from&to\|all=1` | Акт сверки (default — last 365 days; `all=1` — from the first entry): `{ period:{from,to}, opening_balance, entries:[{date, doc_type, doc_number, debit, credit, balance, order_number}], turnover:{debit,credit}, closing_balance }` ; `.xlsx` variant at `/account/reconciliation.xlsx` |
+| GET | `/account/bonus` | the whole history, newest first (R5): `{ balance, accrued, spent, entries:[{date, order_number, kind:"accrual"\|"spend"\|"refund"\|"adjust", kind_label, amount, balance (after the entry), note}] }` ; `.xlsx` variant at `/account/bonus.xlsx` |
 | GET | `/account/reviews` | `[{product:{slug,name}, rating, text, date, reply}]` ; `/account/questions` similar |
 | GET | `/account/notifications` | `[{id,kind,title,body,link,is_read,created_at}]` ; `POST /account/notifications/read` `{ids?: []}` marks all/selected |
 | GET | `/account/documents` | `[{id,kind:"invoice"|"act"|"contract", title, number, date, url}]` |
@@ -191,7 +196,7 @@ admin-only: a manager gets 403 `admin_only`. Lists of users / orders return at m
 typed in any spelling (`+992 90 000 0001`, `900000001`) is matched by digits.
 
 ```
-AdminUser    { id, email|null, phone|null, first_name, last_name, role, status, customer_type, discount_pct, cashback_pct,
+AdminUser    { id, email|null, phone|null, first_name, last_name, role, status, customer_type, discount_pct,
                manager_id|null, manager_name|null, is_lead_manager, company_name|null, company_inn|null, company_verified|null, created_at }
 AdminOrder   { id, number, created_at, status, status_label, total, paid_amount, remaining, payment_method, payment_method_label,
                payment_status, payment_status_label, delivery_method, delivery_method_label, first_name, last_name, phone, email,
@@ -220,8 +225,8 @@ ImportSummary{ dry_run, rows, created, updated, skipped, categories_created, bra
 | GET | `/admin/users/{id}` | `AdminUser` (same row as in the list); 404 `not_found` |
 | POST | `/admin/users/{id}/approve` | pending → approved (+ verifies the user's company, notification + e-mail «Аккаунт активирован»); a manager who approves a client without a manager becomes their manager → `{ok:true}` |
 | PUT | `/admin/users/{id}` | `{status?: "approved"\|"blocked", role?: "customer"\|"manager"\|"admin" (ADMIN), is_lead_manager?: bool (ADMIN), manager_id?: uuid\|null (null = unassign), company_verified?: bool}` → `AdminUser`. 403 `self_change` (own role/status), 403 `admin_only` (role / lead flag, or any change of a manager/admin account by a manager), 422 `invalid_status` / `invalid_role` / `invalid_manager` (not an active manager/admin) / `no_company`. Blocking revokes all refresh tokens (the access token stops working at once: status is checked per request). pending → approved here works like `/approve` (notification + e-mail). Demoting to `customer` clears `is_lead_manager`. |
-| GET | `/admin/users/{id}/pricing` | `{discount_pct, cashback_pct, manager_id, rules:[{category_slug, brand_slug, product_id, discount_pct, cashback_pct, category_name, brand_name, product_code, product_name}]}` |
-| PUT | `/admin/users/{id}/pricing` | `{discount_pct, cashback_pct, manager_id?, rules?:[{category_slug?, brand_slug?, product_id?, discount_pct, cashback_pct}]}` (a manager — only for own clients: 403 `not_your_client`; nobody for himself: 403 `self_pricing`) |
+| GET | `/admin/users/{id}/pricing` | `{discount_pct, manager_id, rules:[{category_slug, brand_slug, product_id, discount_pct, category_name, brand_name, product_code, product_name}]}` |
+| PUT | `/admin/users/{id}/pricing` | `{discount_pct, manager_id?, rules?:[{category_slug?, brand_slug?, product_id?, discount_pct}]}` (discount 0–90 %) (a manager — only for own clients: 403 `not_your_client`; nobody for himself: 403 `self_pricing`) |
 | GET | `/admin/managers` | `[{id, name, email, phone, role, is_lead_manager}]` — active (not blocked) managers and admins, lead manager first; for assignment dropdowns |
 | GET | `/admin/orders?status=&q=&mine=1&edit_pending=1` | `AdminOrder[]`; `q` — number / customer name / phone / e-mail / company; `mine=1` — orders assigned to me; `edit_pending=1` — with a pending change request |
 | PUT | `/admin/orders/{number}/status` | `{status}` → `Order` (e-mail «Заказ N: статус» to the customer); 409 `edit_pending` when shipping / delivering an order with a pending change request (cancelling is allowed and closes the request) |
@@ -235,17 +240,17 @@ ImportSummary{ dry_run, rows, created, updated, skipped, categories_created, bra
 | PUT | `/admin/leads/{id}` | `{status?, manager_note?: string\|null}` → `Lead`; 422 `invalid_status`, 404 |
 | GET | `/admin/reviews?unanswered=1&page=&per_page=` | `{items: AdminReview[], total, page, per_page, pages}` |
 | DELETE | `/admin/reviews/{id}` | → 204; recomputes the product's `rating` / `reviews_count` |
-| POST | `/admin/reviews/{id}/reply` | `{text}` — reply to a review (notification + e-mail to the author on the first reply, if `notify_replies`) |
+| POST | `/admin/reviews/{id}/reply` | `{text}` — reply to a review (notification + e-mail to the author on the first reply, if `notify_replies`) → `{ok, reply:{author,date,text,role}}`; `DELETE` — remove the reply (the review stays) |
 | GET | `/admin/questions?unanswered=1&page=&per_page=` | `{items: AdminQuestion[], total, page, per_page, pages}` |
 | DELETE | `/admin/questions/{id}` | → 204; recomputes `questions_count` |
-| POST | `/admin/questions/{id}/answer` | `{text}` — answer a question (notification + e-mail to the author on the first answer, if `notify_replies`) |
+| POST | `/admin/questions/{id}/answer` | `{text}` — answer a question (notification + e-mail to the author on the first answer, if `notify_replies`) → `{ok, answer:{…}}`; `DELETE` — remove the answer |
 | GET | `/admin/coupons` | `Coupon[]` (active first) |
 | POST | `/admin/coupons` | `{code, kind, value, min_total?=0, active?=true, expires_at?: RFC 3339 \| "YYYY-MM-DD" (end of that day, Dushanbe time) \| null, usage_limit?: int\|null}` → 201 `Coupon`; 409 `coupon_exists` (case-insensitive); 422 `invalid_coupon` (code 3–32 chars `[A-Za-z0-9_-]`, stored upper-case; percent 0 < v ≤ 100, fixed v > 0, min_total ≥ 0, usage_limit ≥ 1) |
 | PUT | `/admin/coupons/{code}` | same fields, all optional (`null` clears `expires_at` / `usage_limit`; the code itself can't be changed — 422) → `Coupon` |
 | DELETE | `/admin/coupons/{code}` | → 204 (404 when missing) |
 | GET | `/admin/products?q=&category=<slug, with subcategories>&brand=<slug>&active=1\|0&page=&per_page=50` | `{items: AdminProduct[], total, page, per_page, pages}` — includes products taken off sale; exact code match first |
 | GET | `/admin/products/{id}` | `AdminProduct` with documents, accessories, variant, countries |
-| PUT | `/admin/products/{id}` | `{list_price?, sale_price?: number\|null (null = no sale), is_active?, is_hit?, is_new?, country_origin?: string\|null}` → `AdminProduct`; 422 `invalid_price` (list > 0; 0 < sale < list), `invalid_country` (> 60 chars). `country_origin` — the product's own country of production (shown instead of the brand's on the product page). Clears public caches; `is_active` recounts category counters |
+| PUT | `/admin/products/{id}` | `{list_price?, sale_price?: number\|null (null = no sale), cashback_pct?, is_active?, is_hit?, is_new?, country_origin?: string\|null}` → `AdminProduct`; 422 `invalid_price` (list > 0; 0 < sale < list), `invalid_cashback` (0–50 %), `invalid_country` (> 60 chars). `country_origin` — the product's own country of production (shown instead of the brand's on the product page). Clears public caches; `is_active` recounts category counters |
 | PUT | `/admin/products/{id}/documents` | `{document_ids: int[]}` → `AdminProduct` — replaces the product's documents (from the shared library); 422 `unknown_document` |
 | PUT | `/admin/products/{id}/accessories` | `{items:[{code, group}]}` → `AdminProduct` — replaces accessories (tab «Комплектующие»), in list order; 422 `unknown_product` (codes listed) / `invalid_accessory` |
 | PUT | `/admin/products/{id}/variant` | `{group: string\|null, axes?: string[], values:[{axis, value}]}` → `AdminProduct`. Trade offer: group found by name or created; `axes` set the group's axes (default — the group's current axes); a value for every axis is required; 422 `invalid_variant` (≤ 5 axes, duplicate values in the group, unknown axis). `group: null` — leave the group. Empty groups are deleted |
@@ -311,7 +316,8 @@ invalid `SMTP_URL` / `MAIL_FROM` stops the start-up with an explanation.
 
 * `admin@tec.tj / Admin1234` (admin)
 * `manager@tec.tj / Manager1234` (lead manager, "Абдурахим Фозилов", +992935000010)
-* `client@tec.tj / Client1234` (approved B2B purchaser, company ООО «Точикэлектрокомплект», ИНН 123123123, discount 10%, cashback 3%, manager = manager@tec.tj, with orders/ledger history)
-* `electric@tec.tj / Electric1234` (approved electrician, discount 5%, cashback 2%)
+* `client@tec.tj / Client1234` (approved B2B purchaser, company ООО «Точикэлектрокомплект», ИНН 123123123, discount 10% (15% on кабеленесущие системы), manager = manager@tec.tj, with orders/ledger/bonus history)
+* `electric@tec.tj / Electric1234` (approved electrician, discount 5% (8% on ДКС))
+* demo cashback: ДКС products 3 %, codes 101005 / 101010 — 5 %
 * `pending@tec.tj / Pending1234` (pending approval → 403 on login)
 * coupons: `TEK10` (10%), `WELCOME50` (50 с. off from 500 с.)

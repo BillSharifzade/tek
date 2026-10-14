@@ -11,7 +11,7 @@ import { toast } from "@/store/toast";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { DataTable, cellPad, type Column } from "./DataTable";
-import { PeriodFilter, periodFromParams, periodKey, type Period } from "./PeriodFilter";
+import { PeriodPicker, periodFromParams, periodKey, periodSearch, type Period } from "./PeriodFilter";
 import { Card, CardTitle, ErrorLine, btnCls, errorMessage, labelCls } from "./shared";
 
 type Entry = ReconciliationEntry & { doc_type_label?: string; note?: string | null; due_date?: string | null };
@@ -44,10 +44,12 @@ export function BalanceView() {
       .catch(() => undefined);
   }, []);
 
+  const from = period?.from;
+  const to = period?.to;
   useEffect(() => {
     let cancelled = false;
     client
-      .get<Statement>("/account/reconciliation", { from: period.from, to: period.to })
+      .get<Statement>("/account/reconciliation", from && to ? { from, to } : { all: 1 })
       .then((r) => {
         if (!cancelled) setResult({ key, data: r, error: null });
       })
@@ -57,23 +59,22 @@ export function BalanceView() {
     return () => {
       cancelled = true;
     };
-  }, [key, period.from, period.to]);
+  }, [key, from, to]);
 
   const busy = result?.key !== key;
   const data = result?.data ?? null;
   const error = result?.error ?? null;
 
-  const apply = (p: Period) => {
-    const next = new URLSearchParams(sp?.toString());
-    next.set("from", p.from);
-    next.set("to", p.to);
-    router.replace(`/account/balance?${next.toString()}`, { scroll: false });
-  };
+  const apply = (p: Period | null) => router.replace(`/account/balance${periodSearch(sp, p, true)}`, { scroll: false });
 
   const download = async () => {
     setDownloading(true);
     try {
-      await downloadFile("/account/reconciliation.xlsx", `akt-sverki-${period.from}-${period.to}.xlsx`, { from: period.from, to: period.to });
+      await downloadFile(
+        "/account/reconciliation.xlsx",
+        `akt-sverki-${data?.period.from ?? "all"}-${data?.period.to ?? ""}.xlsx`,
+        period ? { from: period.from, to: period.to } : { all: 1 },
+      );
     } catch (e) {
       toast.error(errorMessage(e, "Не удалось скачать акт сверки"));
     } finally {
@@ -109,7 +110,7 @@ export function BalanceView() {
       <Card className="lg:min-h-[167px]">
         <CardTitle>Баланс</CardTitle>
         {loaded ? (
-          <div className="mt-[21px] grid grid-cols-1 gap-[16px] sm:grid-cols-[257px_minmax(0,1fr)] sm:gap-x-0 xl:grid-cols-[257px_257px_minmax(0,1fr)]">
+          <div className="mt-[21px] grid grid-cols-1 gap-[16px] sm:grid-cols-[257px_minmax(0,1fr)] sm:gap-x-0">
             <div className="flex flex-col gap-[6px]">
               <span className={labelCls}>Дебиторская задолженность</span>
               <span className="text-[17px] font-bold leading-[20px] tnum">{money(receivable)}</span>
@@ -118,9 +119,6 @@ export function BalanceView() {
               <span className={labelCls}>Просроченная задолженность</span>
               <span className={cn("text-[17px] font-bold leading-[20px] tnum", overdue > 0 ? "text-[#D13B3E]" : "text-black")}>{money(overdue)}</span>
             </div>
-            <p className="text-[13px] leading-[18px] text-muted sm:col-span-2 xl:col-span-1 xl:self-end">
-              {overdue > 0 ? "Оплатите просроченную задолженность, чтобы сохранить персональные условия." : "Просроченной задолженности нет."}
-            </p>
           </div>
         ) : (
           <Skeleton className="mt-[21px] h-[48px] rounded-[7px]" />
@@ -137,7 +135,7 @@ export function BalanceView() {
         >
           Акт сверки
         </CardTitle>
-        <PeriodFilter key={key} value={period} onApply={apply} busy={busy && result !== null} className="mt-[22px]" />
+        <PeriodPicker value={period} onApply={apply} busy={busy && result !== null} className="mt-[22px]" />
         <ErrorLine error={error} className="mt-[20px]" />
         <div className="mt-[38px]">
           {data === null && !error ? (

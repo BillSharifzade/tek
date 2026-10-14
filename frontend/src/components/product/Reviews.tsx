@@ -4,7 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Review, ReviewsResponse } from "@/lib/types";
+import type { Review, ReviewReply, ReviewsResponse } from "@/lib/types";
 import { client } from "@/lib/client";
 import { ApiError } from "@/lib/api";
 import { date } from "@/lib/format";
@@ -44,8 +44,63 @@ export function SpecialistBadge({ className }: { className?: string }) {
   return <span className={cn("inline-flex h-[21px] shrink-0 items-center rounded-[4px] bg-brand px-[5px] text-[13px] leading-[15px] text-black", className)}>Специалист ТЭК</span>;
 }
 
-function ReviewItem({ r, onReply, onDelete }: { r: ReviewItemT; onReply: () => void; onDelete?: () => void }) {
+/** Отвечать на отзывы и вопросы и удалять любые из них могут только сотрудники ТЭК (администратор, менеджер). */
+export function useStaff(): boolean {
+  const hydrated = useHydrated();
+  const role = useAuth((s) => s.user?.role);
+  return hydrated && (role === "admin" || role === "manager");
+}
+
+/** Ответ сотрудника прямо под отзывом / вопросом (доработки R5: «Ответить» отвечает, а не открывает форму нового отзыва). */
+export function ReplyForm({ label, onSubmit, onCancel, className }: { label: string; onSubmit: (text: string) => Promise<boolean>; onCancel: () => void; className?: string }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!text.trim()) {
+      setError("Напишите ответ");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    if (!(await onSubmit(text.trim()))) setBusy(false);
+  };
+  return (
+    <form onSubmit={submit} className={cn("flex flex-col gap-[10px]", className)}>
+      <Textarea value={text} onChange={(e) => setText(e.target.value)} placeholder="Ответ от имени ТЭК" aria-label={label} invalid={Boolean(error)} autoFocus className="min-h-[88px]" />
+      {error ? (
+        <p className="text-[13px] leading-[17px] text-sale" role="alert">
+          {error}
+        </p>
+      ) : null}
+      <div className="flex gap-[9px]">
+        <Button type="submit" size="sm" loading={busy}>
+          Ответить
+        </Button>
+        <Button variant="secondary" size="sm" onClick={onCancel} disabled={busy}>
+          Отмена
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+function ReviewItem({
+  r,
+  staff,
+  onDelete,
+  onReply,
+  onDeleteReply,
+}: {
+  r: ReviewItemT;
+  staff: boolean;
+  onDelete?: () => void;
+  onReply: (text: string) => Promise<boolean>;
+  onDeleteReply: () => void;
+}) {
   const photos = r.photos ?? [];
+  const [replying, setReplying] = useState(false);
   return (
     <li className="border-b border-line-3 pb-[23px] pt-0 last:border-b-0 last:pb-0 [&+li]:pt-[22px]">
       <div className="flex flex-col gap-4 md:flex-row md:gap-0">
@@ -64,14 +119,16 @@ function ReviewItem({ r, onReply, onDelete }: { r: ReviewItemT; onReply: () => v
           ) : null}
         </div>
         <div className="relative min-w-0 flex-1">
-          <div className="flex justify-end gap-[9px] md:absolute md:right-0 md:top-0">
-            {onDelete ? (
-              <ActionChip danger onClick={onDelete}>
-                Удалить
-              </ActionChip>
-            ) : null}
-            <ActionChip onClick={onReply}>Ответить</ActionChip>
-          </div>
+          {onDelete || (staff && !r.reply) ? (
+            <div className="flex justify-end gap-[9px] md:absolute md:right-0 md:top-0">
+              {onDelete ? (
+                <ActionChip danger onClick={onDelete}>
+                  Удалить
+                </ActionChip>
+              ) : null}
+              {staff && !r.reply ? <ActionChip onClick={() => setReplying((v) => !v)}>Ответить</ActionChip> : null}
+            </div>
+          ) : null}
           <div className="flex flex-col gap-[8px] text-[14px] leading-[22px] text-black md:mt-[28px] md:pr-0">
             {r.pros ? (
               <p>
@@ -85,11 +142,25 @@ function ReviewItem({ r, onReply, onDelete }: { r: ReviewItemT; onReply: () => v
             ) : null}
             {r.text ? <p className="whitespace-pre-line">{r.text}</p> : null}
           </div>
+          {replying && !r.reply ? (
+            <ReplyForm
+              label="Ответ на отзыв"
+              className="mt-[21px] border-t border-line-3 pl-[22px] pt-[17px]"
+              onCancel={() => setReplying(false)}
+              onSubmit={async (text) => {
+                const ok = await onReply(text);
+                if (ok) setReplying(false);
+                return ok;
+              }}
+            />
+          ) : null}
           {r.reply ? (
             <div className="relative mt-[21px] border-t border-line-3 pl-[22px] pt-[17px]">
-              <ActionChip onClick={onReply} className="absolute right-0 top-[16px]">
-                Ответить
-              </ActionChip>
+              {staff ? (
+                <ActionChip danger onClick={onDeleteReply} className="absolute right-0 top-[16px]">
+                  Удалить
+                </ActionChip>
+              ) : null}
               <p className="flex flex-wrap items-start gap-x-[11px] gap-y-1 pr-[90px]">
                 <span className="text-[16px] font-semibold leading-[20px] text-black">{r.reply.author}</span>
                 <SpecialistBadge />
@@ -119,15 +190,18 @@ export function Reviews({ slug, initial }: { slug: string; initial: ReviewsRespo
   const [loadingMore, setLoadingMore] = useState(false);
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<number | null>(null);
-  const [mine, forgetMine] = useMine("reviews");
+  const mine = useMine("reviews");
+  const staff = useStaff();
+  const reviewed = mine.products.has(slug);
 
   const remove = async (id: string) => {
     if (!window.confirm("Удалить отзыв?")) return;
     try {
-      await client.delete(`/catalog/products/${slug}/reviews/${id}`);
+      // сотрудник удаляет любой отзыв через панель, автор — свой
+      await client.delete(staff ? `/admin/reviews/${id}` : `/catalog/products/${slug}/reviews/${id}`);
       const removed = items.find((r) => r.id === id);
       setItems((prev) => prev.filter((r) => r.id !== id));
-      forgetMine(id);
+      mine.forget(id);
       if (removed) {
         setData((d) => {
           const distribution = { ...d.summary.distribution, [removed.rating]: Math.max(0, (d.summary.distribution[removed.rating] ?? 1) - 1) };
@@ -137,8 +211,34 @@ export function Reviews({ slug, initial }: { slug: string; initial: ReviewsRespo
         });
       }
       toast.success("Отзыв удалён");
+      router.refresh();
     } catch {
       toast.error("Не удалось удалить отзыв");
+    }
+  };
+
+  const setReply = (id: string, reply: ReviewReply | null) => setItems((prev) => prev.map((r) => (r.id === id ? { ...r, reply } : r)));
+
+  const reply = async (id: string, text: string) => {
+    try {
+      const r = await client.post<{ reply?: ReviewReply }>(`/admin/reviews/${id}/reply`, { text });
+      setReply(id, r.reply ?? { author: "Точикэлектрокомплект", date: new Date().toISOString(), text });
+      toast.success("Ответ опубликован");
+      return true;
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Не удалось отправить ответ");
+      return false;
+    }
+  };
+
+  const removeReply = async (id: string) => {
+    if (!window.confirm("Удалить ответ ТЭК?")) return;
+    try {
+      await client.delete(`/admin/reviews/${id}/reply`);
+      setReply(id, null);
+      toast.success("Ответ удалён");
+    } catch {
+      toast.error("Не удалось удалить ответ");
     }
   };
 
@@ -165,7 +265,14 @@ export function Reviews({ slug, initial }: { slug: string; initial: ReviewsRespo
         {list.length > 0 ? (
           <ul>
             {list.map((r) => (
-              <ReviewItem key={r.id} r={r} onReply={() => setOpen(true)} onDelete={mine.has(r.id) ? () => void remove(r.id) : undefined} />
+              <ReviewItem
+                key={r.id}
+                r={r}
+                staff={staff}
+                onDelete={staff || mine.ids.has(r.id) ? () => void remove(r.id) : undefined}
+                onReply={(text) => reply(r.id, text)}
+                onDeleteReply={() => void removeReply(r.id)}
+              />
             ))}
           </ul>
         ) : (
@@ -209,12 +316,14 @@ export function Reviews({ slug, initial }: { slug: string; initial: ReviewsRespo
             );
           })}
         </ul>
+        {/* один отзыв на товар от аккаунта (доработки R5) */}
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="mt-[26px] flex h-[42px] w-full items-center justify-center rounded-[7px] bg-brand text-[15px] font-medium leading-[24px] text-black transition-colors hover:bg-brand-hover"
+          disabled={reviewed}
+          className="mt-[26px] flex h-[42px] w-full items-center justify-center rounded-[7px] bg-brand text-[15px] font-medium leading-[24px] text-black transition-colors hover:bg-brand-hover disabled:cursor-default disabled:bg-btn disabled:text-sub"
         >
-          Оставить отзыв
+          {reviewed ? "Вы уже оставили отзыв" : "Оставить отзыв"}
         </button>
         {hydrated && !user ? (
           <p className="mt-[8px] text-center text-[12px] leading-[15px] text-muted">
@@ -232,6 +341,7 @@ export function Reviews({ slug, initial }: { slug: string; initial: ReviewsRespo
         slug={slug}
         onCreated={(r) => {
           setItems((prev) => [r, ...prev]);
+          mine.add(r.id, slug);
           setData((d) => {
             const distribution = { ...d.summary.distribution, [r.rating]: (d.summary.distribution[r.rating] ?? 0) + 1 };
             const count = d.summary.count + 1;

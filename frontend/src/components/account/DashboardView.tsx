@@ -15,7 +15,7 @@ import { IconBasket, IconBox, IconHeart } from "@/components/icons/figma";
 import { Card, CardTitle, ErrorLine, btnCls, errorMessage, labelCls } from "./shared";
 
 /** The backend also returns pricing info on the dashboard payload. */
-type DashboardData = Dashboard & { cashback_pct?: number; discount_pct?: number; user_name?: string; active_orders?: number };
+type DashboardData = Dashboard & { discount_pct?: number; user_name?: string; active_orders?: number };
 
 function timeAgo(iso: string): string {
   const d = new Date(iso);
@@ -98,7 +98,6 @@ export function DashboardView() {
   const unread = notes?.filter((n) => !n.is_read).length ?? 0;
   const name = data?.user_name ?? (user ? `${user.first_name} ${user.last_name}`.trim() : "");
   const discount = data?.discount_pct ?? user?.discount_pct ?? 0;
-  const cashback = data?.cashback_pct ?? user?.cashback_pct ?? 0;
 
   return (
     <div className="flex flex-col gap-[27px]">
@@ -107,7 +106,11 @@ export function DashboardView() {
           right={
             data ? (
               <span className={labelCls}>
-                Скидка <span className="font-medium text-black">{discount}%</span> · кешбэк <span className="font-medium text-black">{cashback}%</span> ·{" "}
+                {discount > 0 ? (
+                  <>
+                    Скидка <span className="font-medium text-black">{discount}%</span> ·{" "}
+                  </>
+                ) : null}
                 <Link href="/account/bonus" className="link-hover">
                   бонусы <span className="font-medium text-black tnum">{money(data.bonus_balance)}</span>
                 </Link>

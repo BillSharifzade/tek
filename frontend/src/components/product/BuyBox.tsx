@@ -5,13 +5,12 @@ import type { Product } from "@/lib/types";
 import { money, qty as fmtQty, stockQty } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { inCity, useCity } from "@/store/city";
-import { useAuth } from "@/store/auth";
 import { useHydrated } from "@/lib/hooks";
 import { Stepper } from "@/components/ui/Stepper";
 import { FavoriteButton } from "./FavoriteButton";
 import { priceLabel } from "./ProductCard";
 import { useBuy } from "./BuyContext";
-import { IconCheckCircle, IconClock, IconDelivery, IconFire } from "./icons";
+import { IconCashback, IconCheckCircle, IconClock, IconDelivery, IconFire } from "./icons";
 
 /** «90,00 с.» → «90 с.» (как в макете «выгода 90 с.») */
 export function moneyShort(v: number): string {
@@ -40,14 +39,30 @@ export function PromoPlaque({ className }: { className?: string }) {
 }
 
 /**
+ * Плашка «Кешбэк N с.» (Figma 11249:2229): 23px, #4938F8, r4, иконка 12×12 с отступом 8, текст 14/20 600 белый.
+ * Кешбэк за единицу товара — показывается, только если он у товара есть (доработки R5).
+ */
+export function CashbackBadge({ amount, className }: { amount: number; className?: string }) {
+  return (
+    <p
+      className={cn("inline-flex h-[23px] items-center gap-[4px] whitespace-nowrap rounded-[4px] bg-[#4938F8] pl-[8px] pr-[7px] text-[14px] font-semibold leading-[20px] text-white tnum", className)}
+      title="Начисляется на бонусный счёт после получения заказа; бонусами можно оплатить покупки"
+    >
+      <IconCashback className="shrink-0" />
+      Кешбэк {money(amount)}
+    </p>
+  );
+}
+
+/**
  * Блок цены (Figma «Инфа о товаре»): 292 шириной, белая карточка r10 с тенью.
  * Состояния: обычное (8612:219), распродажа (10725:4529 — красная рамка, заголовок и цена),
- * нет в наличии (10725:4590 — прочерк, серые иконки/кнопка), в корзине (10329:332 — жёлтая обводка).
+ * нет в наличии (10725:4590 — прочерк, серые иконки/кнопка), в корзине (10329:332 — жёлтая обводка), с кешбэком (11249:2198).
+ * Персональная скидка аккаунта — это просто его цена: без зачёркивания и «Ваша скидка» (доработки R5).
  */
 export function BuyBox({ product }: { product: Product }) {
   const hydrated = useHydrated();
   const city = useCity((s) => s.city);
-  const user = useAuth((s) => s.user);
   const { qty, setQty, step, busy, addToCart, inCartQty } = useBuy();
 
   const oos = !product.in_stock;
@@ -56,7 +71,7 @@ export function BuyBox({ product }: { product: Product }) {
   const here = cityStock(product, hydrated ? city : "Душанбе");
   const hereCity = hydrated ? city : "Душанбе";
   const max = product.stock_total > 0 ? Math.max(product.stock_total, step) : undefined;
-  const showCashback = hydrated && !!user && product.price.cashback > 0;
+  const cashback = !oos && product.price.cashback > 0;
 
   return (
     <div
@@ -78,11 +93,9 @@ export function BuyBox({ product }: { product: Product }) {
           {product.price.savings > 0 ? <span className="ml-[13px] text-[14px] text-sale">выгода {moneyShort(product.price.savings)}</span> : null}
         </p>
       ) : null}
-      {hydrated && user && product.price.discount_pct > 0 && !sale ? (
-        <p className="mt-[6px] text-[13px] leading-[15px] text-sub">Ваша скидка {Math.round(product.price.discount_pct)}%</p>
-      ) : null}
+      {cashback ? <CashbackBadge amount={product.price.cashback} className="mt-[12px]" /> : null}
 
-      <ul className={cn("flex flex-col gap-[9px] text-[14px] leading-[15px] text-g333", discounted ? "mt-[28px]" : "mt-[24px]")}>
+      <ul className={cn("flex flex-col gap-[9px] text-[14px] leading-[15px] text-g333", cashback || discounted ? "mt-[28px]" : "mt-[24px]")}>
         <li className="flex items-start">
           <span className="relative size-[15px] shrink-0">
             {here.qty > 0 ? <IconCheckCircle /> : <IconClock className="absolute left-[-1px] top-[-1px]" />}
@@ -95,11 +108,6 @@ export function BuyBox({ product }: { product: Product }) {
           <IconDelivery className="ml-px shrink-0" />
           <span className="relative top-[-1px] ml-[8px]">Доставка: {oos ? "" : (here.hint ?? "по запросу")}</span>
         </li>
-        {showCashback ? (
-          <li className="pl-[24px] text-sub">
-            Кешбэк: <span className="text-black">{money(Math.round(qty * product.price.cashback * 100) / 100)}</span>
-          </li>
-        ) : null}
       </ul>
 
       <Stepper

@@ -31,6 +31,8 @@ pub struct PeriodQuery {
     pub to: Option<NaiveDate>,
     pub page: Option<i64>,
     pub per_page: Option<i64>,
+    /// «За все время» в календаре периода: all=1
+    pub all: Option<String>,
 }
 
 impl PeriodQuery {
@@ -73,7 +75,6 @@ async fn dashboard(State(state): State<AppState>, AuthUser(user): AuthUser) -> A
         "manager": uj.manager,
         "notifications_unread": unread,
         "discount_pct": user.discount_pct,
-        "cashback_pct": user.cashback_pct,
     })))
 }
 
@@ -253,14 +254,17 @@ struct OrderSummary {
     total_rows: i64,
 }
 
+/// Заказы покупателя: по умолчанию — все (доработки R5), с `from` / `to` — за период.
 async fn list_orders(State(state): State<AppState>, AuthUser(user): AuthUser, Query(q): Query<PeriodQuery>) -> AppResult<Json<Value>> {
-    let (from, to) = q.range(30);
+    let period = (q.from.is_some() || q.to.is_some()).then(|| q.range(30));
+    let (from, to) = (period.map(|p| p.0), period.map(|p| p.1));
     let page = q.page.unwrap_or(1).max(1);
     let per = q.per_page.unwrap_or(20).clamp(1, 100);
     let rows = sqlx::query_as::<_, OrderSummary>(
         r#"SELECT o.id, o.number, o.created_at, o.status, o.total, o.paid_amount, o.due_date, o.payment_method, o.payment_status, o.delivery_method,
                   (SELECT count(*) FROM order_items i WHERE i.order_id = o.id) AS items_count, count(*) OVER() AS total_rows
-           FROM orders o WHERE o.user_id = $1 AND (o.created_at + interval '5 hours')::date >= $2 AND (o.created_at + interval '5 hours')::date <= $3
+           FROM orders o WHERE o.user_id = $1
+             AND ($2::date IS NULL OR (o.created_at + interval '5 hours')::date >= $2) AND ($3::date IS NULL OR (o.created_at + interval '5 hours')::date <= $3)
            ORDER BY o.created_at DESC LIMIT $4 OFFSET $5"#,
     )
     .bind(user.id)
@@ -282,7 +286,8 @@ async fn list_orders(State(state): State<AppState>, AuthUser(user): AuthUser, Qu
             })
         })
         .collect();
-    Ok(Json(json!({ "items": items, "total": total, "page": page, "pages": (total + per - 1) / per, "period": { "from": from, "to": to } })))
+    let period = period.map(|(from, to)| json!({ "from": from, "to": to }));
+    Ok(Json(json!({ "items": items, "total": total, "page": page, "pages": (total + per - 1) / per, "period": period })))
 }
 
 async fn own_order(state: &AppState, user_id: Uuid, number: &str) -> AppResult<crate::models::OrderRow> {
@@ -325,30 +330,38 @@ async fn withdraw_edit(State(state): State<AppState>, AuthUser(user): AuthUser, 
     Ok(Json(json!(orders::order_json(&state, &o).await?)))
 }
 
+/// Период акта сверки; «за все время» — с первой записи покупателя.
+async fn reconciliation_range(state: &AppState, user_id: Uuid, q: &PeriodQuery) -> AppResult<(NaiveDate, NaiveDate)> {
+    if matches!(q.all.as_deref(), Some("1" | "true")) {
+        let today = delivery::today_local();
+        let first: Option<NaiveDate> = sqlx::query_scalar("SELECT min(entry_date) FROM ledger_entries WHERE user_id = $1").bind(user_id).fetch_one(&state.pool).await?;
+        return Ok((first.unwrap_or(today).min(today), today));
+    }
+    Ok(q.range(365))
+}
+
 async fn reconciliation(State(state): State<AppState>, AuthUser(user): AuthUser, Query(q): Query<PeriodQuery>) -> AppResult<Json<Value>> {
-    let (from, to) = q.range(365);
+    let (from, to) = reconciliation_range(&state, user.id, &q).await?;
     let company = company_name(&state, user.company_id).await?;
     Ok(Json(json!(ledger::reconciliation(&state.pool, user.id, company, from, to).await?)))
 }
 
 async fn reconciliation_xlsx(State(state): State<AppState>, AuthUser(user): AuthUser, Query(q): Query<PeriodQuery>) -> AppResult<Response> {
-    let (from, to) = q.range(365);
+    let (from, to) = reconciliation_range(&state, user.id, &q).await?;
     let company = company_name(&state, user.company_id).await?;
     let rec = ledger::reconciliation(&state.pool, user.id, company, from, to).await?;
     let bytes = excel::reconciliation_xlsx(&user.full_name(), &rec)?;
     Ok(super::cart::xlsx_response(bytes, &format!("akt-sverki-{from}-{to}.xlsx")))
 }
 
-async fn bonus(State(state): State<AppState>, AuthUser(user): AuthUser, Query(q): Query<PeriodQuery>) -> AppResult<Json<Value>> {
-    let (from, to) = q.range(365);
-    Ok(Json(json!(ledger::bonus_statement(&state.pool, user.id, from, to).await?)))
+async fn bonus(State(state): State<AppState>, AuthUser(user): AuthUser) -> AppResult<Json<Value>> {
+    Ok(Json(json!(ledger::bonus_statement(&state.pool, user.id).await?)))
 }
 
-async fn bonus_xlsx(State(state): State<AppState>, AuthUser(user): AuthUser, Query(q): Query<PeriodQuery>) -> AppResult<Response> {
-    let (from, to) = q.range(365);
-    let st = ledger::bonus_statement(&state.pool, user.id, from, to).await?;
+async fn bonus_xlsx(State(state): State<AppState>, AuthUser(user): AuthUser) -> AppResult<Response> {
+    let st = ledger::bonus_statement(&state.pool, user.id).await?;
     let bytes = excel::bonus_xlsx(&user.full_name(), &st)?;
-    Ok(super::cart::xlsx_response(bytes, &format!("bonus-{from}-{to}.xlsx")))
+    Ok(super::cart::xlsx_response(bytes, &format!("bonus-{}.xlsx", crate::services::delivery::today_local())))
 }
 
 async fn my_reviews(State(state): State<AppState>, AuthUser(user): AuthUser) -> AppResult<Json<Vec<Value>>> {

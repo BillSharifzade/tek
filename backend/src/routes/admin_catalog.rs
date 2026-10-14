@@ -228,7 +228,7 @@ async fn product_rows(state: &AppState, products: &[ProductRow]) -> AppResult<Ve
                 "id": p.id, "code": p.code, "slug": p.slug, "name": p.name,
                 "category": { "slug": p.category_slug, "name": p.category_name },
                 "brand": p.brand_slug.as_ref().map(|s| json!({ "slug": s, "name": p.brand_name })),
-                "unit": p.unit, "list_price": p.list_price, "sale_price": p.sale_price, "pack_qty": p.pack_qty,
+                "unit": p.unit, "list_price": p.list_price, "sale_price": p.sale_price, "cashback_pct": p.cashback_pct, "pack_qty": p.pack_qty,
                 "stock_total": p.stock_total, "stock": per_store,
                 "is_active": p.is_active, "is_hit": p.is_hit, "is_new": p.is_new, "badges": badges,
                 "image": p.images.first(), "created_at": p.created_at,
@@ -344,6 +344,8 @@ struct ProductPatch {
     /// null — снять распродажу
     #[serde(default, deserialize_with = "double_option")]
     sale_price: Option<Option<Decimal>>,
+    /// кешбэк товара, % (0 — без кешбэка)
+    cashback_pct: Option<Decimal>,
     is_active: Option<bool>,
     is_hit: Option<bool>,
     is_new: Option<bool>,
@@ -361,7 +363,7 @@ fn country(v: Option<String>) -> AppResult<Option<String>> {
     Ok(v)
 }
 
-/// Быстрая правка товара: прайс, цена распродажи (ниже прайса), в продаже / снят, бейджи «Хит» и «Новинка».
+/// Быстрая правка товара: прайс, цена распродажи (ниже прайса), кешбэк, в продаже / снят, бейджи «Хит» и «Новинка».
 async fn update_product(State(state): State<AppState>, Manager(_m): Manager, Path(id): Path<Uuid>, Json(b): Json<ProductPatch>) -> AppResult<Json<Value>> {
     let mut tx = state.pool.begin().await?;
     let (list, sale, active): (Decimal, Option<Decimal>, bool) = sqlx::query_as("SELECT list_price, sale_price, is_active FROM products WHERE id = $1 FOR UPDATE")
@@ -380,8 +382,12 @@ async fn update_product(State(state): State<AppState>, Manager(_m): Manager, Pat
     if sale.is_some_and(|s| s <= Decimal::ZERO || s >= list) {
         return Err(AppError::unprocessable("invalid_price", "Цена распродажи должна быть больше нуля и ниже цены"));
     }
+    if b.cashback_pct.is_some_and(|c| c < Decimal::ZERO || c > Decimal::from(50)) {
+        return Err(AppError::unprocessable("invalid_cashback", "Кешбэк — от 0 до 50 %"));
+    }
     sqlx::query(
-        "UPDATE products SET list_price = $2, sale_price = $3, is_active = COALESCE($4, is_active), is_hit = COALESCE($5, is_hit), is_new = COALESCE($6, is_new) WHERE id = $1",
+        r#"UPDATE products SET list_price = $2, sale_price = $3, is_active = COALESCE($4, is_active), is_hit = COALESCE($5, is_hit),
+           is_new = COALESCE($6, is_new), cashback_pct = COALESCE($7, cashback_pct) WHERE id = $1"#,
     )
     .bind(id)
     .bind(list)
@@ -389,6 +395,7 @@ async fn update_product(State(state): State<AppState>, Manager(_m): Manager, Pat
     .bind(b.is_active)
     .bind(b.is_hit)
     .bind(b.is_new)
+    .bind(b.cashback_pct.map(|c| c.round_dp(2)))
     .execute(&mut *tx)
     .await?;
     if let Some(c) = b.country_origin {

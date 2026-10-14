@@ -197,6 +197,7 @@ enum Col {
     Unit,
     Price,
     SalePrice,
+    Cashback,
     Pack,
     Description,
     Image,
@@ -266,6 +267,7 @@ fn column(header: &str, stores: &[StoreRef]) -> Result<Col, String> {
         "бренд" | "производитель" | "марка" | "торговаямарка" => Col::Brand,
         "едизм" | "ед" | "единица" | "единицаизмерения" => Col::Unit,
         "кратность" | "кратностьупаковки" => Col::Pack,
+        "кешбэк" | "кешбэк%" | "кешбек" | "кешбек%" | "кэшбэк" | "кэшбэк%" | "cashback" | "cashback%" => Col::Cashback,
         "описание" => Col::Description,
         "изображение" | "изображения" | "фото" | "картинка" => Col::Image,
         "странабренда" => Col::BrandCountry,
@@ -339,6 +341,8 @@ struct RowData {
     unit: Option<String>,
     price: Option<Decimal>,
     sale: Option<Opt<Decimal>>,
+    /// кешбэк товара, % («-» или «0» — без кешбэка)
+    cashback: Option<Decimal>,
     pack: Option<Opt<Decimal>>,
     description: Option<String>,
     images: Option<Vec<String>>,
@@ -444,6 +448,7 @@ fn parse_row(cols: &[Col], cells: &[String]) -> Result<RowData, String> {
         unit: None,
         price: None,
         sale: None,
+        cashback: None,
         pack: None,
         description: None,
         images: None,
@@ -470,6 +475,13 @@ fn parse_row(cols: &[Col], cells: &[String]) -> Result<RowData, String> {
             Col::Price => d.price = Some(money_cell("Цена", v)?),
             Col::SalePrice if is_clear(v) => d.sale = Some(Opt::Clear),
             Col::SalePrice => d.sale = Some(Opt::Set(money_cell("Цена распродажи", v)?)),
+            Col::Cashback if is_clear(v) => d.cashback = Some(Decimal::ZERO),
+            Col::Cashback => {
+                let pct = parse_decimal(v.trim_end_matches('%'))
+                    .filter(|c| *c >= Decimal::ZERO && *c <= Decimal::from(50))
+                    .ok_or_else(|| format!("Кешбэк: «{v}» — укажите процент от 0 до 50"))?;
+                d.cashback = Some(pct.round_dp(2));
+            }
             Col::Pack if is_clear(v) => d.pack = Some(Opt::Clear),
             Col::Pack => {
                 let q = parse_decimal(v).filter(|q| *q > Decimal::ZERO && *q <= Decimal::from(1_000_000)).ok_or_else(|| format!("Кратность: «{v}» — укажите положительное число"))?;
@@ -823,8 +835,8 @@ async fn apply_row(conn: &mut PgConnection, ctx: &mut Ctx, d: RowData, line: usi
             attrs.push(("Артикул".into(), Some(d.code.clone())));
             let attributes = merge_attrs(&json!([]), &attrs, brand.as_ref().map(|b| b.1.as_str()));
             let id: Uuid = sqlx::query_scalar(
-                r#"INSERT INTO products (code, slug, name, brand_id, category_id, unit, list_price, sale_price, pack_qty, attributes, images, description)
-                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id"#,
+                r#"INSERT INTO products (code, slug, name, brand_id, category_id, unit, list_price, sale_price, pack_qty, attributes, images, description, cashback_pct)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id"#,
             )
             .bind(&d.code)
             .bind(&slug)
@@ -838,6 +850,7 @@ async fn apply_row(conn: &mut PgConnection, ctx: &mut Ctx, d: RowData, line: usi
             .bind(&attributes)
             .bind(d.images.clone().unwrap_or_default())
             .bind(d.description.clone().unwrap_or_default())
+            .bind(d.cashback.unwrap_or_default())
             .fetch_one(&mut *conn)
             .await?;
             ctx.existing.insert(
@@ -860,6 +873,7 @@ async fn apply_row(conn: &mut PgConnection, ctx: &mut Ctx, d: RowData, line: usi
                 || d.unit.is_some()
                 || d.price.is_some()
                 || d.sale.is_some()
+                || d.cashback.is_some()
                 || pack_set
                 || d.description.is_some()
                 || d.images.is_some()
@@ -869,7 +883,8 @@ async fn apply_row(conn: &mut PgConnection, ctx: &mut Ctx, d: RowData, line: usi
                     r#"UPDATE products SET name = COALESCE($2, name), category_id = COALESCE($3, category_id), brand_id = COALESCE($4, brand_id),
                          unit = COALESCE($5, unit), list_price = $6, sale_price = $7,
                          pack_qty = CASE WHEN $8 THEN $9 ELSE pack_qty END, pack_label = CASE WHEN $8 THEN NULL ELSE pack_label END,
-                         description = COALESCE($10, description), images = COALESCE($11, images), attributes = COALESCE($12, attributes)
+                         description = COALESCE($10, description), images = COALESCE($11, images), attributes = COALESCE($12, attributes),
+                         cashback_pct = COALESCE($13, cashback_pct)
                        WHERE id = $1"#,
                 )
                 .bind(id)
@@ -884,6 +899,7 @@ async fn apply_row(conn: &mut PgConnection, ctx: &mut Ctx, d: RowData, line: usi
                 .bind(&d.description)
                 .bind(&d.images)
                 .bind(&attributes)
+                .bind(d.cashback)
                 .execute(&mut *conn)
                 .await?;
                 if let Some(e) = ctx.existing.get_mut(&d.code) {
@@ -1108,6 +1124,7 @@ struct Example {
     unit: String,
     list_price: Decimal,
     sale_price: Option<Decimal>,
+    cashback_pct: Decimal,
     pack_qty: Option<Decimal>,
     description: String,
     image: Option<String>,
@@ -1124,7 +1141,7 @@ pub async fn template(pool: &PgPool) -> AppResult<Vec<u8>> {
     let example = sqlx::query_as::<_, Example>(
         r#"SELECT p.id, p.code, p.name,
                   (SELECT string_agg(c2.name, ' / ' ORDER BY length(c2.path)) FROM categories c2 WHERE c.path = c2.path OR c.path LIKE c2.path || '/%') AS category_path,
-                  b.name AS brand, p.unit, p.list_price, p.sale_price, p.pack_qty, p.description, p.images[1] AS image, p.attributes,
+                  b.name AS brand, p.unit, p.list_price, p.sale_price, p.cashback_pct, p.pack_qty, p.description, p.images[1] AS image, p.attributes,
                   b.country_brand, COALESCE(p.country_origin, b.country_origin) AS country_origin
            FROM products p JOIN categories c ON c.id = p.category_id LEFT JOIN brands b ON b.id = p.brand_id
            WHERE p.is_active ORDER BY p.popularity DESC, p.id LIMIT 1"#,
@@ -1154,6 +1171,7 @@ pub async fn template(pool: &PgPool) -> AppResult<Vec<u8>> {
         "Ед. изм.",
         "Цена",
         "Цена распродажи",
+        "Кешбэк, %",
         "Кратность",
         "Описание",
         "Изображение",
@@ -1179,6 +1197,7 @@ pub async fn template(pool: &PgPool) -> AppResult<Vec<u8>> {
             e.unit.clone(),
             dec(e.list_price),
             e.sale_price.map(dec).unwrap_or_default(),
+            if e.cashback_pct.is_zero() { String::new() } else { dec(e.cashback_pct) },
             e.pack_qty.map(dec).unwrap_or_default(),
             e.description.clone(),
             e.image.clone().unwrap_or_default(),
@@ -1195,6 +1214,7 @@ pub async fn template(pool: &PgPool) -> AppResult<Vec<u8>> {
             "Кавказкабель".into(),
             "м".into(),
             "12.5".into(),
+            String::new(),
             String::new(),
             "100".into(),
             "Кабель с медными жилами в негорючей оболочке.".into(),
@@ -1257,6 +1277,7 @@ pub async fn template(pool: &PgPool) -> AppResult<Vec<u8>> {
         ("Ед. изм.".into(), "шт или м (метры можно продавать дробным количеством). По умолчанию — шт.".into()),
         ("Цена".into(), "Прайсовая цена, с. (1 690,80 или 1690.80).".into()),
         ("Цена распродажи".into(), "Цена со скидкой, ниже прайсовой. Пусто — не менять; «0» или «-» — снять распродажу.".into()),
+        ("Кешбэк, %".into(), "Кешбэк товара на бонусный счёт покупателя, % от его цены (от 0 до 50). Пусто — не менять; «0» или «-» — без кешбэка.".into()),
         ("Кратность".into(), "Шаг количества (кабель в бухте 100 м — 100). «0» или «-» — убрать кратность.".into()),
         ("Описание".into(), "Текст описания товара.".into()),
         ("Изображение".into(), "Ссылка https://… или путь /… ; несколько — через «;». Заменяет все фото товара.".into()),

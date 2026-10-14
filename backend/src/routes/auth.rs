@@ -45,7 +45,6 @@ pub async fn user_json(state: &AppState, u: &UserRow) -> AppResult<UserJson> {
         status: u.status.clone(),
         customer_type: u.customer_type.clone(),
         discount_pct: u.discount_pct,
-        cashback_pct: u.cashback_pct,
         bonus_balance,
         company,
         manager,

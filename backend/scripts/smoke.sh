@@ -78,7 +78,7 @@ check "POST /admin/users/{id}/approve"    200 "$(req POST "/admin/users/$NEW_ID/
 check "POST /auth/login approved user"    200 "$(req POST /auth/login '{"login":"smoke'"$RND"'@test.tj","password":"Smoke1234"}')"
 check "POST /auth/login by phone"         200 "$(req POST /auth/login '{"login":"90 '"$PH"'","password":"Smoke1234"}')"
 check "GET /admin/users?status=pending"   200 "$(req GET '/admin/users?status=pending' '' -H "$ADMIN")"
-check "PUT /admin/users/{id}/pricing"     200 "$(req PUT "/admin/users/$NEW_ID/pricing" '{"discount_pct":7,"cashback_pct":2,"rules":[{"category_slug":"kabelenesushchie-sistemy","discount_pct":12,"cashback_pct":4}]}' -H "$ADMIN")"
+check "PUT /admin/users/{id}/pricing"     200 "$(req PUT "/admin/users/$NEW_ID/pricing" '{"discount_pct":7,"rules":[{"category_slug":"kabelenesushchie-sistemy","discount_pct":12}]}' -H "$ADMIN")"
 check "GET /admin/users forbidden for client" 403 "$(req GET /admin/users '' -H "$AUTHV")"
 # «Забыли пароль?»: ответ одинаковый для любого логина, письмо — только существующему одобренному аккаунту с e-mail;
 # ссылку из письма не видно в списке очереди (в нём вход в чужой аккаунт)
@@ -203,6 +203,53 @@ check "DELETE own question"               204 "$(req DELETE "/catalog/products/$
 check "GET /admin/orders"                 200 "$(req GET /admin/orders '' -H "$ADMIN")"
 check "PUT /admin/orders/{n}/status"      200 "$(req PUT "/admin/orders/$GORDER/status" '{"status":"confirmed"}' -H "$ADMIN")"
 check "GET /admin/outbox"                 200 "$(req GET /admin/outbox '' -H "$ADMIN")"
+
+echo "== R5: цены, кешбэк, бонусы, отзывы =="
+# персональная скидка аккаунта — его обычная цена (без зачёркивания); кешбэк — только у товаров, где он задан
+req GET '/catalog/products?category=kabelnye-lotki-dks&per_page=50' '' -H "$AUTHV" >/dev/null
+check "account discount = plain price"    True "$(jqv " is not None and any(i['price']['discount_pct']>0 for i in d['items']) and all(i['price']['list']==i['price']['price'] for i in d['items'] if not i['price']['sale'])")"
+check "cashback only where product has it" True "$(jqv " is not None and any(i['price']['cashback']>0 for i in d['items']) and all((i['price']['cashback']>0)==(i['price']['cashback_pct']>0) for i in d['items'])")"
+req GET '/catalog/products?category=silovye-kabeli&per_page=100&sort=price_asc' >/dev/null
+check "out-of-stock products last"        True "$(jqv " is not None and (lambda s: False in s and s==sorted(s, reverse=True))([i['in_stock'] for i in d['items']])")"
+# один отзыв на товар от аккаунта; «Ответить» / удаление ответа — сотрудник
+check "POST review"                       201 "$(req POST "/catalog/products/$SLUG/reviews" '{"rating":4,"text":"smoke r5"}' -H "$AUTHV")"
+R5ID=$(jqv "['id']")
+check "second review same product -> 409" 409 "$(req POST "/catalog/products/$SLUG/reviews" '{"rating":5,"text":"again"}' -H "$AUTHV")"
+check "reply returns reply"               True "$(req POST "/admin/reviews/$R5ID/reply" '{"text":"Ответ"}' -H "$ADMIN" >/dev/null; jqv "['reply']['text']=='Ответ'")"
+check "DELETE /admin/reviews/{id}/reply"  204 "$(req DELETE "/admin/reviews/$R5ID/reply" '' -H "$ADMIN")"
+check "reply gone from product page"      True "$(req GET "/catalog/products/$SLUG/reviews" >/dev/null; jqv " is not None and next(r for r in d['items'] if r['id']=='$R5ID')['reply'] is None")"
+check "reply as customer -> 403"          403 "$(req POST "/admin/reviews/$R5ID/reply" '{"text":"x"}' -H "$AUTHV")"
+req DELETE "/catalog/products/$SLUG/reviews/$R5ID" '' -H "$AUTHV" >/dev/null
+req POST "/catalog/products/$SLUG/questions" '{"text":"smoke r5?"}' -H "$AUTHV" >/dev/null; Q5ID=$(jqv "['id']")
+req POST "/admin/questions/$Q5ID/answer" '{"text":"Да"}' -H "$ADMIN" >/dev/null
+check "DELETE /admin/questions/{id}/answer" 204 "$(req DELETE "/admin/questions/$Q5ID/answer" '' -H "$ADMIN")"
+check "answer gone"                       True "$(req GET "/catalog/products/$SLUG/questions" >/dev/null; jqv " is not None and next(q for q in d['items'] if q['id']=='$Q5ID')['answer'] is None")"
+req DELETE "/catalog/products/$SLUG/questions/$Q5ID" '' -H "$AUTHV" >/dev/null
+# бонусы — только на покупки: списание при оформлении, возврат при отмене
+req GET /auth/me '' -H "$AUTHV" >/dev/null; B0=$(jqv "['bonus_balance']")
+req POST /cart/items '{"product_id":"'"$PID"'","qty":'"$PACK"'}' -H "$AUTHV" >/dev/null
+BBODY='{"contact":{"first_name":"Фаррух","phone":"+992900000001"},"delivery":{"method":"pickup","store_id":1},"payment":{"method":"cash"},"bonus":BONUS}'
+check "checkout bonus > total -> 422"     422 "$(req POST /checkout "${BBODY/BONUS/99999999}" -H "$AUTHV")"
+check "checkout guest bonus -> 422"       422 "$(req POST /checkout "${BBODY/BONUS/1}" -H "X-Cart-Token: $CT")"
+check "checkout with bonus 10"            201 "$(req POST /checkout "${BBODY/BONUS/10}" -H "$AUTHV")"
+BORDER=$(jqv "['order']['number']")
+check "order: bonus_spent, total reduced" True "$(jqv "['order']['bonus_spent']==10 and abs(d['order']['total'] - (d['order']['subtotal'] - d['order']['coupon_discount'] - 10 + d['order']['delivery_price'])) < 0.01")"
+check "bonus balance decreased"           True "$(req GET /auth/me '' -H "$AUTHV" >/dev/null; jqv "['bonus_balance'] is not None and abs(d['bonus_balance'] - ($B0 - 10)) < 0.01")"
+check "bonus statement newest first"      True "$(req GET /account/bonus '' -H "$AUTHV" >/dev/null; jqv "['entries'][0]['kind']=='spend' and [e['date'] for e in d['entries']]==sorted([e['date'] for e in d['entries']], reverse=True)")"
+check "cancel order with bonus"           200 "$(req POST "/account/orders/$BORDER/cancel" '' -H "$AUTHV")"
+check "bonuses refunded on cancel"        True "$(req GET /auth/me '' -H "$AUTHV" >/dev/null; jqv "['bonus_balance'] is not None and abs(d['bonus_balance'] - $B0) < 0.01")"
+# заказ целиком бонусами: к оплате 0 — «оплачен», но клиент может его отменить (бонусы вернутся)
+req GET '/catalog/products?q=101010' >/dev/null; SOCK=$(jqv "['items'][0]['id']")
+req POST /cart/items '{"product_id":"'"$SOCK"'","qty":1}' -H "$AUTHV" >/dev/null
+req GET /cart '' -H "$AUTHV" >/dev/null; CTOTAL=$(jqv "['total']")
+check "checkout fully paid with bonuses"  201 "$(req POST /checkout "${BBODY/BONUS/$CTOTAL}" -H "$AUTHV")"
+FORDER=$(jqv "['order']['number']")
+check "zero total: paid, cancellable"     True "$(jqv "['order']['total']==0 and d['order']['payment']['status']=='paid' and d['order']['can_cancel'] and d['payment']['kind']=='none'")"
+check "cancel bonus-paid order"           200 "$(req POST "/account/orders/$FORDER/cancel" '' -H "$AUTHV")"
+check "bonuses back after cancel"         True "$(req GET /auth/me '' -H "$AUTHV" >/dev/null; jqv "['bonus_balance'] is not None and abs(d['bonus_balance'] - $B0) < 0.01")"
+# заказы в ЛК по умолчанию — все; акт сверки «за все время»
+check "orders default: all, no period"    True "$(req GET /account/orders '' -H "$AUTHV" >/dev/null; jqv "['period'] is None and d['total'] >= 6")"
+check "reconciliation all=1"              True "$(req GET '/account/reconciliation?all=1' '' -H "$AUTHV" >/dev/null; jqv "['period']['from'] < d['period']['to'] and len(d['entries']) >= 6")"
 
 echo "== admin panel =="
 check "POST /auth/login manager"          200 "$(req POST /auth/login '{"login":"manager@tec.tj","password":"Manager1234"}')"

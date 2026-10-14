@@ -2,11 +2,16 @@
 
 export type Badge = "sale" | "hit" | "new";
 
+/**
+ * Цена для покупателя. Персональная скидка аккаунта уже внутри `list` и `price` (обычная цена, без зачёркивания);
+ * `list` > `price` только у акционного товара. `cashback` — кешбэк за единицу на бонусный счёт (0 — у товара кешбэка нет).
+ */
 export interface Price {
   list: number;
   price: number;
   discount_pct: number;
   cashback: number;
+  cashback_pct: number;
   sale: boolean;
   savings: number;
 }
@@ -34,6 +39,8 @@ export interface ProductCard {
   rating: number;
   reviews_count: number;
   price_unit_label: string; // "за шт" | "за метр"
+  /** раздел каталога товара (у гостевого избранного, сохранённого до R5, может не быть) */
+  category?: { slug: string; name: string };
   /** кратность упаковки: количество меняется этим шагом */
   pack_qty?: number | null;
 }
@@ -198,6 +205,8 @@ export interface Order {
   coupon_discount: number;
   delivery_price: number;
   total: number;
+  /** списано бонусов в оплату — `total` уже за их вычетом */
+  bonus_spent: number;
   cashback_total: number;
   paid_amount: number;
   remaining: number;
@@ -247,7 +256,6 @@ export interface User {
   status: "pending" | "approved" | "blocked";
   customer_type: "retail" | "legal" | "electrician" | "purchaser";
   discount_pct: number;
-  cashback_pct: number;
   bonus_balance: number;
   company: Company | null;
   manager: Manager | null;
@@ -472,6 +480,8 @@ export interface CheckoutPayload {
   delivery: { method: string; address?: string; date?: string; store_id?: number };
   payment: { method: string };
   comment?: string;
+  /** бонусов списать в оплату товаров */
+  bonus?: number;
 }
 
 export interface CheckoutResult {
@@ -512,17 +522,20 @@ export interface Reconciliation {
 export interface BonusEntry {
   date: string;
   order_number: string | null;
-  kind: "accrual" | "spend" | "adjust";
+  kind: "accrual" | "spend" | "refund" | "adjust";
+  kind_label: string;
   amount: number;
+  /** остаток после операции */
   balance: number;
   note: string | null;
 }
 
+/** Вся история бонусного счёта, последние операции — первыми. */
 export interface BonusStatement {
   balance: number;
-  opening: number;
   entries: BonusEntry[];
-  closing: number;
+  accrued: number;
+  spent: number;
 }
 
 export interface MyReview {

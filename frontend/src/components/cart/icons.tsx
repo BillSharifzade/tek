@@ -47,6 +47,16 @@ export function IconPlus16(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
+/** «Нет в наличии»: серый круг с часами 13×13 (как в карточке каталога). */
+export function IconNoStock(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg width={13} height={13} viewBox="0 0 13 13" aria-hidden="true" {...props}>
+      <circle cx="6.5" cy="6.5" r="6.5" fill="#B3B3B3" />
+      <path d="M6.5 3.2V6.7L8.6 8" stroke="#fff" strokeWidth="1.3" strokeLinecap="round" fill="none" />
+    </svg>
+  );
+}
+
 export function IconInStock(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg width={14} height={14} viewBox="0 0 14 14" fill="none" aria-hidden="true" {...props}>

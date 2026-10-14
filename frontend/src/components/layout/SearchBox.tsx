@@ -3,6 +3,8 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { client } from "@/lib/client";
+import { readAuth } from "@/lib/auth-storage";
 import { useClickOutside, useDebounced, useEscape } from "@/lib/hooks";
 import { SearchDropdown, searchOptions } from "./SearchDropdown";
 
@@ -50,7 +52,10 @@ export function useProductSuggest(q: string) {
         return;
       }
       try {
-        const r = await api<Partial<SuggestData>>("/catalog/suggest", { query: { q: debounced }, revalidate: false, signal: ctrl.signal });
+        // вошедшему покупателю — его цены (персональная скидка — это и есть его цена, доработки R5)
+        const r = readAuth()
+          ? await client.get<Partial<SuggestData>>("/catalog/suggest", { q: debounced })
+          : await api<Partial<SuggestData>>("/catalog/suggest", { query: { q: debounced }, revalidate: false, signal: ctrl.signal });
         if (!ctrl.signal.aborted)
           setState({
             key: debounced,

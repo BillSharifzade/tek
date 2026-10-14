@@ -8,8 +8,8 @@ import { cn } from "@/lib/cn";
 import { brandLogo, hasRealLogo } from "@/components/content/brands";
 
 const SLOTS = 6;
-/** каждый логотип держится 3 с, затем гаснет и на его месте появляется другой */
-const HOLD = 3000;
+/** каждый логотип держится 5 с (доработки R5; было 3 с), затем гаснет и на его месте появляется другой */
+const HOLD = 5000;
 const FADE = 400;
 
 /**
@@ -51,7 +51,7 @@ export function BrandStrip({ brands }: { brands: Home["brands"] }) {
       }, FADE);
     };
     for (let slot = 0; slot < SLOTS; slot++) {
-      // первые смены разнесены по 3-секундному окну в случайном порядке, дальше — раз в 3 с у каждого места
+      // первые смены разнесены по окну HOLD в случайном порядке, дальше — раз в HOLD у каждого места
       const offset = HOLD + Math.random() * HOLD;
       later(() => {
         swap(slot);

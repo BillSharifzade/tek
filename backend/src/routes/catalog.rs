@@ -251,20 +251,23 @@ async fn run_listing(state: &AppState, q: &HashMap<String, String>, ctx: &PriceC
             qb.push(")");
         }
     }
+    // товары не в наличии — в конце списка при любой сортировке (доработки R5)
+    const IN_STOCK_FIRST: &str = "(EXISTS (SELECT 1 FROM stock s WHERE s.product_id = p.id AND s.qty > 0)) DESC";
     if let (Some(text), None) = (text, q.get("sort")) {
         // точное совпадение кода — первым
-        qb.push(" ORDER BY (p.code = ").push_bind(text.to_string()).push(") DESC, p.popularity DESC, p.id");
+        qb.push(" ORDER BY (p.code = ").push_bind(text.to_string()).push(format!(") DESC, {IN_STOCK_FIRST}, p.popularity DESC, p.id"));
     }
     let order = match q.get("sort").map(String::as_str) {
         _ if text.is_some() && q.get("sort").is_none() => "",
-        Some("new") => " ORDER BY p.created_at DESC, p.id",
-        Some("price_asc") => " ORDER BY COALESCE(p.sale_price, p.list_price) ASC, p.id",
-        Some("price_desc") => " ORDER BY COALESCE(p.sale_price, p.list_price) DESC, p.id",
-        Some("name") => " ORDER BY p.name, p.id",
-        Some("rating") => " ORDER BY p.rating DESC, p.reviews_count DESC, p.popularity DESC, p.id",
-        Some("reviews") => " ORDER BY p.reviews_count DESC, p.rating DESC, p.popularity DESC, p.id",
-        _ => " ORDER BY p.popularity DESC, p.id",
+        Some("new") => "p.created_at DESC, p.id",
+        Some("price_asc") => "COALESCE(p.sale_price, p.list_price) ASC, p.id",
+        Some("price_desc") => "COALESCE(p.sale_price, p.list_price) DESC, p.id",
+        Some("name") => "p.name, p.id",
+        Some("rating") => "p.rating DESC, p.reviews_count DESC, p.popularity DESC, p.id",
+        Some("reviews") => "p.reviews_count DESC, p.rating DESC, p.popularity DESC, p.id",
+        _ => "p.popularity DESC, p.id",
     };
+    let order = if order.is_empty() { String::new() } else { format!(" ORDER BY {IN_STOCK_FIRST}, {order}") };
     qb.push(order);
     qb.push(" LIMIT ").push_bind(per_page).push(" OFFSET ").push_bind((page - 1) * per_page);
     let rows: Vec<ListRow> = qb.build_query_as().fetch_all(&state.pool).await?;
@@ -540,9 +543,19 @@ async fn post_review(State(state): State<AppState>, AuthUser(user): AuthUser, Pa
         .fetch_optional(&state.pool)
         .await?
         .ok_or_else(|| AppError::not_found("Товар не найден"))?;
+    // один отзыв на товар от аккаунта (доработки R5; уникальный индекс — на случай двух одновременных запросов)
+    let already: bool = sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM reviews WHERE product_id = $1 AND user_id = $2)")
+        .bind(pid)
+        .bind(user.id)
+        .fetch_one(&state.pool)
+        .await?;
+    if already {
+        return Err(AppError::conflict("review_exists", "Вы уже оставили отзыв об этом товаре"));
+    }
     let mut tx = state.pool.begin().await?;
     let row = sqlx::query_as::<_, ReviewRow>(
         r#"INSERT INTO reviews (product_id, user_id, author_name, rating, pros, cons, body) VALUES ($1,$2,$3,$4,$5,$6,$7)
+           ON CONFLICT (product_id, user_id) WHERE user_id IS NOT NULL DO NOTHING
            RETURNING id, author_name, created_at, rating, pros, cons, body, reply_text, reply_author, replied_at, 1::bigint AS total"#,
     )
     .bind(pid)
@@ -552,8 +565,9 @@ async fn post_review(State(state): State<AppState>, AuthUser(user): AuthUser, Pa
     .bind(body.pros.unwrap_or_default().trim())
     .bind(body.cons.unwrap_or_default().trim())
     .bind(body.text.trim())
-    .fetch_one(&mut *tx)
-    .await?;
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or_else(|| AppError::conflict("review_exists", "Вы уже оставили отзыв об этом товаре"))?;
     sqlx::query(
         r#"UPDATE products SET reviews_count = (SELECT count(*) FROM reviews WHERE product_id = $1 AND status = 'published'),
            rating = (SELECT COALESCE(round(avg(rating)::numeric, 2), 0) FROM reviews WHERE product_id = $1 AND status = 'published') WHERE id = $1"#,
@@ -722,7 +736,10 @@ async fn suggest(State(state): State<AppState>, OptionalUser(user): OptionalUser
     let mut qb = QueryBuilder::<Postgres>::new(PRODUCT_SELECT);
     qb.push(" WHERE p.is_active");
     push_search(&mut qb, &text, "p.name || ' ' || p.code || ' ' || COALESCE(b.name, '') || ' ' || c.name");
-    qb.push(" ORDER BY (p.code = ").push_bind(text.clone()).push(") DESC, p.popularity DESC LIMIT 5");
+    // как в каталоге: точный код — первым, товары не в наличии — после остальных (доработки R5)
+    qb.push(" ORDER BY (p.code = ")
+        .push_bind(text.clone())
+        .push(") DESC, (EXISTS (SELECT 1 FROM stock s WHERE s.product_id = p.id AND s.qty > 0)) DESC, p.popularity DESC LIMIT 5");
     let rows: Vec<ProductRow> = qb.build_query_as().fetch_all(&state.pool).await?;
     let products: Vec<SuggestProduct> = rows
         .iter()

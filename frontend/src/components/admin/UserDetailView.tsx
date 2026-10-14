@@ -111,7 +111,7 @@ export function UserDetailView({ id }: { id: string }) {
         </div>
       ) : null}
       {admin ? <RoleCard key={`r${u.role}${u.is_lead_manager}`} user={u} self={self} update={update} /> : null}
-      {u.role === "customer" ? <PricingCard user={u} canEdit={!self && (admin || (!!me && u.manager_id === me.id))} onSaved={(p) => user.mutate((prev) => ({ ...prev, discount_pct: p.discount_pct, cashback_pct: p.cashback_pct }))} /> : null}
+      {u.role === "customer" ? <PricingCard user={u} canEdit={!self && (admin || (!!me && u.manager_id === me.id))} onSaved={(p) => user.mutate((prev) => ({ ...prev, discount_pct: p.discount_pct }))} /> : null}
       <div>
         <ButtonLink href="/admin/users?tab=all" variant="outline" className={btnCls} icon={<ArrowLeft className="size-4" aria-hidden />}>
           К списку пользователей
@@ -321,7 +321,6 @@ interface RuleRow {
   brand_slug: string;
   product_id: string;
   discount: string;
-  cashback: string;
 }
 
 const toRow = (r: PricingRule, i: number): RuleRow => ({
@@ -331,7 +330,6 @@ const toRow = (r: PricingRule, i: number): RuleRow => ({
   brand_slug: r.brand_slug ?? "",
   product_id: r.product_id ?? "",
   discount: String(r.discount_pct ?? 0),
-  cashback: String(r.cashback_pct ?? 0),
 });
 function RuleHint({ text }: { text?: string | null }) {
   return text ? <span className="mt-[3px] block truncate text-[12px] leading-[15px] text-sub" title={text}>{text}</span> : null;
@@ -340,7 +338,7 @@ function RuleHint({ text }: { text?: string | null }) {
 const sentence = (s: string) => (/[.!?]$/.test(s) ? s : `${s}.`);
 const numStr = (n: number | null | undefined) => (n === null || n === undefined ? "0" : String(n).replace(".", ","));
 
-function PricingCard({ user: u, canEdit, onSaved }: { user: AdminUser; canEdit: boolean; onSaved: (p: { discount_pct: number; cashback_pct: number }) => void }) {
+function PricingCard({ user: u, canEdit, onSaved }: { user: AdminUser; canEdit: boolean; onSaved: (p: { discount_pct: number }) => void }) {
   const pricing = useLoad(`pricing:${u.id}`, () => adminApi.pricing(u.id), "Не удалось загрузить правила");
   const refs = useCatalogRefs();
 
@@ -348,7 +346,7 @@ function PricingCard({ user: u, canEdit, onSaved }: { user: AdminUser; canEdit: 
     <Card>
       <CardTitle>Персональные условия</CardTitle>
       <p className={cn("mt-[21px]", labelCls)}>
-        Базовая скидка и кешбэк действуют на весь каталог; правила уточняют их для категории, бренда или конкретного товара (действует самое точное правило). Скидка — 0–90 %, кешбэк — 0–50 %.
+        Персональная скидка — цены каталога для этого аккаунта (покупатель видит их как обычные, без зачёркивания). Базовая скидка действует на весь каталог; правила уточняют её для категории, бренда или конкретного товара (действует самое точное правило). Скидка — 0–90 %. Кешбэк задаётся у товаров.
       </p>
       {!canEdit ? <p className="mt-[10px] text-[13px] leading-[18px] text-sale-text">Условия клиента меняет его менеджер или администратор.</p> : null}
       {pricing.data === null && pricing.loading ? (
@@ -387,10 +385,9 @@ function PricingEditor({
   canEdit: boolean;
   categories: { slug: string; name: string }[];
   brands: { slug: string; name: string }[];
-  onSaved: (p: { discount_pct: number; cashback_pct: number }) => void;
+  onSaved: (p: { discount_pct: number }) => void;
 }) {
   const [discount, setDiscount] = useState(numStr(initial?.discount_pct ?? u.discount_pct));
-  const [cashback, setCashback] = useState(numStr(initial?.cashback_pct ?? u.cashback_pct));
   const [rules, setRules] = useState<RuleRow[]>(() => (initial?.rules ?? []).map(toRow));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -404,21 +401,19 @@ function PricingEditor({
   const save = async () => {
     setError(null);
     const d = parseNum(discount);
-    const c = parseNum(cashback);
-    if (d === null || d < 0 || d > 90 || c === null || c < 0 || c > 50) {
-      setError("Скидка — от 0 до 90 %, кешбэк — от 0 до 50 %");
+    if (d === null || d < 0 || d > 90) {
+      setError("Скидка — от 0 до 90 %");
       return;
     }
     const out: PricingRule[] = [];
     for (const [i, r] of rules.entries()) {
       const rd = parseNum(r.discount);
-      const rc = parseNum(r.cashback);
       if (!r.category_slug.trim() && !r.brand_slug.trim() && !r.product_id.trim()) {
         setError(`Правило ${i + 1}: укажите категорию, бренд или товар`);
         return;
       }
-      if (rd === null || rd < 0 || rd > 90 || rc === null || rc < 0 || rc > 50) {
-        setError(`Правило ${i + 1}: скидка — от 0 до 90 %, кешбэк — от 0 до 50 %`);
+      if (rd === null || rd < 0 || rd > 90) {
+        setError(`Правило ${i + 1}: скидка — от 0 до 90 %`);
         return;
       }
       out.push({
@@ -426,14 +421,13 @@ function PricingEditor({
         brand_slug: r.brand_slug.trim() || null,
         product_id: r.product_id.trim() || null,
         discount_pct: rd,
-        cashback_pct: rc,
       });
     }
     setBusy(true);
     try {
-      await adminApi.savePricing(u.id, { discount_pct: d, cashback_pct: c, ...(rulesAvailable ? { rules: out } : {}) });
+      await adminApi.savePricing(u.id, { discount_pct: d, ...(rulesAvailable ? { rules: out } : {}) });
       toast.success("Персональные условия сохранены");
-      onSaved({ discount_pct: d, cashback_pct: c });
+      onSaved({ discount_pct: d });
     } catch (e) {
       setError(errorMessage(e, "Не удалось сохранить условия"));
     } finally {
@@ -455,33 +449,28 @@ function PricingEditor({
           <span className={labelCls}>Базовая скидка</span>
           <span className="w-[96px]">{pctField(discount, setDiscount, "Базовая скидка, %", 90)}</span>
         </label>
-        <label className="flex items-center gap-[12px]">
-          <span className={labelCls}>Кешбэк</span>
-          <span className="w-[96px]">{pctField(cashback, setCashback, "Кешбэк, %", 50)}</span>
-        </label>
       </div>
 
       <h3 className="mt-[26px] text-[16px] font-semibold leading-[20px]">Правила</h3>
       {!rulesAvailable ? (
-        <ErrorLine error={`${sentence(loadError ?? "Правила не загрузились")} Базовую скидку и кешбэк сохранить можно — существующие правила не изменятся.`} className="mt-[12px]" />
+        <ErrorLine error={`${sentence(loadError ?? "Правила не загрузились")} Базовую скидку сохранить можно — существующие правила не изменятся.`} className="mt-[12px]" />
       ) : (
         <>
           <div className="-mx-[20px] mt-[12px] overflow-x-auto px-[20px] sm:mx-0 sm:px-0">
-            <table className="w-full min-w-[720px] border-collapse text-[15px] leading-[20px]">
+            <table className="w-full min-w-[640px] border-collapse text-[15px] leading-[20px]">
               <thead>
                 <tr className="border-b border-line text-left">
                   <th className="px-[6px] pb-[8px] font-normal">Категория</th>
                   <th className="px-[6px] pb-[8px] font-normal">Бренд</th>
                   <th className="px-[6px] pb-[8px] font-normal">Товар (ID)</th>
                   <th className="w-[96px] px-[6px] pb-[8px] font-normal">Скидка</th>
-                  <th className="w-[96px] px-[6px] pb-[8px] font-normal">Кешбэк</th>
                   <th className="w-[44px]" aria-label="Удалить" />
                 </tr>
               </thead>
               <tbody>
                 {rules.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-[6px] py-[24px] text-center text-[#555]">
+                    <td colSpan={5} className="px-[6px] py-[24px] text-center text-[#555]">
                       Правил нет — действуют базовые условия
                     </td>
                   </tr>
@@ -501,7 +490,6 @@ function PricingEditor({
                         <RuleHint text={r.product_id === r.hint.productId ? r.hint.product : null} />
                       </td>
                       <td className="px-[6px] py-[8px] align-top">{pctField(r.discount, (v) => setRule(r.uid, { discount: v }), "Скидка по правилу, %", 90)}</td>
-                      <td className="px-[6px] py-[8px] align-top">{pctField(r.cashback, (v) => setRule(r.uid, { cashback: v }), "Кешбэк по правилу, %", 50)}</td>
                       <td className="px-[6px] py-[8px] text-right align-top">
                         {canEdit ? (
                           <button type="button" onClick={() => setRules((rs) => rs.filter((x) => x.uid !== r.uid))} className="inline-flex size-[32px] items-center justify-center rounded-[6px] text-sub transition-colors hover:bg-sale-bg hover:text-sale-text" aria-label="Удалить правило">
@@ -534,7 +522,7 @@ function PricingEditor({
               variant="ghost"
               className={cn(btnCls, "mt-[10px] px-[10px]")}
               icon={<Plus className="size-4" aria-hidden />}
-              onClick={() => setRules((rs) => [...rs, { uid: rs.reduce((m, x) => Math.max(m, x.uid), 0) + 1, hint: {}, category_slug: "", brand_slug: "", product_id: "", discount: "0", cashback: "0" }])}
+              onClick={() => setRules((rs) => [...rs, { uid: rs.reduce((m, x) => Math.max(m, x.uid), 0) + 1, hint: {}, category_slug: "", brand_slug: "", product_id: "", discount: "0" }])}
             >
               Добавить правило
             </Button>

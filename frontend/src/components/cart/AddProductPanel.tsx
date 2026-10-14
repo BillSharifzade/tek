@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { money } from "@/lib/format";
-import { useEscape } from "@/lib/hooks";
+import { useClickOutside, useEscape } from "@/lib/hooks";
 import { useCart } from "@/store/cart";
 import { toast } from "@/store/toast";
 import { ImageBox } from "@/components/ui/ImageBox";
 import { useProductSuggest, type SuggestProduct } from "@/components/layout/SearchBox";
 import { DashLine, DashedFrame } from "./parts";
-import { IconInStock, IconPlus16 } from "./icons";
+import { IconInStock, IconNoStock, IconPlus16 } from "./icons";
 import { packStep } from "@/lib/qty";
 
 function ResultRow({ p, divider }: { p: SuggestProduct; divider?: boolean }) {
@@ -24,19 +24,25 @@ function ResultRow({ p, divider }: { p: SuggestProduct; divider?: boolean }) {
         <ImageBox src={p.image} alt="" className="size-[64px] bg-white" sizes="64px" rounded="rounded-[5px]" />
       </Link>
       <div className="min-w-0 flex-1">
-        <div className="flex h-[12px] items-center text-[14px] leading-[12px]">
+        {/* доработки R5: код и наличие — 13px, у «Нет в наличии» — значок с часами */}
+        <div className="flex h-[12px] items-center text-[13px] leading-[12px]">
           <span className="whitespace-nowrap text-sub">Код: {p.code}</span>
           {p.in_stock ? (
             <span className="ml-[12px] flex items-center gap-[5px] whitespace-nowrap text-black">
-              <IconInStock className="shrink-0" />В наличии
+              <IconInStock width={13} height={13} className="shrink-0" />В наличии
             </span>
           ) : (
-            <span className="ml-[12px] whitespace-nowrap text-muted">Нет в наличии</span>
+            <span className="ml-[12px] flex items-center gap-[5px] whitespace-nowrap text-muted">
+              <IconNoStock className="shrink-0" />
+              Нет в наличии
+            </span>
           )}
         </div>
-        <Link href={`/product/${p.slug}`} className="link-hover mt-[7px] block text-[14px] leading-[18px] text-black line-clamp-2">
-          {p.name}
-        </Link>
+        <p className="mt-[7px] text-[14px] leading-[18px] line-clamp-2">
+          <Link href={`/product/${p.slug}`} className="link-hover text-black">
+            {p.name}
+          </Link>
+        </p>
         <p className="mt-[5px] text-[14px] leading-[18px] tnum">
           <span className="text-[16px] font-semibold text-black">{money(p.price)}</span> <span className="text-sub">{unitLabel}</span>
         </p>
@@ -77,8 +83,11 @@ export function AddProductPanel() {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const { data, term } = useProductSuggest(q);
   useEscape(() => setOpen(false), open);
+  // доработки R5: окно сворачивается по клику в пустом месте
+  useClickOutside(panelRef, () => setOpen(false), open);
 
   useEffect(() => {
     if (open) inputRef.current?.focus();
@@ -100,7 +109,7 @@ export function AddProductPanel() {
   }
 
   return (
-    <div className="ml-[2px] rounded-[7px] bg-white px-[20px] pb-[4px] pt-[20px] shadow-card">
+    <div ref={panelRef} className="ml-[2px] rounded-[7px] bg-white px-[20px] pb-[4px] pt-[20px] shadow-card">
       <div className="flex items-center gap-[16px]">
         <div className="relative min-w-0 flex-1">
           <input

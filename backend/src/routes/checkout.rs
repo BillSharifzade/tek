@@ -61,6 +61,8 @@ async fn checkout(State(state): State<AppState>, id: CartIdentity, Json(input): 
     let computed = cart::compute(&state, &cart_row, &ctx).await?;
     let order = orders::create_order(&state, id.user.as_deref(), &cart_row, computed, input).await?;
     let payment = match order.payment_method.as_str() {
+        // всё оплачено бонусами — платить онлайн нечего
+        _ if order.payment_status == "paid" => json!({ "kind": "none" }),
         "alif" | "dc" => json!({
             "kind": "redirect",
             "url": format!("{}/payment/{}?order={}", state.cfg.frontend_url.trim_end_matches('/'), order.payment_method, order.number),

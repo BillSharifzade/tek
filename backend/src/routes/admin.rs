@@ -60,7 +60,7 @@ fn flag(v: Option<&str>) -> bool {
 
 /// Строка пользователя в панели (список и ответ на изменение).
 const ADMIN_USER_SELECT: &str = r#"
-SELECT u.id, u.email, u.phone, u.first_name, u.last_name, u.role, u.status, u.customer_type, u.discount_pct, u.cashback_pct,
+SELECT u.id, u.email, u.phone, u.first_name, u.last_name, u.role, u.status, u.customer_type, u.discount_pct,
        u.manager_id, NULLIF(trim(concat_ws(' ', m.first_name, m.last_name)), '') AS manager_name, u.is_lead_manager,
        c.name AS company_name, c.inn AS company_inn, c.verified AS company_verified, u.created_at
 FROM users u LEFT JOIN companies c ON c.id = u.company_id LEFT JOIN users m ON m.id = u.manager_id
@@ -245,14 +245,14 @@ async fn managers(State(state): State<AppState>, Manager(_m): Manager) -> AppRes
 }
 
 async fn get_pricing(State(state): State<AppState>, Manager(_m): Manager, Path(id): Path<Uuid>) -> AppResult<Json<Value>> {
-    let row: Option<(Decimal, Decimal, Option<Uuid>)> = sqlx::query_as("SELECT discount_pct, cashback_pct, manager_id FROM users WHERE id = $1")
+    let row: Option<(Decimal, Option<Uuid>)> = sqlx::query_as("SELECT discount_pct, manager_id FROM users WHERE id = $1")
         .bind(id)
         .fetch_optional(&state.pool)
         .await?;
-    let (discount_pct, cashback_pct, manager_id) = row.ok_or_else(|| AppError::not_found("Пользователь не найден"))?;
+    let (discount_pct, manager_id) = row.ok_or_else(|| AppError::not_found("Пользователь не найден"))?;
     let rules: Vec<Value> = sqlx::query_scalar(
         r#"SELECT to_jsonb(t) FROM (
-             SELECT c.slug AS category_slug, b.slug AS brand_slug, r.product_id, r.discount_pct, r.cashback_pct,
+             SELECT c.slug AS category_slug, b.slug AS brand_slug, r.product_id, r.discount_pct,
                     c.name AS category_name, b.name AS brand_name, p.code AS product_code, p.name AS product_name
              FROM user_price_rules r LEFT JOIN categories c ON c.id = r.category_id LEFT JOIN brands b ON b.id = r.brand_id
              LEFT JOIN products p ON p.id = r.product_id
@@ -261,7 +261,7 @@ async fn get_pricing(State(state): State<AppState>, Manager(_m): Manager, Path(i
     .bind(id)
     .fetch_all(&state.pool)
     .await?;
-    Ok(Json(json!({ "discount_pct": discount_pct, "cashback_pct": cashback_pct, "manager_id": manager_id, "rules": rules })))
+    Ok(Json(json!({ "discount_pct": discount_pct, "manager_id": manager_id, "rules": rules })))
 }
 
 #[derive(Deserialize)]
@@ -270,13 +270,11 @@ struct RuleInput {
     brand_slug: Option<String>,
     product_id: Option<Uuid>,
     discount_pct: Decimal,
-    cashback_pct: Decimal,
 }
 
 #[derive(Deserialize)]
 struct PricingInput {
     discount_pct: Option<Decimal>,
-    cashback_pct: Option<Decimal>,
     manager_id: Option<Uuid>,
     rules: Option<Vec<RuleInput>>,
 }
@@ -285,17 +283,17 @@ fn pct_ok(v: Decimal, max: Decimal) -> bool {
     v >= Decimal::ZERO && v <= max
 }
 
-/// Персональные цены: менеджер — только своим клиентам, себе — никто; скидка 0–90 %, кешбэк 0–50 %.
+/// Персональная скидка аккаунта (0 % — цены как у гостя): менеджер — только своим клиентам, себе — никто; 0–90 %.
+/// Кешбэк — у товаров (доработки R5), не у аккаунта.
 async fn pricing(State(state): State<AppState>, Manager(m): Manager, Path(id): Path<Uuid>, Json(body): Json<PricingInput>) -> AppResult<Json<Value>> {
-    let (max_discount, max_cashback) = (Decimal::from(90), Decimal::from(50));
+    let max_discount = Decimal::from(90);
     if id == m.id {
         return Err(AppError::forbidden("self_pricing", "Нельзя менять собственные условия"));
     }
     let bad = body.discount_pct.is_some_and(|v| !pct_ok(v, max_discount))
-        || body.cashback_pct.is_some_and(|v| !pct_ok(v, max_cashback))
-        || body.rules.as_ref().is_some_and(|rs| rs.iter().any(|r| !pct_ok(r.discount_pct, max_discount) || !pct_ok(r.cashback_pct, max_cashback)));
+        || body.rules.as_ref().is_some_and(|rs| rs.iter().any(|r| !pct_ok(r.discount_pct, max_discount)));
     if bad {
-        return Err(AppError::unprocessable("invalid_pct", "Скидка — от 0 до 90 %, кешбэк — от 0 до 50 %"));
+        return Err(AppError::unprocessable("invalid_pct", "Скидка — от 0 до 90 %"));
     }
     if m.role != "admin" {
         let owner: Option<Option<Uuid>> = sqlx::query_scalar("SELECT manager_id FROM users WHERE id = $1").bind(id).fetch_optional(&state.pool).await?;
@@ -306,10 +304,9 @@ async fn pricing(State(state): State<AppState>, Manager(m): Manager, Path(id): P
         }
     }
     let mut tx = state.pool.begin().await?;
-    let n = sqlx::query("UPDATE users SET discount_pct = COALESCE($2, discount_pct), cashback_pct = COALESCE($3, cashback_pct), manager_id = COALESCE($4, manager_id) WHERE id = $1")
+    let n = sqlx::query("UPDATE users SET discount_pct = COALESCE($2, discount_pct), manager_id = COALESCE($3, manager_id) WHERE id = $1")
         .bind(id)
         .bind(body.discount_pct)
-        .bind(body.cashback_pct)
         .bind(body.manager_id)
         .execute(&mut *tx)
         .await?
@@ -332,13 +329,12 @@ async fn pricing(State(state): State<AppState>, Manager(m): Manager, Path(id): P
             if unknown || (category_id.is_none() && brand_id.is_none() && r.product_id.is_none()) {
                 return Err(AppError::unprocessable("invalid_rule", "Правило должно ссылаться на существующую категорию, бренд или товар"));
             }
-            sqlx::query("INSERT INTO user_price_rules (user_id, category_id, brand_id, product_id, discount_pct, cashback_pct) VALUES ($1,$2,$3,$4,$5,$6)")
+            sqlx::query("INSERT INTO user_price_rules (user_id, category_id, brand_id, product_id, discount_pct) VALUES ($1,$2,$3,$4,$5)")
                 .bind(id)
                 .bind(category_id)
                 .bind(brand_id)
                 .bind(r.product_id)
                 .bind(r.discount_pct)
-                .bind(r.cashback_pct)
                 .execute(&mut *tx)
                 .await?;
         }
@@ -688,12 +684,13 @@ async fn reply_review(State(state): State<AppState>, Manager(m): Manager, Path(i
     }
     // уведомляем только о первом ответе и только если клиент не отключил уведомления об ответах
     let first: Option<bool> = sqlx::query_scalar("SELECT reply_text IS NULL FROM reviews WHERE id = $1").bind(id).fetch_optional(&state.pool).await?;
+    let now = Utc::now();
     let row: Option<(Option<Uuid>, Uuid)> = sqlx::query_as(
         "UPDATE reviews SET reply_text = $2, reply_author = 'Точикэлектрокомплект', replied_at = $3 WHERE id = $1 RETURNING user_id, product_id",
     )
     .bind(id)
     .bind(text)
-    .bind(Utc::now())
+    .bind(now)
     .fetch_optional(&state.pool)
     .await?;
     let Some((user_id, product_id)) = row else { return Err(AppError::not_found("Отзыв не найден")) };
@@ -712,7 +709,21 @@ async fn reply_review(State(state): State<AppState>, Manager(m): Manager, Path(i
         mail_reply(&state, uid, product_id, text, false).await;
     }
     state.invalidate_public();
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(json!({ "ok": true, "reply": { "author": "Точикэлектрокомплект", "date": now, "text": text, "role": "Специалист ТЭК" } })))
+}
+
+/// Удаление ответа ТЭК на отзыв (сам отзыв остаётся).
+async fn delete_reply(State(state): State<AppState>, Manager(_m): Manager, Path(id): Path<Uuid>) -> AppResult<StatusCode> {
+    let n = sqlx::query("UPDATE reviews SET reply_text = NULL, reply_author = NULL, replied_at = NULL WHERE id = $1")
+        .bind(id)
+        .execute(&state.pool)
+        .await?
+        .rows_affected();
+    if n == 0 {
+        return Err(AppError::not_found("Отзыв не найден"));
+    }
+    state.invalidate_public();
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn answer_question(State(state): State<AppState>, Manager(m): Manager, Path(id): Path<Uuid>, Json(body): Json<TextInput>) -> AppResult<Json<Value>> {
@@ -722,12 +733,13 @@ async fn answer_question(State(state): State<AppState>, Manager(m): Manager, Pat
     }
     // уведомляем только о первом ответе и только если клиент не отключил уведомления об ответах
     let first: Option<bool> = sqlx::query_scalar("SELECT answer_text IS NULL FROM questions WHERE id = $1").bind(id).fetch_optional(&state.pool).await?;
+    let now = Utc::now();
     let row: Option<(Option<Uuid>, Uuid)> = sqlx::query_as(
         "UPDATE questions SET answer_text = $2, answer_author = 'Точикэлектрокомплект', answered_at = $3 WHERE id = $1 RETURNING user_id, product_id",
     )
     .bind(id)
     .bind(text)
-    .bind(Utc::now())
+    .bind(now)
     .fetch_optional(&state.pool)
     .await?;
     let Some((user_id, product_id)) = row else { return Err(AppError::not_found("Вопрос не найден")) };
@@ -746,7 +758,21 @@ async fn answer_question(State(state): State<AppState>, Manager(m): Manager, Pat
         mail_reply(&state, uid, product_id, text, true).await;
     }
     state.invalidate_public();
-    Ok(Json(json!({ "ok": true })))
+    Ok(Json(json!({ "ok": true, "answer": { "author": "Точикэлектрокомплект", "date": now, "text": text, "role": "Специалист ТЭК" } })))
+}
+
+/// Удаление ответа ТЭК на вопрос: вопрос снова ждёт ответа.
+async fn delete_answer(State(state): State<AppState>, Manager(_m): Manager, Path(id): Path<Uuid>) -> AppResult<StatusCode> {
+    let n = sqlx::query("UPDATE questions SET answer_text = NULL, answer_author = NULL, answered_at = NULL WHERE id = $1")
+        .bind(id)
+        .execute(&state.pool)
+        .await?
+        .rows_affected();
+    if n == 0 {
+        return Err(AppError::not_found("Вопрос не найден"));
+    }
+    state.invalidate_public();
+    Ok(StatusCode::NO_CONTENT)
 }
 
 pub fn routes() -> Router<AppState> {
@@ -767,8 +793,8 @@ pub fn routes() -> Router<AppState> {
         .route("/admin/leads/{id}", put(update_lead))
         .route("/admin/reviews", get(admin_reviews))
         .route("/admin/reviews/{id}", axum::routing::delete(delete_review))
-        .route("/admin/reviews/{id}/reply", post(reply_review))
+        .route("/admin/reviews/{id}/reply", post(reply_review).delete(delete_reply))
         .route("/admin/questions", get(admin_questions))
         .route("/admin/questions/{id}", axum::routing::delete(delete_question))
-        .route("/admin/questions/{id}/answer", post(answer_question))
+        .route("/admin/questions/{id}/answer", post(answer_question).delete(delete_answer))
 }

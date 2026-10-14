@@ -271,6 +271,7 @@ pub struct OrderMail<'a> {
     pub payment: String,
     pub delivery_price: Decimal,
     pub coupon_discount: Decimal,
+    pub bonus_spent: Decimal,
     pub total: Decimal,
     pub comment: Option<&'a str>,
 }
@@ -292,6 +293,9 @@ fn items_html(o: &OrderMail<'_>) -> String {
     if o.coupon_discount > Decimal::ZERO {
         totals.push_str(&format!(r#"<tr><td colspan="2" style="padding:6px;text-align:right">Промокод</td><td style="padding:6px;text-align:right;white-space:nowrap">−{}</td></tr>"#, money(o.coupon_discount)));
     }
+    if o.bonus_spent > Decimal::ZERO {
+        totals.push_str(&format!(r#"<tr><td colspan="2" style="padding:6px;text-align:right">Оплачено бонусами</td><td style="padding:6px;text-align:right;white-space:nowrap">−{}</td></tr>"#, money(o.bonus_spent)));
+    }
     totals.push_str(&format!(r#"<tr><td colspan="2" style="padding:6px;text-align:right">Доставка</td><td style="padding:6px;text-align:right;white-space:nowrap">{}</td></tr>"#, money(o.delivery_price)));
     totals.push_str(&format!(
         r#"<tr><td colspan="2" style="padding:6px;text-align:right;font-weight:700">Итого</td><td style="padding:6px;text-align:right;white-space:nowrap;font-weight:700">{}</td></tr>"#,
@@ -309,6 +313,9 @@ fn items_text(o: &OrderMail<'_>) -> String {
     }
     if o.coupon_discount > Decimal::ZERO {
         out.push_str(&format!("Промокод: −{}\n", money(o.coupon_discount)));
+    }
+    if o.bonus_spent > Decimal::ZERO {
+        out.push_str(&format!("Оплачено бонусами: −{}\n", money(o.bonus_spent)));
     }
     out.push_str(&format!("Доставка: {}\nИтого: {}\n", money(o.delivery_price), money(o.total)));
     out
